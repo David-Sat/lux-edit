@@ -1,8 +1,10 @@
 {
-  "name": "visual-edit",
+  "name": "lux-edit",
   "version": "0.1.0",
   "type": "module",
   "bin": {
+    "lux": "./dist/cli.js",
+    "lux-edit": "./dist/cli.js",
     "visual-edit": "./dist/cli.js"
   },
   "main": "./dist/index.js",
