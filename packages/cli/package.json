@@ -1,0 +1,24 @@
+{
+  "name": "visual-edit",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "visual-edit": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build && chmod +x ./dist/cli.js",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@visual-edit/core": "workspace:*",
+    "@visual-edit/mcp": "workspace:*",
+    "@visual-edit/overlay": "workspace:*",
+    "@visual-edit/server": "workspace:*",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

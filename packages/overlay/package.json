@@ -1,0 +1,19 @@
+{
+  "name": "@visual-edit/overlay",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/overlay.js",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "@floating-ui/dom": "^1.6.13",
+    "@visual-edit/core": "workspace:*",
+    "preact": "^10.25.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

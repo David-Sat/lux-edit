@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "visual-edit": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "visual-edit",
+        "mcp"
+      ]
+    }
+  }
+}

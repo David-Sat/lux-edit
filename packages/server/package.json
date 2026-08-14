@@ -1,0 +1,29 @@
+{
+  "name": "@visual-edit/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@visual-edit/core": "workspace:*",
+    "@visual-edit/overlay": "workspace:*",
+    "http-proxy": "^1.18.1",
+    "sirv": "^3.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/http-proxy": "^1.17.15",
+    "@types/ws": "^8.5.14",
+    "typescript": "^5.7.3"
+  }
+}

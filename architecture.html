@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Architecture — Live Visual Edit Overlay (MCP)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --surface-1: #0f172a;
+      --surface-2: #1e293b;
+      --surface-3: #283548;
+      --border: #334155;
+      --border-subtle: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --cyan: #38bdf8;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px 100px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header.hero {
+      text-align: center;
+      margin-bottom: 56px;
+      padding: 20px 0;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #a5b4fc;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    h1.hero-title {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+      line-height: 1.15;
+    }
+
+    p.hero-subtitle {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    /* Architecture Pipeline Grid */
+    .section-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pipeline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 48px;
+    }
+
+    .card {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--cyan);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    .card-step-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--cyan);
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+
+    .card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .card-list {
+      margin-top: 14px;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .card-list li {
+      font-size: 13px;
+      color: #cbd5e1;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .card-list li::before {
+      content: "•";
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    /* Interactive Data Flow Section */
+    .flow-diagram {
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 48px;
+    }
+
+    .flow-stages {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      position: relative;
+    }
+
+    @media (max-width: 900px) {
+      .flow-stages {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .stage-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      text-align: center;
+    }
+
+    .stage-icon {
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--cyan);
+    }
+
+    .stage-title {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .stage-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Live MCP Tool Showcase */
+    .mcp-showcase {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+
+    @media (max-width: 800px) {
+      .mcp-showcase {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .code-box {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #e2e8f0;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    .code-box .key { color: #38bdf8; }
+    .code-box .str { color: #34d399; }
+    .code-box .num { color: #f59e0b; }
+    .code-box .cmt { color: #64748b; font-style: italic; }
+
+    /* Interactive Test Playground Section */
+    .playground-section {
+      background: linear-gradient(180deg, var(--surface-1) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 2px dashed #475569;
+      border-radius: 16px;
+      padding: 36px 28px;
+      text-align: center;
+    }
+
+    .playground-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .playground-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+
+    .playground-actions {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-primary:hover {
+      background: #4f46e5;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background: var(--surface-3);
+    }
+
+    .btn-accent {
+      background: #0284c7;
+      color: #ffffff;
+    }
+
+    /* Footer */
+    footer.page-footer {
+      text-align: center;
+      margin-top: 60px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <header class="hero">
+      <div class="badge-pill" id="hero-badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Model Context Protocol (MCP) Powered
+      </div>
+      <h1 class="hero-title" id="arch-headline">Live UI Studio</h1>
+      <p class="hero-subtitle" id="arch-subheadline">
+        An isolated in-browser staging canvas that serializes visual tweaks, text rewrites, and layout mutations into structured semantic diffs for AI coding agents.
+      </p>
+    </header>
+
+    <!-- Pipeline Architecture Grid -->
+    <section>
+      <h2 class="section-title">Core System Architecture</h2>
+      <div class="pipeline-grid">
+        
+        <!-- Card 1 -->
+        <div class="card" id="card-proxy">
+          <span class="card-step-badge">Layer 1 • Proxy</span>
+          <h3>Reverse Proxy & Injector</h3>
+          <p>Proxies upstream dev servers or serves static HTML files, streaming the Shadow DOM overlay script dynamically into HTML responses.</p>
+          <ul class="card-list">
+            <li>Zero repo pollution (no permanent files added)</li>
+            <li>Full WebSocket & HMR forwarding (Vite, Next.js)</li>
+            <li>Dynamic CSP bypass nonces</li>
+          </ul>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="card" id="card-overlay">
+          <span class="card-step-badge">Layer 2 • In-Browser</span>
+          <h3>Shadow DOM Overlay</h3>
+          <p>Completely isolated Web Component (<code style="color:var(--cyan)">&lt;visual-edit-overlay&gt;</code>) running inside Shadow DOM.</p>
+          <ul class="card-list">
+            <li>Floating micro-inspector with Spacing box-model</li>
+            <li>Inline <code style="color:var(--cyan)">contenteditable</code> text editing</li>
+            <li>DOM child reordering, duplicate & delete</li>
+          </ul>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="card" id="card-diff">
+          <span class="card-step-badge">Layer 3 • Intelligence</span>
+          <h3>Semantic Diff & Tailwind Mapper</h3>
+          <p>Extracts structured mutation records comparing before/after snapshots and maps CSS to Tailwind utilities.</p>
+          <ul class="card-list">
+            <li>React Fiber source mapping (<code style="color:var(--cyan)">_debugSource</code>)</li>
+            <li>Maps pixel values to Tailwind (<code style="color:var(--cyan)">p-6, mb-8, text-xl</code>)</li>
+            <li>Preserves comments and component hierarchy</li>
+          </ul>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="card" id="card-mcp">
+          <span class="card-step-badge">Layer 4 • Agent Protocol</span>
+          <h3>MCP Server & Stdio Bus</h3>
+          <p>Official Model Context Protocol implementation providing atomic claims and structured session batches for AI agents.</p>
+          <ul class="card-list">
+            <li><code style="color:var(--cyan)">visual_edit_list_sessions</code></li>
+            <li><code style="color:var(--cyan)">visual_edit_get_session</code></li>
+            <li>Atomic lease locking for multi-agent windows</li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Visual Flow Diagram -->
+    <section>
+      <h2 class="section-title">End-to-End Workflow</h2>
+      <div class="flow-diagram">
+        <div class="flow-stages">
+          <div class="stage-box" id="flow-step-1">
+            <div class="stage-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7 18 3-7 7-3L3 3z"/></svg>
+            </div>
+            <div class="stage-title">1. Visual Draft</div>
+            <div class="stage-sub">Tweak styles, edit text inline, reorder nodes in browser</div>
+          </div>
+          <div class="stage-box" id="flow-step-2">
+            <div class="stage-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            </div>
+            <div class="stage-title">2. Diff Extraction</div>
+            <div class="stage-sub">Serializes DOM mutations & resolves React/HTML source location</div>
+          </div>
+          <div class="stage-box" id="flow-step-3">
+            <div class="stage-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+            </div>
+            <div class="stage-title">3. MCP Pipeline</div>
+            <div class="stage-sub">AI Agent claims batch, reads AST delta & user instructions</div>
+          </div>
+          <div class="stage-box" id="flow-step-4">
+            <div class="stage-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </div>
+            <div class="stage-title">4. Idiomatic Code Sync</div>
+            <div class="stage-sub">Agent refactors repo code and notifies browser overlay</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MCP Protocol Showcase -->
+    <section>
+      <h2 class="section-title">Structured Semantic Payload</h2>
+      <div class="mcp-showcase">
+        <div class="code-box">
+          <div class="cmt">// Example Visual Edit Batch Payload (JSON)</div>
+          <div>{</div>
+          <div>&nbsp;&nbsp;<span class="key">"id"</span>: <span class="str">"batch_9f8a12"</span>,</div>
+          <div>&nbsp;&nbsp;<span class="key">"route"</span>: <span class="str">"/architecture"</span>,</div>
+          <div>&nbsp;&nbsp;<span class="key">"primarySource"</span>: {</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"componentName"</span>: <span class="str">"ArchitectureHero"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"fileName"</span>: <span class="str">"src/Hero.tsx"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"lineNumber"</span>: <span class="num">24</span></div>
+          <div>&nbsp;&nbsp;},</div>
+          <div>&nbsp;&nbsp;<span class="key">"mutations"</span>: [</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;{</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"type"</span>: <span class="str">"STYLE_CHANGE"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"property"</span>: <span class="str">"padding"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"before"</span>: <span class="str">"12px"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"after"</span>: <span class="str">"24px"</span>,</div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="key">"tailwindSuggestion"</span>: <span class="str">"p-6"</span></div>
+          <div>&nbsp;&nbsp;&nbsp;&nbsp;}</div>
+          <div>&nbsp;&nbsp;]</div>
+          <div>}</div>
+        </div>
+
+        <div class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <h3 style="color: var(--cyan); margin-bottom: 12px;">Active MCP Tools</h3>
+            <ul class="card-list" style="gap: 10px;">
+              <li><strong style="color: var(--text)">visual_edit_list_sessions</strong> — Summaries with route & mutation count</li>
+              <li><strong style="color: var(--text)">visual_edit_get_session</strong> — Detailed AST mutations & DOM diffs</li>
+              <li><strong style="color: var(--text)">visual_edit_claim_session</strong> — Atomic lease to prevent concurrent agent collisions</li>
+              <li><strong style="color: var(--text)">visual_edit_update_status</strong> — Push live progress updates back to browser</li>
+            </ul>
+          </div>
+          <div style="margin-top: 20px; padding: 12px; background: var(--surface-2); border-radius: 8px; font-size: 13px; color: var(--text-muted);">
+            💡 <strong>Prompt Template:</strong> <code style="color: var(--amber)">apply_visual_edits</code> guides the agent to convert draft styles into project-standard design tokens and Tailwind classes.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Test Playground Area -->
+    <section class="playground-section" id="interactive-playground">
+      <h3 class="playground-title" id="playground-headline">Interactive Test & Critique Zone</h3>
+      <p class="playground-desc" id="playground-sub">
+        Use the overlay toolbar to test live modifications right now! Double-click text to rewrite, click elements to tweak padding/colors, or move components.
+      </p>
+      <div class="playground-actions">
+        <button class="btn btn-primary" id="cta-critique-btn">Critique This Button</button>
+        <button class="btn btn-secondary" id="cta-secondary-btn">Adjust Padding & Margin</button>
+        <button class="btn btn-accent" id="cta-accent-btn">Test Tailwind Classes</button>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="page-footer">
+      <p>Live Visual Edit Overlay (MCP) • Pair programmed with Google Deepmind Antigravity</p>
+    </footer>
+  </div>
+
+</body>
+</html>
