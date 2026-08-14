@@ -4,3 +4,6 @@ dist
 *.tsbuildinfo
 .visual-edit
 coverage
+.env
+.env.*
+*.log
