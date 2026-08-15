@@ -64,10 +64,31 @@ export function CommentPins() {
             <span>{idx + 1}</span>
             {isHovered && (
               <div class="ve-pin-tooltip">
-                <strong style={{ color: '#a5b4fc', display: 'block', marginBottom: '2px' }}>
-                  Pin #{idx + 1}
-                </strong>
-                {ann.comment}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', gap: '8px' }}>
+                  <strong style={{ color: '#a5b4fc', fontSize: '11px' }}>
+                    Pin #{idx + 1}
+                  </strong>
+                  <button
+                    style={{
+                      background: 'rgba(34, 197, 94, 0.2)',
+                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                      color: '#4ade80',
+                      borderRadius: '4px',
+                      padding: '2px 6px',
+                      fontSize: '10px',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      state.deleteAnnotation(ann.id);
+                    }}
+                    title="Dismiss and resolve this comment"
+                  >
+                    ✓ Resolve
+                  </button>
+                </div>
+                <div style={{ color: '#f8fafc', fontSize: '12px' }}>{ann.comment}</div>
               </div>
             )}
           </div>
