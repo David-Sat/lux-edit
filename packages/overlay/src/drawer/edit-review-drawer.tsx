@@ -43,6 +43,8 @@ export function EditReviewDrawer() {
     }
   };
 
+  const isAgentMode = state.mode === 'agent';
+
   const getStatusDisplay = () => {
     if (state.sessionStatus === 'in_progress') {
       return {
@@ -66,9 +68,9 @@ export function EditReviewDrawer() {
       };
     }
     return {
-      label: 'Live Synced',
-      color: '#10b981',
-      dot: '#10b981',
+      label: isAgentMode ? 'Agent Mode' : 'Drafting',
+      color: isAgentMode ? '#a855f7' : '#94a3b8',
+      dot: isAgentMode ? '#a855f7' : '#64748b',
     };
   };
 
@@ -97,13 +99,31 @@ export function EditReviewDrawer() {
             {statusInfo.label}
           </span>
         </div>
-        <button
-          class="ve-mini-btn"
-          style={{ width: '24px', flex: 'none' }}
-          onClick={() => state.setDrawerOpen(false)}
-        >
-          ✕
-        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            class="ve-mini-btn"
+            style={{
+              width: 'auto',
+              padding: '0 8px',
+              fontSize: '10px',
+              height: '22px',
+              color: isAgentMode ? '#a855f7' : '#64748b',
+              borderColor: isAgentMode ? '#7c3aed' : '#334155',
+            }}
+            onClick={() => state.setMode(isAgentMode ? 'default' : 'agent')}
+            title={isAgentMode ? 'Switch to Default Chat Mode' : 'Enable Direct Agent Auto-Trigger Mode'}
+          >
+            {isAgentMode ? '⚡ Agent Mode' : '💬 Chat Mode'}
+          </button>
+          <button
+            class="ve-mini-btn"
+            style={{ width: '24px', flex: 'none' }}
+            onClick={() => state.setDrawerOpen(false)}
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div class="ve-drawer-body">
@@ -262,33 +282,49 @@ export function EditReviewDrawer() {
           Reset All
         </button>
 
-        <button
-          class="ve-btn"
-          style={{ background: '#334155', color: '#f8fafc' }}
-          onClick={handleCopyPrompt}
-          disabled={totalItems === 0 && !state.userPrompt.trim()}
-          title="Copy formatted prompt to paste into AI chat"
-        >
-          {copiedToast ? '✓ Copied!' : '📋 Copy Prompt'}
-        </button>
+        {/* DEFAULT MODE: Prominent Full-Width Copy Prompt */}
+        {!isAgentMode ? (
+          <button
+            class="ve-btn primary"
+            style={{ flex: 1, background: '#6366f1' }}
+            onClick={handleCopyPrompt}
+            disabled={totalItems === 0 && !state.userPrompt.trim()}
+            title="Copy formatted prompt to paste into AI chat"
+          >
+            {copiedToast ? '✓ Copied to Clipboard!' : '📋 Copy Prompt for Chat'}
+          </button>
+        ) : (
+          /* AGENT MODE: Copy Prompt + Direct Send to Agent Button */
+          <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
+            <button
+              class="ve-btn"
+              style={{ background: '#334155', color: '#f8fafc' }}
+              onClick={handleCopyPrompt}
+              disabled={totalItems === 0 && !state.userPrompt.trim()}
+              title="Copy formatted prompt to paste into AI chat"
+            >
+              {copiedToast ? '✓ Copied!' : '📋 Copy'}
+            </button>
 
-        <button
-          class="ve-btn primary"
-          style={{ flex: 1, background: '#6366f1' }}
-          onClick={handleSendToAgent}
-          disabled={totalItems === 0 && !state.userPrompt.trim()}
-          title="Wake up the waiting AI Agent to apply these changes immediately"
-        >
-          {isSubmitting
-            ? 'Sending...'
-            : state.sessionStatus === 'submitted'
-            ? '⚡ Sent (Agent Waking...)'
-            : state.sessionStatus === 'in_progress'
-            ? '🤖 Agent Working...'
-            : state.sessionStatus === 'implemented'
-            ? '✅ Implemented'
-            : '🚀 Send to Agent'}
-        </button>
+            <button
+              class="ve-btn primary"
+              style={{ flex: 1, background: '#6366f1' }}
+              onClick={handleSendToAgent}
+              disabled={totalItems === 0 && !state.userPrompt.trim()}
+              title="Wake up the waiting AI Agent to apply these changes immediately"
+            >
+              {isSubmitting
+                ? 'Sending...'
+                : state.sessionStatus === 'submitted'
+                ? '⚡ Sent (Waking...)'
+                : state.sessionStatus === 'in_progress'
+                ? '🤖 Working...'
+                : state.sessionStatus === 'implemented'
+                ? '✅ Implemented'
+                : '🚀 Send to Agent'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
