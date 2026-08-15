@@ -1,4 +1,4 @@
-import { h, Fragment } from 'preact';
+import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 
@@ -11,15 +11,16 @@ export function DockMenu() {
   }, []);
 
   const totalCount = state.mutations.length + state.annotations.length;
+  const isAgentMode = state.mode === 'agent';
 
   if (!state.isDockMenuOpen && state.activeTool === 'none') {
     return (
       <button
         class="ve-launcher-btn"
-        title="Open Visual Edit & Comment Tools"
+        title="Open LUX Tools (V / C / R)"
         onClick={() => state.setDockMenuOpen(true)}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
         </svg>
         {totalCount > 0 && <span class="ve-launcher-badge">{totalCount}</span>}
@@ -29,30 +30,63 @@ export function DockMenu() {
 
   return (
     <div class="ve-dock-menu">
+      {/* Visual Edit Mode Button */}
       <button
         class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''}`}
-        onClick={() => state.setTool('edit')}
-        title="Visual Edit Mode: Click to tweak CSS, double-click text to rewrite"
+        onClick={() => state.setTool(state.activeTool === 'edit' ? 'none' : 'edit')}
+        title="Visual Edit Mode (V)"
       >
-        <span>⚡</span> Visual Edit
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
       </button>
 
+      {/* Comment Pin Mode Button */}
       <button
         class={`ve-dock-item ${state.activeTool === 'comment' ? 've-active' : ''}`}
-        onClick={() => state.setTool('comment')}
-        title="Comment Mode: Click an element to attach a feedback pin"
+        onClick={() => state.setTool(state.activeTool === 'comment' ? 'none' : 'comment')}
+        title="Comment Pin Mode (C)"
       >
-        <span>💬</span> Comment
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
       </button>
 
+      {/* Review Changes Drawer Toggle */}
       <button
         class={`ve-dock-item ${state.isDrawerOpen ? 've-active' : ''}`}
+        style={{ position: 'relative' }}
         onClick={() => state.setDrawerOpen(!state.isDrawerOpen)}
-        title="Open Review Tray & Submit to Agent"
+        title={`Review Changes (${totalCount}) (R)`}
       >
-        <span>📋</span> Changes {totalCount > 0 && `(${totalCount})`}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+        {totalCount > 0 && <span class="ve-dock-badge">{totalCount}</span>}
       </button>
 
+      {/* Trigger Mode: Direct Send to Agent Button in Pill */}
+      {isAgentMode && (
+        <button
+          class="ve-dock-item"
+          style={{ background: '#6366f1', color: '#ffffff' }}
+          onClick={() => state.submitBatch()}
+          disabled={totalCount === 0 && !state.userPrompt.trim()}
+          title="Send to Agent (Cmd+Enter)"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
+      )}
+
+      {/* Close / Collapse Button */}
       <button
         class="ve-dock-item ve-dock-close"
         onClick={() => {
@@ -60,9 +94,12 @@ export function DockMenu() {
           state.setDockMenuOpen(false);
           state.setDrawerOpen(false);
         }}
-        title="Close & Exit Review Mode"
+        title="Minimize (Esc)"
       >
-        ✕
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
       </button>
     </div>
   );

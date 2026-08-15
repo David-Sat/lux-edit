@@ -106,15 +106,15 @@ export function EditReviewDrawer() {
             style={{
               width: 'auto',
               padding: '0 8px',
-              fontSize: '10px',
+              fontSize: '11px',
               height: '22px',
-              color: isAgentMode ? '#a855f7' : '#64748b',
+              color: isAgentMode ? '#a855f7' : '#94a3b8',
               borderColor: isAgentMode ? '#7c3aed' : '#334155',
             }}
             onClick={() => state.setMode(isAgentMode ? 'default' : 'agent')}
             title={isAgentMode ? 'Switch to Default Chat Mode' : 'Enable Direct Agent Auto-Trigger Mode'}
           >
-            {isAgentMode ? '⚡ Agent Mode' : '💬 Chat Mode'}
+            {isAgentMode ? 'Agent Mode' : 'Chat Mode'}
           </button>
           <button
             class="ve-mini-btn"
@@ -130,10 +130,10 @@ export function EditReviewDrawer() {
         {totalItems === 0 ? (
           <div style={{ padding: '28px 0', textAlign: 'center', color: '#64748b' }}>
             <p style={{ marginBottom: '6px', fontWeight: 600, fontSize: '14px', color: '#94a3b8' }}>
-              No visual edits or comments yet
+              No changes drafted yet
             </p>
             <p style={{ fontSize: '12px' }}>
-              Choose <strong>⚡ Visual Edit</strong> to tweak styles and text, or <strong>💬 Comment</strong> to attach feedback pins to elements.
+              Use <strong>Visual Edit (V)</strong> to tweak styles and text, or <strong>Comment (C)</strong> to drop feedback pins.
             </p>
           </div>
         ) : (
@@ -142,8 +142,8 @@ export function EditReviewDrawer() {
             {totalMutations > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase' }}>
-                    ⚡ Visual Edits ({totalMutations})
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Visual Edits ({totalMutations})
                   </span>
                 </div>
 
@@ -169,7 +169,7 @@ export function EditReviewDrawer() {
                         onClick={() => state.revertMutation(m.id)}
                         title="Revert this visual change"
                       >
-                        ↩ Revert
+                        Revert
                       </button>
                     </div>
 
@@ -183,7 +183,7 @@ export function EditReviewDrawer() {
 
                       {m.type === 'STYLE_CHANGE' && (
                         <div>
-                          <span class="ve-mut-before">{m.before}</span> ➔{' '}
+                          <span class="ve-mut-before">{m.before}</span> →{' '}
                           <span class="ve-mut-after">{m.after}</span>
                           {m.tailwindSuggestion && (
                             <span style={{ color: '#38bdf8', marginLeft: '6px', fontSize: '11px' }}>
@@ -222,8 +222,8 @@ export function EditReviewDrawer() {
             {/* Comments & Pins Section */}
             {totalAnnotations > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase' }}>
-                  💬 Comments & Pins ({totalAnnotations})
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Comments & Pins ({totalAnnotations})
                 </span>
                 {state.annotations.map((ann, idx) => (
                   <div key={ann.id} class="ve-mutation-card" style={{ borderColor: '#4338ca' }}>
@@ -282,46 +282,58 @@ export function EditReviewDrawer() {
           Reset All
         </button>
 
-        {/* DEFAULT MODE: Prominent Full-Width Copy Prompt */}
+        {/* DEFAULT MODE: Clean, Compact Copy Prompt */}
         {!isAgentMode ? (
           <button
             class="ve-btn primary"
-            style={{ flex: 1, background: '#6366f1' }}
+            style={{ flex: 1, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             onClick={handleCopyPrompt}
             disabled={totalItems === 0 && !state.userPrompt.trim()}
-            title="Copy formatted prompt to paste into AI chat"
+            title="Copy formatted prompt to clipboard"
           >
-            {copiedToast ? '✓ Copied to Clipboard!' : '📋 Copy Prompt for Chat'}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            {copiedToast ? 'Copied to Clipboard' : 'Copy Prompt'}
           </button>
         ) : (
-          /* AGENT MODE: Copy Prompt + Direct Send to Agent Button */
+          /* AGENT MODE: Compact Copy Icon + Send Button */
           <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
             <button
               class="ve-btn"
-              style={{ background: '#334155', color: '#f8fafc' }}
+              style={{ background: '#334155', color: '#f8fafc', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
               onClick={handleCopyPrompt}
               disabled={totalItems === 0 && !state.userPrompt.trim()}
-              title="Copy formatted prompt to paste into AI chat"
+              title="Copy formatted prompt to clipboard"
             >
-              {copiedToast ? '✓ Copied!' : '📋 Copy'}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              {copiedToast ? 'Copied' : 'Copy'}
             </button>
 
             <button
               class="ve-btn primary"
-              style={{ flex: 1, background: '#6366f1' }}
+              style={{ flex: 1, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               onClick={handleSendToAgent}
               disabled={totalItems === 0 && !state.userPrompt.trim()}
               title="Wake up the waiting AI Agent to apply these changes immediately"
             >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
               {isSubmitting
                 ? 'Sending...'
                 : state.sessionStatus === 'submitted'
-                ? '⚡ Sent (Waking...)'
+                ? 'Sent (Waiting...)'
                 : state.sessionStatus === 'in_progress'
-                ? '🤖 Working...'
+                ? 'Working...'
                 : state.sessionStatus === 'implemented'
-                ? '✅ Implemented'
-                : '🚀 Send to Agent'}
+                ? 'Implemented'
+                : 'Send to Agent'}
             </button>
           </div>
         )}

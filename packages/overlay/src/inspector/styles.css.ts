@@ -114,16 +114,16 @@ export const OVERLAY_STYLES = `
 
 .ve-dock-menu {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
-  background: #0f172a;
-  border: 1px solid #334155;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(51, 65, 85, 0.8);
   border-radius: 9999px;
-  padding: 4px 6px;
+  padding: 3px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  gap: 2px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
   z-index: 2147483646;
   backdrop-filter: blur(16px);
   animation: veSlideUp 0.15s ease-out;
@@ -138,21 +138,21 @@ export const OVERLAY_STYLES = `
   background: transparent;
   border: none;
   color: #94a3b8;
-  padding: 8px 12px;
-  border-radius: 9999px;
-  font-size: 12px;
-  font-weight: 600;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   transition: all 0.15s ease;
-  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ve-dock-item:hover {
   color: #f8fafc;
-  background: #1e293b;
+  background: rgba(51, 65, 85, 0.6);
 }
 
 .ve-dock-item.ve-active {
@@ -161,19 +161,29 @@ export const OVERLAY_STYLES = `
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
 }
 
-.ve-dock-close {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  padding: 0;
+.ve-dock-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1.5px solid #0f172a;
+}
+
+.ve-dock-close {
   color: #64748b;
 }
 
 .ve-dock-close:hover {
-  background: #334155;
+  background: rgba(51, 65, 85, 0.8);
   color: #f8fafc;
 }
 

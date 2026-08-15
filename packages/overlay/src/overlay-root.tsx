@@ -64,9 +64,37 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       target.addEventListener('blur', handleBlur);
     };
 
-    // Global keydown handler (Escape to cancel/exit)
+    // Global keyboard shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isTyping =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.isContentEditable ||
+          activeEl.closest('visual-edit-overlay'));
+
+      if (isTyping) {
+        if (e.key === 'Escape') {
+          if (state.commentTargetElement) state.setCommentTarget(null);
+          if (state.activeElement) state.setActiveElement(null);
+        }
+        return;
+      }
+
+      if (e.key === 'v' || e.key === 'V' || e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        state.setDockMenuOpen(true);
+        state.setTool(state.activeTool === 'edit' ? 'none' : 'edit');
+      } else if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        state.setDockMenuOpen(true);
+        state.setTool(state.activeTool === 'comment' ? 'none' : 'comment');
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        state.setDockMenuOpen(true);
+        state.setDrawerOpen(!state.isDrawerOpen);
+      } else if (e.key === 'Escape') {
         if (state.commentTargetElement) {
           state.setCommentTarget(null);
         } else if (state.activeElement) {
@@ -75,6 +103,8 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           state.setDrawerOpen(false);
         } else if (state.activeTool !== 'none') {
           state.setTool('none');
+          state.setDockMenuOpen(false);
+        } else if (state.isDockMenuOpen) {
           state.setDockMenuOpen(false);
         }
       }
