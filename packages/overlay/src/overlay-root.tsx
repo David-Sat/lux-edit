@@ -64,22 +64,39 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       target.addEventListener('blur', handleBlur);
     };
 
-    // Global keyboard shortcuts
+    // Global keyboard shortcuts with stepped Escape handling
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape ALWAYS closes open views (drawer, comment composer, active selection, or minimizes dock)
       if (e.key === 'Escape') {
+        // Step 1: If comment composer popover is open, close composer
         if (state.commentTargetElement) {
           state.setCommentTarget(null);
-        } else if (state.activeElement) {
-          state.setActiveElement(null);
-        } else if (state.isDrawerOpen) {
-          state.setDrawerOpen(false);
-        } else if (state.activeTool !== 'none') {
-          state.setTool('none');
-          state.setDockMenuOpen(false);
-        } else if (state.isDockMenuOpen) {
-          state.setDockMenuOpen(false);
+          return;
         }
+
+        // Step 2: If review drawer is open, close drawer
+        if (state.isDrawerOpen) {
+          state.setDrawerOpen(false);
+          return;
+        }
+
+        // Step 3: If an element is active/inspected, deselect it
+        if (state.activeElement) {
+          state.setActiveElement(null);
+          return;
+        }
+
+        // Step 4: If a tool is active ('edit' or 'comment'), deselect tool BUT keep pill open
+        if (state.activeTool !== 'none') {
+          state.setTool('none');
+          return;
+        }
+
+        // Step 5: When no tool is active, minimize pill dock back to launcher
+        if (state.isDockMenuOpen) {
+          state.setDockMenuOpen(false);
+          return;
+        }
+
         return;
       }
 

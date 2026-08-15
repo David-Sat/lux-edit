@@ -457,23 +457,24 @@ export const OVERLAY_STYLES = `
   text-transform: uppercase;
 }
 
-/* Edit Review Drawer */
+/* Edit Review Drawer / Floating Panel Above Dock */
 .ve-drawer {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 440px;
-  max-width: calc(100vw - 48px);
-  max-height: 80vh;
-  background: #0f172a;
-  border: 1px solid #334155;
+  bottom: 78px;
+  right: 20px;
+  width: 420px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 100px);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(51, 65, 85, 0.9);
   border-radius: 16px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
   z-index: 2147483647;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
+  animation: veSlideUp 0.16s ease-out;
 }
 
 .ve-drawer-header {
