@@ -32,8 +32,17 @@ export class WebSocketHub {
     this.wss.on('connection', (ws) => {
       this.clients.add(ws);
 
-      // Immediately sync latest session status to newly connected client
+      // Immediately sync latest session status and agent listener state to newly connected client
       try {
+        const isListening = this.eventStore.hasActiveWaiters();
+        ws.send(
+          JSON.stringify({
+            type: 'AGENT_LISTENING',
+            sessionId: '',
+            payload: { listening: isListening },
+          })
+        );
+
         const latestSessions = this.eventStore.listSessions();
         if (latestSessions.length > 0) {
           const latest = latestSessions[latestSessions.length - 1];

@@ -32,7 +32,7 @@ export class OverlayStateManager {
   public userPrompt = '';
   public sessionId = `session_${Date.now().toString(36)}`;
   public sessionStatus: SessionStatus = 'draft';
-  public mode: 'default' | 'agent' = 'default';
+  public isAgentListening = false;
   public mutations: MutationRecord[] = [];
   public annotations: CommentAnnotation[] = [];
   public agentReplies: AgentReply[] = [];
@@ -42,26 +42,8 @@ export class OverlayStateManager {
   private ws: WebSocket | null = null;
 
   private constructor() {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('mode') === 'agent' || urlParams.get('agent') === '1') {
-        this.mode = 'agent';
-      } else {
-        const savedMode = localStorage.getItem('visual_edit_mode');
-        if (savedMode === 'agent') this.mode = 'agent';
-      }
-    } catch (e) {}
-
     this.loadFromStorage();
     this.initWebSocket();
-  }
-
-  public setMode(mode: 'default' | 'agent'): void {
-    this.mode = mode;
-    try {
-      localStorage.setItem('visual_edit_mode', mode);
-    } catch (e) {}
-    this.notify();
   }
 
   private loadFromStorage(): void {
@@ -515,6 +497,9 @@ export class OverlayStateManager {
             if (data.payload.replies) {
               this.agentReplies = data.payload.replies;
             }
+            this.notify();
+          } else if (data.type === 'AGENT_LISTENING') {
+            this.isAgentListening = !!data.payload?.listening;
             this.notify();
           } else if (data.type === 'AGENT_REPLY') {
             this.agentReplies.push(data.payload);

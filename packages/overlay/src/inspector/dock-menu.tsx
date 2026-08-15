@@ -11,7 +11,7 @@ export function DockMenu() {
   }, []);
 
   const totalCount = state.mutations.length + state.annotations.length;
-  const isAgentMode = state.mode === 'agent';
+  const isAgentListening = state.isAgentListening;
 
   if (!state.isDockMenuOpen && state.activeTool === 'none') {
     return (
@@ -70,8 +70,8 @@ export function DockMenu() {
         {totalCount > 0 && <span class="ve-dock-badge">{totalCount}</span>}
       </button>
 
-      {/* Trigger Mode: Direct Send to Agent Button in Pill */}
-      {isAgentMode && (
+      {/* Trigger Mode: Direct Send to Agent Button in Pill (Only shown when Agent is actively listening) */}
+      {isAgentListening && (
         <button
           class="ve-dock-item"
           style={{ background: '#6366f1', color: '#ffffff' }}

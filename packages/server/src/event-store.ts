@@ -32,6 +32,10 @@ export class EventStore {
     return EventStore.instance;
   }
 
+  public hasActiveWaiters(): boolean {
+    return this.waiters.size > 0;
+  }
+
   public loadFromDisk(): void {
     if (!fs.existsSync(this.filePath)) return;
     try {
@@ -60,7 +64,7 @@ export class EventStore {
     return () => this.listeners.delete(fn);
   }
 
-  private notify(type: string, sessionId: string, payload: any): void {
+  public notify(type: string, sessionId: string, payload: any): void {
     this.listeners.forEach((fn) => fn({ type, sessionId, payload }));
   }
 
@@ -82,6 +86,9 @@ export class EventStore {
         this.waiters.delete(waiter);
         waiter.resolve(batch);
       }
+    }
+    if (this.waiters.size === 0) {
+      this.notify('AGENT_LISTENING', '', { listening: false });
     }
   }
 
@@ -137,6 +144,9 @@ export class EventStore {
           } catch (e) {}
         }
         this.waiters.delete(waiter);
+        if (this.waiters.size === 0) {
+          this.notify('AGENT_LISTENING', '', { listening: false });
+        }
       };
 
       const waiter: SubmissionWaiter = {
@@ -154,6 +164,7 @@ export class EventStore {
       };
 
       this.waiters.add(waiter);
+      this.notify('AGENT_LISTENING', '', { listening: true });
     });
   }
 

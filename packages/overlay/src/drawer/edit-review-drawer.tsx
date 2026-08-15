@@ -43,7 +43,7 @@ export function EditReviewDrawer() {
     }
   };
 
-  const isAgentMode = state.mode === 'agent';
+  const isAgentListening = state.isAgentListening;
 
   const getStatusDisplay = () => {
     if (state.sessionStatus === 'in_progress') {
@@ -67,10 +67,17 @@ export function EditReviewDrawer() {
         dot: '#38bdf8',
       };
     }
+    if (isAgentListening) {
+      return {
+        label: 'Agent Ready',
+        color: '#a855f7',
+        dot: '#c084fc',
+      };
+    }
     return {
-      label: isAgentMode ? 'Agent Mode' : 'Drafting',
-      color: isAgentMode ? '#a855f7' : '#94a3b8',
-      dot: isAgentMode ? '#a855f7' : '#64748b',
+      label: 'Drafting',
+      color: '#94a3b8',
+      dot: '#64748b',
     };
   };
 
@@ -100,30 +107,13 @@ export function EditReviewDrawer() {
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button
-            class="ve-mini-btn"
-            style={{
-              width: 'auto',
-              padding: '0 8px',
-              fontSize: '11px',
-              height: '22px',
-              color: isAgentMode ? '#a855f7' : '#94a3b8',
-              borderColor: isAgentMode ? '#7c3aed' : '#334155',
-            }}
-            onClick={() => state.setMode(isAgentMode ? 'default' : 'agent')}
-            title={isAgentMode ? 'Switch to Default Chat Mode' : 'Enable Direct Agent Auto-Trigger Mode'}
-          >
-            {isAgentMode ? 'Agent Mode' : 'Chat Mode'}
-          </button>
-          <button
-            class="ve-mini-btn"
-            style={{ width: '24px', flex: 'none' }}
-            onClick={() => state.setDrawerOpen(false)}
-          >
-            ✕
-          </button>
-        </div>
+        <button
+          class="ve-mini-btn"
+          style={{ width: '24px', flex: 'none' }}
+          onClick={() => state.setDrawerOpen(false)}
+        >
+          ✕
+        </button>
       </div>
 
       <div class="ve-drawer-body">
@@ -282,8 +272,8 @@ export function EditReviewDrawer() {
           Reset All
         </button>
 
-        {/* DEFAULT MODE: Clean, Compact Copy Prompt */}
-        {!isAgentMode ? (
+        {/* DEFAULT MODE: Clean, Full-Width Copy Prompt (When agent is not listening) */}
+        {!isAgentListening ? (
           <button
             class="ve-btn primary"
             style={{ flex: 1, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
@@ -295,10 +285,10 @@ export function EditReviewDrawer() {
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
-            {copiedToast ? 'Copied to Clipboard' : 'Copy Prompt'}
+            {copiedToast ? 'Copied to Clipboard' : 'Copy Prompt for Chat'}
           </button>
         ) : (
-          /* AGENT MODE: Compact Copy Icon + Send Button */
+          /* AGENT LISTENING MODE: Compact Copy + Send to Agent */
           <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
             <button
               class="ve-btn"
@@ -307,7 +297,7 @@ export function EditReviewDrawer() {
               disabled={totalItems === 0 && !state.userPrompt.trim()}
               title="Copy formatted prompt to clipboard"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
@@ -321,7 +311,7 @@ export function EditReviewDrawer() {
               disabled={totalItems === 0 && !state.userPrompt.trim()}
               title="Wake up the waiting AI Agent to apply these changes immediately"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13" />
                 <polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>
