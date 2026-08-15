@@ -66,6 +66,23 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
     // Global keyboard shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape ALWAYS closes open views (drawer, comment composer, active selection, or minimizes dock)
+      if (e.key === 'Escape') {
+        if (state.commentTargetElement) {
+          state.setCommentTarget(null);
+        } else if (state.activeElement) {
+          state.setActiveElement(null);
+        } else if (state.isDrawerOpen) {
+          state.setDrawerOpen(false);
+        } else if (state.activeTool !== 'none') {
+          state.setTool('none');
+          state.setDockMenuOpen(false);
+        } else if (state.isDockMenuOpen) {
+          state.setDockMenuOpen(false);
+        }
+        return;
+      }
+
       const activeEl = document.activeElement as HTMLElement | null;
       const isTyping =
         activeEl &&
@@ -74,13 +91,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           activeEl.isContentEditable ||
           activeEl.closest('visual-edit-overlay'));
 
-      if (isTyping) {
-        if (e.key === 'Escape') {
-          if (state.commentTargetElement) state.setCommentTarget(null);
-          if (state.activeElement) state.setActiveElement(null);
-        }
-        return;
-      }
+      if (isTyping) return;
 
       if (e.key === 'v' || e.key === 'V' || e.key === 'e' || e.key === 'E') {
         e.preventDefault();
@@ -94,19 +105,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         e.preventDefault();
         state.setDockMenuOpen(true);
         state.setDrawerOpen(!state.isDrawerOpen);
-      } else if (e.key === 'Escape') {
-        if (state.commentTargetElement) {
-          state.setCommentTarget(null);
-        } else if (state.activeElement) {
-          state.setActiveElement(null);
-        } else if (state.isDrawerOpen) {
-          state.setDrawerOpen(false);
-        } else if (state.activeTool !== 'none') {
-          state.setTool('none');
-          state.setDockMenuOpen(false);
-        } else if (state.isDockMenuOpen) {
-          state.setDockMenuOpen(false);
-        }
       }
     };
 

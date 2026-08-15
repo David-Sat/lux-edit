@@ -116,14 +116,14 @@ export const OVERLAY_STYLES = `
   position: fixed;
   bottom: 20px;
   right: 20px;
-  background: rgba(15, 23, 42, 0.92);
-  border: 1px solid rgba(51, 65, 85, 0.8);
+  background: rgba(15, 23, 42, 0.94);
+  border: 1px solid rgba(51, 65, 85, 0.85);
   border-radius: 9999px;
-  padding: 3px;
+  padding: 4px;
   display: flex;
   align-items: center;
-  gap: 2px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  gap: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
   z-index: 2147483646;
   backdrop-filter: blur(16px);
   animation: veSlideUp 0.15s ease-out;
@@ -138,8 +138,8 @@ export const OVERLAY_STYLES = `
   background: transparent;
   border: none;
   color: #94a3b8;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   padding: 0;
   cursor: pointer;
@@ -152,13 +152,14 @@ export const OVERLAY_STYLES = `
 
 .ve-dock-item:hover {
   color: #f8fafc;
-  background: rgba(51, 65, 85, 0.6);
+  background: rgba(51, 65, 85, 0.7);
+  transform: scale(1.04);
 }
 
 .ve-dock-item.ve-active {
   background: #6366f1;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.5);
 }
 
 .ve-dock-badge {
@@ -167,10 +168,10 @@ export const OVERLAY_STYLES = `
   right: -2px;
   background: #ef4444;
   color: #ffffff;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
-  min-width: 14px;
-  height: 14px;
+  min-width: 16px;
+  height: 16px;
   border-radius: 9999px;
   display: flex;
   align-items: center;
@@ -180,11 +181,14 @@ export const OVERLAY_STYLES = `
 
 .ve-dock-close {
   color: #64748b;
+  width: 32px;
+  height: 32px;
 }
 
 .ve-dock-close:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: rgba(51, 65, 85, 0.85);
   color: #f8fafc;
+  transform: none;
 }
 
 /* --- Comment Composer Popover --- */

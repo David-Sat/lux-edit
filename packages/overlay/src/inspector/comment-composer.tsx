@@ -76,7 +76,12 @@ export function CommentComposer() {
       onClick={(e) => e.stopPropagation()}
     >
       <div class="ve-comment-header">
-        <span>💬 Comment on <strong style={{ color: '#38bdf8' }}>{tagLabel}</strong></span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          Comment on <strong style={{ color: '#38bdf8' }}>{tagLabel}</strong>
+        </span>
         <button
           class="ve-mini-btn"
           style={{ width: '20px', padding: '0', flex: 'none' }}
