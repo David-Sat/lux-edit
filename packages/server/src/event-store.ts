@@ -32,7 +32,7 @@ export class EventStore {
     return EventStore.instance;
   }
 
-  private loadFromDisk(): void {
+  public loadFromDisk(): void {
     if (!fs.existsSync(this.filePath)) return;
     try {
       const content = fs.readFileSync(this.filePath, 'utf-8');
@@ -86,30 +86,83 @@ export class EventStore {
   }
 
   public waitForSubmission(sessionId?: string, timeoutMs: number = 300000): Promise<VisualEditBatch> {
-    // If a session with matching ID is already submitted, resolve immediately
-    if (sessionId) {
-      const existing = this.sessions.get(sessionId);
-      if (existing && existing.status === 'submitted') {
-        return Promise.resolve(existing);
+    const startTime = Date.now();
+    this.loadFromDisk();
+
+    // Check if matching session is already submitted
+    for (const s of this.sessions.values()) {
+      if (s.status === 'submitted' && (!sessionId || s.id === sessionId) && s.timestamp >= startTime - 10000) {
+        return Promise.resolve(s);
       }
     }
 
     return new Promise((resolve, reject) => {
+      let resolved = false;
+
+      const checkDisk = () => {
+        if (resolved) return;
+        this.loadFromDisk();
+        for (const s of this.sessions.values()) {
+          if (s.status === 'submitted' && (!sessionId || s.id === sessionId) && s.timestamp >= startTime - 5000) {
+            cleanup();
+            resolved = true;
+            resolve(s);
+            return;
+          }
+        }
+      };
+
+      // Poll disk file every 250ms for cross-process IPC synchronization
+      const pollTimer = setInterval(checkDisk, 250);
+
+      let fileWatcher: fs.FSWatcher | null = null;
+      try {
+        if (fs.existsSync(this.filePath)) {
+          fileWatcher = fs.watch(this.filePath, checkDisk);
+        }
+      } catch (e) {}
+
       const timer = setTimeout(() => {
-        this.waiters.delete(waiter);
+        cleanup();
         reject(new Error(`Timed out waiting for visual edit review submission (${Math.round(timeoutMs / 1000)}s)`));
       }, timeoutMs);
 
-      const waiter: SubmissionWaiter = { sessionId, resolve, reject, timer };
+      const cleanup = () => {
+        clearInterval(pollTimer);
+        clearTimeout(timer);
+        if (fileWatcher) {
+          try {
+            fileWatcher.close();
+          } catch (e) {}
+        }
+        this.waiters.delete(waiter);
+      };
+
+      const waiter: SubmissionWaiter = {
+        sessionId,
+        resolve: (b) => {
+          cleanup();
+          resolved = true;
+          resolve(b);
+        },
+        reject: (err) => {
+          cleanup();
+          reject(err);
+        },
+        timer,
+      };
+
       this.waiters.add(waiter);
     });
   }
 
   public getSession(id: string): VisualEditBatch | undefined {
+    this.loadFromDisk();
     return this.sessions.get(id);
   }
 
   public listSessions(): SessionSummary[] {
+    this.loadFromDisk();
     const now = Date.now();
     return Array.from(this.sessions.values()).map((b) => {
       const hasClaim = !!(b.claim && b.claim.expiresAt > now);
@@ -136,6 +189,7 @@ export class EventStore {
     agentId: string,
     durationMs: number = 30 * 60 * 1000
   ): { success: boolean; error?: string } {
+    this.loadFromDisk();
     const session = this.sessions.get(sessionId);
     if (!session) return { success: false, error: `Session ${sessionId} not found` };
 
@@ -159,6 +213,7 @@ export class EventStore {
   }
 
   public releaseSession(sessionId: string, agentId: string): boolean {
+    this.loadFromDisk();
     const session = this.sessions.get(sessionId);
     if (!session || !session.claim) return false;
 
@@ -176,6 +231,7 @@ export class EventStore {
     status: SessionStatus,
     reply?: { agentId: string; message: string }
   ): boolean {
+    this.loadFromDisk();
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
