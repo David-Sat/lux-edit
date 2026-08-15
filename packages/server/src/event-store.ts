@@ -89,10 +89,11 @@ export class EventStore {
     const startTime = Date.now();
     this.loadFromDisk();
 
-    // Check if matching session is already submitted
-    for (const s of this.sessions.values()) {
-      if (s.status === 'submitted' && (!sessionId || s.id === sessionId) && s.timestamp >= startTime - 10000) {
-        return Promise.resolve(s);
+    // If explicit sessionId is requested, check if it is already submitted
+    if (sessionId) {
+      const existing = this.sessions.get(sessionId);
+      if (existing && existing.status === 'submitted') {
+        return Promise.resolve(existing);
       }
     }
 
@@ -103,7 +104,7 @@ export class EventStore {
         if (resolved) return;
         this.loadFromDisk();
         for (const s of this.sessions.values()) {
-          if (s.status === 'submitted' && (!sessionId || s.id === sessionId) && s.timestamp >= startTime - 5000) {
+          if (s.status === 'submitted' && (!sessionId || s.id === sessionId) && s.timestamp >= startTime) {
             cleanup();
             resolved = true;
             resolve(s);

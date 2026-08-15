@@ -99,17 +99,9 @@ export class OverlayStateManager {
 
   public async autoSync(): Promise<void> {
     const batch = this.getBatch();
-    if (
-      batch.mutations.length > 0 ||
-      (batch.annotations && batch.annotations.length > 0) ||
-      (batch.userPrompt && batch.userPrompt.trim())
-    ) {
-      this.sessionStatus = 'submitted';
-      batch.status = 'submitted';
-    }
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'SUBMIT_BATCH', payload: batch }));
+      this.ws.send(JSON.stringify({ type: 'SYNC_SESSION', payload: batch }));
     } else {
       try {
         await fetch('/__visual_edit__/api/edits', {
@@ -495,6 +487,8 @@ export class OverlayStateManager {
               this.mutations = [];
               this.annotations = [];
               this.userPrompt = '';
+              this.sessionId = `session_${Date.now().toString(36)}`;
+              this.sessionStatus = 'draft';
               try {
                 localStorage.removeItem('visual_edit_active_draft');
               } catch (e) {}
