@@ -2,10 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { VisualEditBatch, SessionStatus, SessionSummary, AgentReply } from '@visual-edit/core';
 
+interface SubmissionWaiter {
+  sessionId?: string;
+  resolve: (batch: VisualEditBatch) => void;
+  reject: (err: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
 export class EventStore {
   private static instance: EventStore;
   private filePath: string;
   private sessions = new Map<string, VisualEditBatch>();
+  private listeners = new Set<(event: { type: string; sessionId: string; payload: any }) => void>();
+  private waiters = new Set<SubmissionWaiter>();
 
   constructor(rootDir: string = process.cwd()) {
     const dataDir = path.join(rootDir, '.visual-edit');
@@ -46,9 +55,54 @@ export class EventStore {
     }
   }
 
+  public subscribe(fn: (event: { type: string; sessionId: string; payload: any }) => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private notify(type: string, sessionId: string, payload: any): void {
+    this.listeners.forEach((fn) => fn({ type, sessionId, payload }));
+  }
+
   public saveBatch(batch: VisualEditBatch): void {
     this.sessions.set(batch.id, batch);
     this.saveToDisk();
+    this.notify('SAVE_BATCH', batch.id, batch);
+
+    // If batch is submitted or has active edits/pins, check any awaiting agents
+    if (batch.status === 'submitted' || (batch.mutations && batch.mutations.length > 0) || (batch.annotations && batch.annotations.length > 0)) {
+      this.resolveWaiters(batch);
+    }
+  }
+
+  private resolveWaiters(batch: VisualEditBatch): void {
+    for (const waiter of Array.from(this.waiters)) {
+      if (!waiter.sessionId || waiter.sessionId === batch.id) {
+        clearTimeout(waiter.timer);
+        this.waiters.delete(waiter);
+        waiter.resolve(batch);
+      }
+    }
+  }
+
+  public waitForSubmission(sessionId?: string, timeoutMs: number = 300000): Promise<VisualEditBatch> {
+    // If a session with matching ID is already submitted, resolve immediately
+    if (sessionId) {
+      const existing = this.sessions.get(sessionId);
+      if (existing && existing.status === 'submitted') {
+        return Promise.resolve(existing);
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.waiters.delete(waiter);
+        reject(new Error(`Timed out waiting for visual edit review submission (${Math.round(timeoutMs / 1000)}s)`));
+      }, timeoutMs);
+
+      const waiter: SubmissionWaiter = { sessionId, resolve, reject, timer };
+      this.waiters.add(waiter);
+    });
   }
 
   public getSession(id: string): VisualEditBatch | undefined {
@@ -69,6 +123,7 @@ export class EventStore {
         route: b.route,
         status: b.status,
         mutationCount: b.mutations.length,
+        annotationCount: b.annotations?.length || 0,
         userPrompt: b.userPrompt,
         primaryTarget,
         hasClaim,
@@ -99,6 +154,7 @@ export class EventStore {
     };
     session.status = 'in_progress';
     this.saveToDisk();
+    this.notify('STATUS_CHANGE', sessionId, { status: 'in_progress' });
     return { success: true };
   }
 
@@ -109,20 +165,10 @@ export class EventStore {
     if (session.claim.agentId === agentId) {
       delete session.claim;
       this.saveToDisk();
+      this.notify('STATUS_CHANGE', sessionId, { status: 'draft' });
       return true;
     }
     return false;
-  }
-
-  private listeners = new Set<(event: { type: string; sessionId: string; payload: any }) => void>();
-
-  public subscribe(fn: (event: { type: string; sessionId: string; payload: any }) => void): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
-  private notify(type: string, sessionId: string, payload: any): void {
-    this.listeners.forEach((fn) => fn({ type, sessionId, payload }));
   }
 
   public updateStatus(

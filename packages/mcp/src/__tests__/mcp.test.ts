@@ -60,9 +60,9 @@ describe('MCP Server Tools & Prompts', () => {
     }
   });
 
-  it('lists visual edit sessions via visual_edit_list_sessions tool', async () => {
+  it('lists visual edit sessions via lux_list_sessions tool', async () => {
     const res = await client.callTool({
-      name: 'visual_edit_list_sessions',
+      name: 'lux_list_sessions',
       arguments: {},
     });
 
@@ -74,9 +74,9 @@ describe('MCP Server Tools & Prompts', () => {
     expect(parsed[0].userPrompt).toBe('Make the Pro tier card highlighted in violet');
   });
 
-  it('retrieves detailed batch via visual_edit_get_session tool', async () => {
+  it('retrieves detailed batch via lux_get_session tool', async () => {
     const res = await client.callTool({
-      name: 'visual_edit_get_session',
+      name: 'lux_get_session',
       arguments: { sessionId: 'mcp_test_batch_1' },
     });
 
@@ -87,9 +87,9 @@ describe('MCP Server Tools & Prompts', () => {
     expect(textContent).toContain('bg-indigo-500');
   });
 
-  it('claims session via visual_edit_claim_session tool', async () => {
+  it('claims session via lux_claim_session tool', async () => {
     const res = await client.callTool({
-      name: 'visual_edit_claim_session',
+      name: 'lux_claim_session',
       arguments: { sessionId: 'mcp_test_batch_1', agentId: 'test-agent' },
     });
 
@@ -101,9 +101,47 @@ describe('MCP Server Tools & Prompts', () => {
     expect(session?.claim?.agentId).toBe('test-agent');
   });
 
-  it('updates session status and adds message via visual_edit_update_status', async () => {
+  it('blocks and wakes up on user submission via lux_wait_for_review tool', async () => {
+    const waitPromise = client.callTool({
+      name: 'lux_wait_for_review',
+      arguments: { timeoutSeconds: 5, agentId: 'test-agent' },
+    });
+
+    // Simulate user in browser clicking "Send to Agent" after 50ms
+    setTimeout(() => {
+      eventStore.saveBatch({
+        id: 'user_submitted_batch_2',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        userPrompt: 'Make the hero headline larger and blue',
+        mutations: [
+          {
+            id: 'mut_2',
+            type: 'TEXT_EDIT',
+            targetSelector: '#arch-headline',
+            before: 'Old Title',
+            after: 'New Hero Title',
+          },
+        ],
+      });
+    }, 50);
+
+    const res = await waitPromise;
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('Visual Review Received');
+    expect(textContent).toContain('user_submitted_batch_2');
+    expect(textContent).toContain('Make the hero headline larger and blue');
+
+    const session = eventStore.getSession('user_submitted_batch_2');
+    expect(session?.status).toBe('in_progress');
+    expect(session?.claim?.agentId).toBe('test-agent');
+  });
+
+  it('updates session status and adds message via lux_update_status', async () => {
     const res = await client.callTool({
-      name: 'visual_edit_update_status',
+      name: 'lux_update_status',
       arguments: {
         sessionId: 'mcp_test_batch_1',
         status: 'implemented',

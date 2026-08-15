@@ -7,6 +7,7 @@ export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
@@ -22,7 +23,7 @@ export function EditReviewDrawer() {
     const batch = state.getBatch();
     const summary = formatBatchSummary(batch);
     const fullPrompt = `Please implement the following visual modifications drafted in the browser overlay:\n\n${summary}\n\n${state.userPrompt ? `Additional Instructions: ${state.userPrompt}` : ''}`;
-    
+
     try {
       await navigator.clipboard.writeText(fullPrompt);
       setCopiedToast(true);
@@ -31,6 +32,47 @@ export function EditReviewDrawer() {
       console.error('Failed to copy to clipboard:', err);
     }
   };
+
+  const handleSendToAgent = async () => {
+    if (totalItems === 0 && !state.userPrompt.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await state.submitBatch();
+    } finally {
+      setTimeout(() => setIsSubmitting(false), 1000);
+    }
+  };
+
+  const getStatusDisplay = () => {
+    if (state.sessionStatus === 'in_progress') {
+      return {
+        label: 'Agent Working...',
+        color: '#a855f7',
+        dot: '#c084fc',
+      };
+    }
+    if (state.sessionStatus === 'implemented') {
+      return {
+        label: 'Implemented',
+        color: '#22c55e',
+        dot: '#4ade80',
+      };
+    }
+    if (state.sessionStatus === 'submitted') {
+      return {
+        label: 'Sent to Agent',
+        color: '#38bdf8',
+        dot: '#38bdf8',
+      };
+    }
+    return {
+      label: 'Live Synced',
+      color: '#10b981',
+      dot: '#10b981',
+    };
+  };
+
+  const statusInfo = getStatusDisplay();
 
   return (
     <div
@@ -41,9 +83,18 @@ export function EditReviewDrawer() {
       <div class="ve-drawer-header">
         <div class="ve-drawer-title">
           <span>Review Changes ({totalItems})</span>
-          <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }}></span>
-            Auto-synced
+          <span
+            style={{
+              fontSize: '11px',
+              color: statusInfo.color,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '5px',
+            }}
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusInfo.dot }}></span>
+            {statusInfo.label}
           </span>
         </div>
         <button
@@ -212,13 +263,31 @@ export function EditReviewDrawer() {
         </button>
 
         <button
-          class="ve-btn primary"
-          style={{ flex: 1 }}
+          class="ve-btn"
+          style={{ background: '#334155', color: '#f8fafc' }}
           onClick={handleCopyPrompt}
           disabled={totalItems === 0 && !state.userPrompt.trim()}
           title="Copy formatted prompt to paste into AI chat"
         >
-          {copiedToast ? '✓ Copied to Clipboard!' : '📋 Copy Prompt for Chat'}
+          {copiedToast ? '✓ Copied!' : '📋 Copy Prompt'}
+        </button>
+
+        <button
+          class="ve-btn primary"
+          style={{ flex: 1, background: '#6366f1' }}
+          onClick={handleSendToAgent}
+          disabled={totalItems === 0 && !state.userPrompt.trim()}
+          title="Wake up the waiting AI Agent to apply these changes immediately"
+        >
+          {isSubmitting
+            ? 'Sending...'
+            : state.sessionStatus === 'submitted'
+            ? '⚡ Sent (Agent Waking...)'
+            : state.sessionStatus === 'in_progress'
+            ? '🤖 Agent Working...'
+            : state.sessionStatus === 'implemented'
+            ? '✅ Implemented'
+            : '🚀 Send to Agent'}
         </button>
       </div>
     </div>
