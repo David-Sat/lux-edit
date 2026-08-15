@@ -32,6 +32,25 @@ export class WebSocketHub {
     this.wss.on('connection', (ws) => {
       this.clients.add(ws);
 
+      // Immediately sync latest session status to newly connected client
+      try {
+        const latestSessions = this.eventStore.listSessions();
+        if (latestSessions.length > 0) {
+          const latest = latestSessions[latestSessions.length - 1];
+          const fullSession = this.eventStore.getSession(latest.id);
+          ws.send(
+            JSON.stringify({
+              type: 'STATUS_CHANGE',
+              sessionId: latest.id,
+              payload: {
+                status: latest.status,
+                replies: fullSession?.replies || [],
+              },
+            })
+          );
+        }
+      } catch (err) {}
+
       ws.on('message', (data) => {
         try {
           const msg: WebSocketMessage = JSON.parse(data.toString());
