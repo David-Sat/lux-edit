@@ -161,6 +161,9 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
         case 'DOM_REORDER':
           lines.push(`- **Reorder Sibling** on ${loc}: Moved from index ${m.before} to index ${m.after}`);
           break;
+        case 'THEME_CHANGE':
+          lines.push(`- **Global Theme Token** \`${m.property}\`: Set to \`${m.after}\``);
+          break;
       }
     }
   }

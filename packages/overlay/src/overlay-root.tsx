@@ -8,6 +8,7 @@ import { CommentComposer } from './inspector/comment-composer.js';
 import { CommentPins } from './inspector/comment-pins.js';
 import { DockMenu } from './inspector/dock-menu.js';
 import { EditReviewDrawer } from './drawer/edit-review-drawer.js';
+import { ThemePanel } from './inspector/theme-panel.js';
 
 export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const state = OverlayStateManager.getInstance();
@@ -73,9 +74,13 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           return;
         }
 
-        // Step 2: If review drawer is open, close drawer
+        // Step 2: If review drawer or theme panel is open, close it
         if (state.isDrawerOpen) {
           state.setDrawerOpen(false);
+          return;
+        }
+        if (state.isThemePanelOpen) {
+          state.setThemePanelOpen(false);
           return;
         }
 
@@ -147,6 +152,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       <CommentPins />
       <DockMenu />
       <EditReviewDrawer />
+      <ThemePanel />
     </div>
   );
 }

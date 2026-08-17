@@ -36,7 +36,6 @@ export function FloatingToolbar() {
         if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') colors.add(c);
       });
 
-      // Sample a few buttons and headers on the page
       const sampleEls = document.querySelectorAll('button, h1, h2, a, [class*="bg-"], [class*="primary"]');
       sampleEls.forEach((sample, idx) => {
         if (idx > 15) return;
@@ -87,12 +86,39 @@ export function FloatingToolbar() {
 
   const sourceLoc = resolveSourceLocation(el);
   const computed = window.getComputedStyle(el);
+  const snapshot = state.getSnapshotForElement(el);
+
+  // Helper to toggle style: if already set to val, resets back to snapshot origin!
+  const toggleStyle = (prop: string, val: string) => {
+    const currentVal = el.style.getPropertyValue(prop) || (computed as any)[prop.replace(/-([a-z])/g, (_, l) => l.toUpperCase())];
+    if (currentVal === val || el.style.getPropertyValue(prop) === val) {
+      state.resetElementProperty(el, prop);
+    } else {
+      state.updateElementStyle(prop, val);
+    }
+  };
 
   const handleStyleChange = (prop: string, val: string) => {
     state.updateElementStyle(prop, val);
   };
 
   const hasDraftedEdits = state.mutations.some((m) => m.targetSelector === sourceLoc.selector);
+
+  // Parse numeric values for sliders
+  const parseNum = (str?: string) => {
+    if (!str) return 0;
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const fontSizeNum = parseNum(el.style.fontSize || computed.fontSize);
+  const originFontSize = parseNum(snapshot?.styles['font-size']);
+
+  const gapNum = parseNum(el.style.gap || computed.gap);
+  const originGap = parseNum(snapshot?.styles['gap']);
+
+  const radiusNum = parseNum(el.style.borderRadius || computed.borderRadius);
+  const originRadius = parseNum(snapshot?.styles['border-radius']);
 
   return (
     <div
@@ -209,25 +235,44 @@ export function FloatingToolbar() {
                   />
                 </div>
 
-                <div class="ve-row">
-                  <span class="ve-label">Size</span>
-                  <div class="ve-btn-group">
-                    {['12px', '14px', '16px', '20px', '28px', '36px'].map((sz, idx) => {
-                      const labels = ['XS', 'SM', 'MD', 'LG', 'XL', '2XL'];
-                      return (
-                        <button
-                          key={sz}
-                          class={`ve-mini-btn ${computed.fontSize === sz ? 've-active' : ''}`}
-                          onClick={() => handleStyleChange('font-size', sz)}
-                          title={`Font Size: ${sz}`}
-                        >
-                          {labels[idx]}
-                        </button>
-                      );
-                    })}
+                {/* Font Size with Slider, Origin Tick & Double Click Reset */}
+                <div class="ve-slider-row">
+                  <span
+                    class="ve-label"
+                    title="Double-click to reset to original size"
+                    onDblClick={() => state.resetElementProperty(el, 'font-size')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Size
+                  </span>
+                  <div class="ve-slider-wrap">
+                    <input
+                      type="range"
+                      min="10"
+                      max="72"
+                      step="1"
+                      class="ve-slider"
+                      value={fontSizeNum}
+                      onInput={(e) => handleStyleChange('font-size', `${(e.target as HTMLInputElement).value}px`)}
+                    />
+                    {originFontSize >= 10 && originFontSize <= 72 && (
+                      <div
+                        class="ve-origin-tick"
+                        style={{ left: `${((originFontSize - 10) / (72 - 10)) * 100}%` }}
+                        title={`Original: ${originFontSize}px`}
+                      />
+                    )}
                   </div>
+                  <span
+                    class="ve-slider-val"
+                    title="Double-click to reset"
+                    onDblClick={() => state.resetElementProperty(el, 'font-size')}
+                  >
+                    {fontSizeNum}px
+                  </span>
                 </div>
 
+                {/* Weight Chips with Deselect Toggle */}
                 <div class="ve-row">
                   <span class="ve-label">Weight</span>
                   <div class="ve-btn-group">
@@ -240,7 +285,8 @@ export function FloatingToolbar() {
                       <button
                         key={w.val}
                         class={`ve-mini-btn ${(el.style.fontWeight || computed.fontWeight) === w.val ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('font-weight', w.val)}
+                        onClick={() => toggleStyle('font-weight', w.val)}
+                        title="Click to apply, click again to reset"
                       >
                         {w.label}
                       </button>
@@ -248,6 +294,7 @@ export function FloatingToolbar() {
                   </div>
                 </div>
 
+                {/* Text Color Swatches & Picker */}
                 <div class="ve-row">
                   <span class="ve-label">Color</span>
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1, overflowX: 'auto', padding: '2px 0' }}>
@@ -263,8 +310,8 @@ export function FloatingToolbar() {
                           cursor: 'pointer',
                           flexShrink: 0,
                         }}
-                        onClick={() => handleStyleChange('color', color)}
-                        title={`Apply color: ${color}`}
+                        onClick={() => toggleStyle('color', color)}
+                        title={`Apply color: ${color} (click again to reset)`}
                       />
                     ))}
                     <input
@@ -302,7 +349,8 @@ export function FloatingToolbar() {
                       <button
                         key={r.val}
                         class={`ve-mini-btn ${computed.borderRadius === r.val ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('border-radius', r.val)}
+                        onClick={() => toggleStyle('border-radius', r.val)}
+                        title="Click to apply, click again to reset"
                       >
                         {r.label}
                       </button>
@@ -320,8 +368,9 @@ export function FloatingToolbar() {
                     ].map((pad) => (
                       <button
                         key={pad.label}
-                        class="ve-mini-btn"
-                        onClick={() => handleStyleChange('padding', pad.pt)}
+                        class={`ve-mini-btn ${el.style.padding === pad.pt ? 've-active' : ''}`}
+                        onClick={() => toggleStyle('padding', pad.pt)}
+                        title="Click to apply, click again to reset"
                       >
                         {pad.label}
                       </button>
@@ -344,8 +393,8 @@ export function FloatingToolbar() {
                           cursor: 'pointer',
                           flexShrink: 0,
                         }}
-                        onClick={() => handleStyleChange('background-color', color)}
-                        title={`Apply background: ${color}`}
+                        onClick={() => toggleStyle('background-color', color)}
+                        title={`Apply background: ${color} (click again to reset)`}
                       />
                     ))}
                     <input
@@ -364,7 +413,7 @@ export function FloatingToolbar() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {tag === 'IMG' && (
                   <div class="ve-row">
-                    <span class="ve-label">Image Source</span>
+                    <span class="ve-label">Source</span>
                     <input
                       class="ve-input"
                       value={(el as HTMLImageElement).src || ''}
@@ -379,7 +428,7 @@ export function FloatingToolbar() {
                 )}
 
                 <div class="ve-row">
-                  <span class="ve-label">Radius</span>
+                  <span class="ve-label">Shape</span>
                   <div class="ve-btn-group">
                     {[
                       { val: '0px', label: 'Square' },
@@ -389,7 +438,8 @@ export function FloatingToolbar() {
                       <button
                         key={r.val}
                         class={`ve-mini-btn ${computed.borderRadius === r.val ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('border-radius', r.val)}
+                        onClick={() => toggleStyle('border-radius', r.val)}
+                        title="Click to toggle"
                       >
                         {r.label}
                       </button>
@@ -404,7 +454,8 @@ export function FloatingToolbar() {
                       <button
                         key={fit}
                         class={`ve-mini-btn ${computed.objectFit === fit ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('object-fit', fit)}
+                        onClick={() => toggleStyle('object-fit', fit)}
+                        title="Click to toggle"
                       >
                         {fit}
                       </button>
@@ -428,7 +479,8 @@ export function FloatingToolbar() {
                       <button
                         key={mode.d}
                         class={`ve-mini-btn ${computed.display === mode.d ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('display', mode.d)}
+                        onClick={() => toggleStyle('display', mode.d)}
+                        title="Click to toggle display"
                       >
                         {mode.label}
                       </button>
@@ -444,7 +496,8 @@ export function FloatingToolbar() {
                         <button
                           key={dir}
                           class={`ve-mini-btn ${computed.flexDirection === dir ? 've-active' : ''}`}
-                          onClick={() => handleStyleChange('flex-direction', dir)}
+                          onClick={() => toggleStyle('flex-direction', dir)}
+                          title="Click to toggle direction"
                         >
                           {dir}
                         </button>
@@ -453,65 +506,144 @@ export function FloatingToolbar() {
                   </div>
                 )}
 
-                <div class="ve-row">
-                  <span class="ve-label">Gap</span>
-                  <div class="ve-btn-group">
-                    {['4px', '8px', '16px', '24px', '32px'].map((g) => (
-                      <button
-                        key={g}
-                        class={`ve-mini-btn ${computed.gap === g ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('gap', g)}
-                      >
-                        {g}
-                      </button>
-                    ))}
+                {/* Gap Slider with Origin Indicator */}
+                <div class="ve-slider-row">
+                  <span
+                    class="ve-label"
+                    title="Double-click to reset gap"
+                    onDblClick={() => state.resetElementProperty(el, 'gap')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Gap
+                  </span>
+                  <div class="ve-slider-wrap">
+                    <input
+                      type="range"
+                      min="0"
+                      max="64"
+                      step="2"
+                      class="ve-slider"
+                      value={gapNum}
+                      onInput={(e) => handleStyleChange('gap', `${(e.target as HTMLInputElement).value}px`)}
+                    />
+                    {originGap >= 0 && originGap <= 64 && (
+                      <div
+                        class="ve-origin-tick"
+                        style={{ left: `${(originGap / 64) * 100}%` }}
+                        title={`Original: ${originGap}px`}
+                      />
+                    )}
                   </div>
+                  <span
+                    class="ve-slider-val"
+                    title="Double-click to reset"
+                    onDblClick={() => state.resetElementProperty(el, 'gap')}
+                  >
+                    {gapNum}px
+                  </span>
                 </div>
 
-                <div class="ve-row">
-                  <span class="ve-label">Radius</span>
-                  <div class="ve-btn-group">
-                    {['0px', '8px', '16px', '24px'].map((rad) => (
-                      <button
-                        key={rad}
-                        class={`ve-mini-btn ${computed.borderRadius === rad ? 've-active' : ''}`}
-                        onClick={() => handleStyleChange('border-radius', rad)}
-                      >
-                        {rad}
-                      </button>
-                    ))}
+                {/* Radius Slider with Origin Indicator */}
+                <div class="ve-slider-row">
+                  <span
+                    class="ve-label"
+                    title="Double-click to reset radius"
+                    onDblClick={() => state.resetElementProperty(el, 'border-radius')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    Radius
+                  </span>
+                  <div class="ve-slider-wrap">
+                    <input
+                      type="range"
+                      min="0"
+                      max="48"
+                      step="2"
+                      class="ve-slider"
+                      value={radiusNum}
+                      onInput={(e) => handleStyleChange('border-radius', `${(e.target as HTMLInputElement).value}px`)}
+                    />
+                    {originRadius >= 0 && originRadius <= 48 && (
+                      <div
+                        class="ve-origin-tick"
+                        style={{ left: `${(originRadius / 48) * 100}%` }}
+                        title={`Original: ${originRadius}px`}
+                      />
+                    )}
                   </div>
+                  <span
+                    class="ve-slider-val"
+                    title="Double-click to reset"
+                    onDblClick={() => state.resetElementProperty(el, 'border-radius')}
+                  >
+                    {radiusNum}px
+                  </span>
                 </div>
               </div>
             )}
 
-            {/* Quick Action Ribbon */}
-            <div style={{ borderTop: '1px solid #334155', paddingTop: '8px', display: 'flex', gap: '6px' }}>
+            {/* Quick Action Ribbon with Clean Vector SVG Icons & Tooltips */}
+            <div style={{ borderTop: '1px solid #334155', paddingTop: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
               <button
                 class="ve-mini-btn"
+                style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => state.moveElement('up')}
+                title="Move element up (↑)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="19" x2="12" y2="5" />
+                  <polyline points="5 12 12 5 19 12" />
+                </svg>
+              </button>
+
+              <button
+                class="ve-mini-btn"
+                style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => state.moveElement('down')}
+                title="Move element down (↓)"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <polyline points="19 12 12 19 5 12" />
+                </svg>
+              </button>
+
+              <button
+                class="ve-mini-btn"
+                style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 onClick={() => state.duplicateElement()}
                 title="Duplicate this element"
               >
-                Duplicate
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
               </button>
+
               <button
                 class="ve-mini-btn"
-                style={{ color: '#f43f5e' }}
-                onClick={() => state.deleteElement()}
-                title="Delete this element"
-              >
-                Delete
-              </button>
-              <button
-                class="ve-mini-btn"
-                style={{ color: '#a855f7' }}
+                style={{ padding: '6px', color: '#a855f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 onClick={() => {
                   state.setCommentTarget(el);
                   state.setActiveElement(null);
                 }}
                 title="Drop a comment pin on this element"
               >
-                Comment
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              </button>
+
+              <button
+                class="ve-mini-btn"
+                style={{ padding: '6px', color: '#f43f5e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => state.deleteElement()}
+                title="Delete this element"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
               </button>
             </div>
           </div>
@@ -610,7 +742,7 @@ export function FloatingToolbar() {
                   <button
                     key={w}
                     class={`ve-mini-btn ${(el.style.fontWeight || computed.fontWeight) === w ? 've-active' : ''}`}
-                    onClick={() => handleStyleChange('font-weight', w)}
+                    onClick={() => toggleStyle('font-weight', w)}
                   >
                     {w}
                   </button>
@@ -638,7 +770,7 @@ export function FloatingToolbar() {
                   <button
                     key={al}
                     class={`ve-mini-btn ${(el.style.textAlign || computed.textAlign) === al ? 've-active' : ''}`}
-                    onClick={() => handleStyleChange('text-align', al)}
+                    onClick={() => toggleStyle('text-align', al)}
                   >
                     {al}
                   </button>
@@ -658,7 +790,7 @@ export function FloatingToolbar() {
                   <button
                     key={d}
                     class={`ve-mini-btn ${(el.style.display || computed.display) === d ? 've-active' : ''}`}
-                    onClick={() => handleStyleChange('display', d)}
+                    onClick={() => toggleStyle('display', d)}
                   >
                     {d}
                   </button>
@@ -672,7 +804,7 @@ export function FloatingToolbar() {
                   <button
                     key={dir}
                     class={`ve-mini-btn ${(el.style.flexDirection || computed.flexDirection) === dir ? 've-active' : ''}`}
-                    onClick={() => handleStyleChange('flex-direction', dir)}
+                    onClick={() => toggleStyle('flex-direction', dir)}
                   >
                     {dir}
                   </button>
@@ -694,7 +826,7 @@ export function FloatingToolbar() {
                   <button
                     key={j}
                     class={`ve-mini-btn ${(el.style.justifyContent || computed.justifyContent) === j ? 've-active' : ''}`}
-                    onClick={() => handleStyleChange('justify-content', j)}
+                    onClick={() => toggleStyle('justify-content', j)}
                   >
                     {j.replace('flex-', '')}
                   </button>

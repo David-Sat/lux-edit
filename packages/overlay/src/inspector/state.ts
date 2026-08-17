@@ -24,6 +24,7 @@ export class OverlayStateManager {
   public activeTool: ActiveTool = 'none';
   public isDockMenuOpen = false;
   public isDrawerOpen = false;
+  public isThemePanelOpen = false;
 
   public activeElement: HTMLElement | null = null;
   public hoveredElement: HTMLElement | null = null;
@@ -36,6 +37,14 @@ export class OverlayStateManager {
   public mutations: MutationRecord[] = [];
   public annotations: CommentAnnotation[] = [];
   public agentReplies: AgentReply[] = [];
+  public themeTokens: Record<string, string> = {
+    primary: '#6366f1',
+    accent: '#38bdf8',
+    background: '#0f172a',
+    textColor: '#f8fafc',
+    radius: '8px',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  };
 
   private snapshots = new Map<HTMLElement, ElementSnapshot>();
   private listeners = new Set<() => void>();
@@ -138,6 +147,68 @@ export class OverlayStateManager {
 
   public setDrawerOpen(val: boolean): void {
     this.isDrawerOpen = val;
+    if (val) this.isThemePanelOpen = false;
+    this.notify();
+  }
+
+  public setThemePanelOpen(val: boolean): void {
+    this.isThemePanelOpen = val;
+    if (val) this.isDrawerOpen = false;
+    this.notify();
+  }
+
+  public getSnapshotForElement(el: HTMLElement): ElementSnapshot | undefined {
+    return this.snapshots.get(el);
+  }
+
+  public resetElementProperty(el: HTMLElement, property: string): void {
+    const snapshot = this.snapshots.get(el);
+    if (snapshot && snapshot.styles[property] !== undefined && snapshot.styles[property] !== '') {
+      el.style.setProperty(property, snapshot.styles[property]);
+    } else {
+      el.style.removeProperty(property);
+    }
+    this.syncMutationsForElement(el);
+    this.notify();
+  }
+
+  public updateThemeToken(token: string, value: string): void {
+    this.themeTokens[token] = value;
+    try {
+      if (token === 'primary') {
+        document.documentElement.style.setProperty('--primary', value);
+        document.documentElement.style.setProperty('--color-primary', value);
+      } else if (token === 'accent') {
+        document.documentElement.style.setProperty('--accent', value);
+        document.documentElement.style.setProperty('--color-accent', value);
+      } else if (token === 'background') {
+        document.body.style.backgroundColor = value;
+        document.documentElement.style.setProperty('--bg', value);
+        document.documentElement.style.setProperty('--background', value);
+      } else if (token === 'textColor') {
+        document.body.style.color = value;
+        document.documentElement.style.setProperty('--text', value);
+        document.documentElement.style.setProperty('--foreground', value);
+      } else if (token === 'radius') {
+        document.documentElement.style.setProperty('--radius', value);
+        document.documentElement.style.setProperty('--border-radius', value);
+      } else if (token === 'fontFamily') {
+        document.body.style.fontFamily = value;
+      }
+    } catch (e) {}
+
+    this.mutations = this.mutations.filter((m) => !(m.type === 'THEME_CHANGE' && m.property === token));
+    this.mutations.push({
+      id: `mut_theme_${token}_${Date.now()}`,
+      type: 'THEME_CHANGE',
+      targetSelector: ':root',
+      property: token,
+      before: 'initial',
+      after: value,
+      url: window.location.href,
+      pathname: window.location.pathname,
+      pageTitle: document.title,
+    });
     this.notify();
   }
 

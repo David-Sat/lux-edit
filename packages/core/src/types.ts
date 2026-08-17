@@ -20,7 +20,8 @@ export type MutationType =
   | 'CLASS_CHANGE'
   | 'DOM_INSERT'
   | 'DOM_REMOVE'
-  | 'DOM_REORDER';
+  | 'DOM_REORDER'
+  | 'THEME_CHANGE';
 
 export interface MutationRecord {
   id: string;

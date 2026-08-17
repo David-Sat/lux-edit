@@ -484,6 +484,103 @@ export const OVERLAY_STYLES = `
   text-overflow: ellipsis;
 }
 
+/* Slider Controls with Origin Indicator */
+.ve-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ve-slider-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.ve-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #334155;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+  transition: background 0.15s ease;
+}
+
+.ve-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 2px solid #0f172a;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease;
+}
+
+.ve-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.ve-slider-val {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: #38bdf8;
+  font-weight: 600;
+  min-width: 38px;
+  text-align: right;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.ve-slider-val:hover {
+  background: #334155;
+}
+
+.ve-origin-tick {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 10px;
+  background: #a855f7;
+  border-radius: 1px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* Theme Drawer / Settings Panel */
+.ve-theme-panel {
+  position: fixed;
+  bottom: 78px;
+  right: 20px;
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 100px);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(24px);
+  animation: veSlideUp 0.16s ease-out;
+}
+
 /* Edit Review Drawer / Floating Panel Above Dock */
 .ve-drawer {
   position: fixed;
