@@ -345,16 +345,34 @@ export function FloatingToolbar() {
                       { val: '0px', label: 'Square' },
                       { val: '8px', label: 'Rounded' },
                       { val: '9999px', label: 'Pill' },
-                    ].map((r) => (
-                      <button
-                        key={r.val}
-                        class={`ve-mini-btn ${computed.borderRadius === r.val ? 've-active' : ''}`}
-                        onClick={() => toggleStyle('border-radius', r.val)}
-                        title="Click to apply, click again to reset"
-                      >
-                        {r.label}
-                      </button>
-                    ))}
+                    ].map((r) => {
+                      const curR = el.style.borderRadius || computed.borderRadius;
+                      const curNum = parseFloat(curR) || 0;
+                      let isActive = false;
+                      if (r.val === '9999px') {
+                        isActive = el.style.borderRadius === '9999px' || curNum >= 18;
+                      } else if (r.val === '0px') {
+                        isActive = el.style.borderRadius === '0px' || curNum === 0;
+                      } else {
+                        isActive = el.style.borderRadius === '8px' || el.style.borderRadius === '12px' || (curNum > 0 && curNum < 18);
+                      }
+                      return (
+                        <button
+                          key={r.val}
+                          class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          onClick={() => {
+                            if (isActive) {
+                              state.resetElementProperty(el, 'border-radius');
+                            } else {
+                              handleStyleChange('border-radius', r.val);
+                            }
+                          }}
+                          title="Click to apply, click again to reset"
+                        >
+                          {r.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

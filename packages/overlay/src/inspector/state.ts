@@ -46,13 +46,30 @@ export class OverlayStateManager {
     fontFamily: 'Inter, system-ui, sans-serif',
   };
 
+  private initialThemeSnapshot: Record<string, string> = {};
   private snapshots = new Map<HTMLElement, ElementSnapshot>();
   private listeners = new Set<() => void>();
   private ws: WebSocket | null = null;
 
   private constructor() {
+    this.captureInitialTheme();
     this.loadFromStorage();
     this.initWebSocket();
+  }
+
+  private captureInitialTheme(): void {
+    try {
+      const rootStyle = window.getComputedStyle(document.documentElement);
+      const bodyStyle = window.getComputedStyle(document.body);
+      this.initialThemeSnapshot = {
+        primary: rootStyle.getPropertyValue('--primary') || '',
+        accent: rootStyle.getPropertyValue('--accent') || '',
+        background: bodyStyle.backgroundColor || '',
+        textColor: bodyStyle.color || '',
+        radius: rootStyle.getPropertyValue('--radius') || '',
+        fontFamily: bodyStyle.fontFamily || '',
+      };
+    } catch (e) {}
   }
 
   private loadFromStorage(): void {
@@ -384,6 +401,42 @@ export class OverlayStateManager {
     const mutation = this.mutations.find((m) => m.id === mutationId);
     if (!mutation) return;
 
+    if (mutation.type === 'THEME_CHANGE' && mutation.property) {
+      const token = mutation.property;
+      const originalVal = this.initialThemeSnapshot[token] || '';
+      try {
+        if (token === 'primary') {
+          if (originalVal) document.documentElement.style.setProperty('--primary', originalVal);
+          else document.documentElement.style.removeProperty('--primary');
+          document.documentElement.style.removeProperty('--color-primary');
+        } else if (token === 'accent') {
+          if (originalVal) document.documentElement.style.setProperty('--accent', originalVal);
+          else document.documentElement.style.removeProperty('--accent');
+          document.documentElement.style.removeProperty('--color-accent');
+        } else if (token === 'background') {
+          if (originalVal) document.body.style.backgroundColor = originalVal;
+          else document.body.style.removeProperty('background-color');
+          document.documentElement.style.removeProperty('--bg');
+          document.documentElement.style.removeProperty('--background');
+        } else if (token === 'textColor') {
+          if (originalVal) document.body.style.color = originalVal;
+          else document.body.style.removeProperty('color');
+          document.documentElement.style.removeProperty('--text');
+          document.documentElement.style.removeProperty('--foreground');
+        } else if (token === 'radius') {
+          if (originalVal) document.documentElement.style.setProperty('--radius', originalVal);
+          else document.documentElement.style.removeProperty('--radius');
+          document.documentElement.style.removeProperty('--border-radius');
+        } else if (token === 'fontFamily') {
+          if (originalVal) document.body.style.fontFamily = originalVal;
+          else document.body.style.removeProperty('font-family');
+        }
+      } catch (e) {}
+      this.mutations = this.mutations.filter((m) => m.id !== mutationId);
+      this.notify();
+      return;
+    }
+
     let targetEl: HTMLElement | null = null;
     if (mutation.targetSelector) {
       try {
@@ -436,6 +489,17 @@ export class OverlayStateManager {
         el.removeAttribute('style');
       }
     }
+
+    // Revert all theme tokens
+    try {
+      ['--primary', '--color-primary', '--accent', '--color-accent', '--bg', '--background', '--text', '--foreground', '--radius', '--border-radius'].forEach((prop) => {
+        document.documentElement.style.removeProperty(prop);
+      });
+      document.body.style.removeProperty('background-color');
+      document.body.style.removeProperty('color');
+      document.body.style.removeProperty('font-family');
+    } catch (e) {}
+
     this.mutations = [];
     this.annotations = [];
     this.sessionStatus = 'draft';
