@@ -1,14 +1,13 @@
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
-import { mapStyleToTailwind } from '@visual-edit/core';
 
 export function FloatingToolbar() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
-  const [activeTab, setActiveTab] = useState<'spacing' | 'type' | 'layout' | 'style' | 'class' | 'actions'>('spacing');
+  const [activeTab, setActiveTab] = useState<'quick' | 'spacing' | 'type' | 'layout' | 'style' | 'class' | 'actions'>('quick');
   const [newClassInput, setNewClassInput] = useState('');
   const toolbarRef = useRef<HTMLDivElement>(null);
 
@@ -17,6 +16,45 @@ export function FloatingToolbar() {
   }, []);
 
   const el = state.activeElement;
+
+  // Detect element type category for Smart Start ribbon
+  const tag = el ? el.tagName.toUpperCase() : '';
+  const isButton = el ? tag === 'BUTTON' || tag === 'A' || (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type)) : false;
+  const isText = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'SPAN', 'BLOCKQUOTE', 'STRONG', 'EM', 'LABEL', 'B', 'I'].includes(tag) || (!isButton && el.children.length === 0 && (el.innerText || '').trim().length > 0) : false;
+  const isImage = el ? ['IMG', 'SVG', 'VIDEO', 'PICTURE', 'FIGURE'].includes(tag) : false;
+  const isList = el ? ['UL', 'OL', 'LI'].includes(tag) : false;
+  const isContainer = el ? !isText && !isButton && !isImage && !isList : true;
+
+  // Extract App's Main Colors from CSS variables & DOM
+  const appColors = useMemo(() => {
+    const colors = new Set<string>();
+    try {
+      const rootStyles = window.getComputedStyle(document.documentElement);
+      const bodyStyles = window.getComputedStyle(document.body);
+      
+      [rootStyles.backgroundColor, bodyStyles.backgroundColor, rootStyles.color, bodyStyles.color].forEach((c) => {
+        if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') colors.add(c);
+      });
+
+      // Sample a few buttons and headers on the page
+      const sampleEls = document.querySelectorAll('button, h1, h2, a, [class*="bg-"], [class*="primary"]');
+      sampleEls.forEach((sample, idx) => {
+        if (idx > 15) return;
+        const cs = window.getComputedStyle(sample);
+        if (cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent') {
+          colors.add(cs.backgroundColor);
+        }
+        if (cs.color && cs.color !== 'rgba(0, 0, 0, 0)' && cs.color !== 'transparent') {
+          colors.add(cs.color);
+        }
+      });
+    } catch (e) {}
+
+    const defaults = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#0f172a', '#1e293b', '#f8fafc', '#ffffff'];
+    defaults.forEach((d) => colors.add(d));
+
+    return Array.from(colors).slice(0, 8);
+  }, [el]);
 
   useEffect(() => {
     if (!el || !toolbarRef.current) return;
@@ -54,47 +92,7 @@ export function FloatingToolbar() {
     state.updateElementStyle(prop, val);
   };
 
-  const insertMockElement = (type: 'button' | 'heading' | 'card' | 'text') => {
-    if (!el || !el.parentElement) return;
-    let newEl: HTMLElement;
-
-    if (type === 'button') {
-      const btn = document.createElement('button');
-      btn.innerText = 'New Action Button';
-      btn.style.padding = '8px 16px';
-      btn.style.backgroundColor = '#3b82f6';
-      btn.style.color = '#ffffff';
-      btn.style.borderRadius = '6px';
-      btn.style.border = 'none';
-      btn.style.fontWeight = '600';
-      btn.style.cursor = 'pointer';
-      newEl = btn;
-    } else if (type === 'heading') {
-      const h2 = document.createElement('h2');
-      h2.innerText = 'New Section Title';
-      h2.style.fontSize = '24px';
-      h2.style.fontWeight = '700';
-      h2.style.marginBottom = '12px';
-      newEl = h2;
-    } else if (type === 'card') {
-      const card = document.createElement('div');
-      card.style.padding = '16px';
-      card.style.borderRadius = '8px';
-      card.style.border = '1px solid #cbd5e1';
-      card.style.backgroundColor = '#f8fafc';
-      card.innerHTML = '<h3 style="font-weight: 600; margin-bottom: 8px;">Card Title</h3><p style="color: #64748b;">Card descriptive content goes here.</p>';
-      newEl = card;
-    } else {
-      const p = document.createElement('p');
-      p.innerText = 'New paragraph text content with updated information.';
-      p.style.lineHeight = '1.6';
-      p.style.marginBottom = '8px';
-      newEl = p;
-    }
-
-    el.parentElement.insertBefore(newEl, el.nextSibling);
-    state.setActiveElement(newEl);
-  };
+  const hasDraftedEdits = state.mutations.some((m) => m.targetSelector === sourceLoc.selector);
 
   return (
     <div
@@ -103,72 +101,423 @@ export function FloatingToolbar() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* Toolbar Header */}
       <div class="ve-toolbar-header">
-        <span class="ve-target-tag">
-          {sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.tag}
-          {sourceLoc.fileName ? ` (${sourceLoc.fileName.split('/').pop()}:${sourceLoc.lineNumber || 1})` : ''}
-        </span>
-        <button
-          class="ve-mini-btn"
-          style={{
-            width: '24px',
-            height: '24px',
-            padding: '0',
-            flex: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onClick={() => state.setActiveElement(null)}
-          title="Deselect (Esc)"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+          <span class="ve-target-tag">
+            {sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.tag}
+            {sourceLoc.fileName ? ` (${sourceLoc.fileName.split('/').pop()}:${sourceLoc.lineNumber || 1})` : ''}
+          </span>
+          {hasDraftedEdits && (
+            <span style={{ fontSize: '9px', background: '#3b82f6', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+              Edited
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <button
+            class="ve-mini-btn"
+            style={{
+              width: '24px',
+              height: '24px',
+              padding: '0',
+              flex: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onClick={() => state.setActiveElement(null)}
+            title="Deselect (Esc)"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       </div>
 
+      {/* Tabs Bar */}
       <div class="ve-toolbar-tabs">
+        <button
+          class={`ve-tab-btn ${activeTab === 'quick' ? 've-active' : ''}`}
+          onClick={() => setActiveTab('quick')}
+          title="Smart Context-Aware Controls"
+        >
+          Smart
+        </button>
         <button
           class={`ve-tab-btn ${activeTab === 'spacing' ? 've-active' : ''}`}
           onClick={() => setActiveTab('spacing')}
+          title="Padding & Margin"
         >
           Spacing
         </button>
         <button
           class={`ve-tab-btn ${activeTab === 'type' ? 've-active' : ''}`}
           onClick={() => setActiveTab('type')}
+          title="Typography & Fonts"
         >
           Type
         </button>
         <button
           class={`ve-tab-btn ${activeTab === 'layout' ? 've-active' : ''}`}
           onClick={() => setActiveTab('layout')}
+          title="Flex, Grid, Display"
         >
           Layout
         </button>
         <button
           class={`ve-tab-btn ${activeTab === 'style' ? 've-active' : ''}`}
           onClick={() => setActiveTab('style')}
+          title="Colors, Borders, Radius"
         >
           Styles
         </button>
         <button
           class={`ve-tab-btn ${activeTab === 'class' ? 've-active' : ''}`}
           onClick={() => setActiveTab('class')}
+          title="Tailwind & CSS Classes"
         >
           Classes
         </button>
         <button
           class={`ve-tab-btn ${activeTab === 'actions' ? 've-active' : ''}`}
           onClick={() => setActiveTab('actions')}
+          title="DOM Tree Operations"
         >
           DOM
         </button>
       </div>
 
+      {/* Tab Content */}
       <div class="ve-toolbar-content">
+        {/* ================= SMART CONTEXT-AWARE START TAB ================= */}
+        {activeTab === 'quick' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Quick Text / Heading Options */}
+            {isText && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div class="ve-row">
+                  <span class="ve-label">Text</span>
+                  <input
+                    class="ve-input"
+                    value={el.innerText || ''}
+                    onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
+                    placeholder="Edit text content..."
+                  />
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Size</span>
+                  <div class="ve-btn-group">
+                    {['12px', '14px', '16px', '20px', '28px', '36px'].map((sz, idx) => {
+                      const labels = ['XS', 'SM', 'MD', 'LG', 'XL', '2XL'];
+                      return (
+                        <button
+                          key={sz}
+                          class={`ve-mini-btn ${computed.fontSize === sz ? 've-active' : ''}`}
+                          onClick={() => handleStyleChange('font-size', sz)}
+                          title={`Font Size: ${sz}`}
+                        >
+                          {labels[idx]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Weight</span>
+                  <div class="ve-btn-group">
+                    {[
+                      { val: '400', label: 'Reg' },
+                      { val: '500', label: 'Med' },
+                      { val: '600', label: 'Semi' },
+                      { val: '700', label: 'Bold' },
+                    ].map((w) => (
+                      <button
+                        key={w.val}
+                        class={`ve-mini-btn ${(el.style.fontWeight || computed.fontWeight) === w.val ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('font-weight', w.val)}
+                      >
+                        {w.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Color</span>
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1, overflowX: 'auto', padding: '2px 0' }}>
+                    {appColors.map((color) => (
+                      <button
+                        key={color}
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          background: color,
+                          border: computed.color === color ? '2px solid #38bdf8' : '1px solid rgba(255,255,255,0.2)',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                        onClick={() => handleStyleChange('color', color)}
+                        title={`Apply color: ${color}`}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      style={{ width: '22px', height: '22px', border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }}
+                      value={computed.color}
+                      onChange={(e) => handleStyleChange('color', (e.target as HTMLInputElement).value)}
+                      title="Custom Color"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Button Options */}
+            {isButton && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div class="ve-row">
+                  <span class="ve-label">Label</span>
+                  <input
+                    class="ve-input"
+                    value={el.innerText || ''}
+                    onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
+                  />
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Shape</span>
+                  <div class="ve-btn-group">
+                    {[
+                      { val: '0px', label: 'Square' },
+                      { val: '8px', label: 'Rounded' },
+                      { val: '9999px', label: 'Pill' },
+                    ].map((r) => (
+                      <button
+                        key={r.val}
+                        class={`ve-mini-btn ${computed.borderRadius === r.val ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('border-radius', r.val)}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Padding</span>
+                  <div class="ve-btn-group">
+                    {[
+                      { pt: '4px 10px', label: 'Compact' },
+                      { pt: '8px 16px', label: 'Default' },
+                      { pt: '14px 24px', label: 'Large' },
+                    ].map((pad) => (
+                      <button
+                        key={pad.label}
+                        class="ve-mini-btn"
+                        onClick={() => handleStyleChange('padding', pad.pt)}
+                      >
+                        {pad.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Background</span>
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1, overflowX: 'auto' }}>
+                    {appColors.map((color) => (
+                      <button
+                        key={color}
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '4px',
+                          background: color,
+                          border: computed.backgroundColor === color ? '2px solid #38bdf8' : '1px solid rgba(255,255,255,0.2)',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                        onClick={() => handleStyleChange('background-color', color)}
+                        title={`Apply background: ${color}`}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      style={{ width: '22px', height: '22px', border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }}
+                      value={computed.backgroundColor}
+                      onChange={(e) => handleStyleChange('background-color', (e.target as HTMLInputElement).value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Image / Media Options */}
+            {isImage && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {tag === 'IMG' && (
+                  <div class="ve-row">
+                    <span class="ve-label">Image Source</span>
+                    <input
+                      class="ve-input"
+                      value={(el as HTMLImageElement).src || ''}
+                      onChange={(e) => {
+                        const val = (e.target as HTMLInputElement).value;
+                        (el as HTMLImageElement).src = val;
+                        state.syncMutationsForElement(el);
+                      }}
+                      placeholder="Paste Image URL..."
+                    />
+                  </div>
+                )}
+
+                <div class="ve-row">
+                  <span class="ve-label">Radius</span>
+                  <div class="ve-btn-group">
+                    {[
+                      { val: '0px', label: 'Square' },
+                      { val: '12px', label: 'Rounded' },
+                      { val: '50%', label: 'Circle' },
+                    ].map((r) => (
+                      <button
+                        key={r.val}
+                        class={`ve-mini-btn ${computed.borderRadius === r.val ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('border-radius', r.val)}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Fit</span>
+                  <div class="ve-btn-group">
+                    {['cover', 'contain', 'fill'].map((fit) => (
+                      <button
+                        key={fit}
+                        class={`ve-mini-btn ${computed.objectFit === fit ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('object-fit', fit)}
+                      >
+                        {fit}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Container / Layout Block Options */}
+            {isContainer && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div class="ve-row">
+                  <span class="ve-label">Display</span>
+                  <div class="ve-btn-group">
+                    {[
+                      { d: 'flex', label: 'Flex' },
+                      { d: 'grid', label: 'Grid' },
+                      { d: 'block', label: 'Block' },
+                    ].map((mode) => (
+                      <button
+                        key={mode.d}
+                        class={`ve-mini-btn ${computed.display === mode.d ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('display', mode.d)}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {computed.display === 'flex' && (
+                  <div class="ve-row">
+                    <span class="ve-label">Direction</span>
+                    <div class="ve-btn-group">
+                      {['row', 'column'].map((dir) => (
+                        <button
+                          key={dir}
+                          class={`ve-mini-btn ${computed.flexDirection === dir ? 've-active' : ''}`}
+                          onClick={() => handleStyleChange('flex-direction', dir)}
+                        >
+                          {dir}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div class="ve-row">
+                  <span class="ve-label">Gap</span>
+                  <div class="ve-btn-group">
+                    {['4px', '8px', '16px', '24px', '32px'].map((g) => (
+                      <button
+                        key={g}
+                        class={`ve-mini-btn ${computed.gap === g ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('gap', g)}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div class="ve-row">
+                  <span class="ve-label">Radius</span>
+                  <div class="ve-btn-group">
+                    {['0px', '8px', '16px', '24px'].map((rad) => (
+                      <button
+                        key={rad}
+                        class={`ve-mini-btn ${computed.borderRadius === rad ? 've-active' : ''}`}
+                        onClick={() => handleStyleChange('border-radius', rad)}
+                      >
+                        {rad}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Action Ribbon */}
+            <div style={{ borderTop: '1px solid #334155', paddingTop: '8px', display: 'flex', gap: '6px' }}>
+              <button
+                class="ve-mini-btn"
+                onClick={() => state.duplicateElement()}
+                title="Duplicate this element"
+              >
+                Duplicate
+              </button>
+              <button
+                class="ve-mini-btn"
+                style={{ color: '#f43f5e' }}
+                onClick={() => state.deleteElement()}
+                title="Delete this element"
+              >
+                Delete
+              </button>
+              <button
+                class="ve-mini-btn"
+                style={{ color: '#a855f7' }}
+                onClick={() => {
+                  state.setCommentTarget(el);
+                  state.setActiveElement(null);
+                }}
+                title="Drop a comment pin on this element"
+              >
+                Comment
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ================= SPACING TAB ================= */}
         {activeTab === 'spacing' && (
           <div>
             <div class="ve-box-model">
@@ -243,6 +592,7 @@ export function FloatingToolbar() {
           </div>
         )}
 
+        {/* ================= TYPOGRAPHY TAB ================= */}
         {activeTab === 'type' && (
           <div>
             <div class="ve-row">
@@ -271,7 +621,7 @@ export function FloatingToolbar() {
               <span class="ve-label">Color</span>
               <input
                 type="color"
-                style={{ width: '40px', height: '28px', border: 'none', background: 'none', cursor: 'pointer' }}
+                style={{ width: '32px', height: '26px', border: 'none', background: 'none', cursor: 'pointer' }}
                 value={computed.color}
                 onChange={(e) => handleStyleChange('color', (e.target as HTMLInputElement).value)}
               />
@@ -298,6 +648,7 @@ export function FloatingToolbar() {
           </div>
         )}
 
+        {/* ================= LAYOUT TAB ================= */}
         {activeTab === 'layout' && (
           <div>
             <div class="ve-row">
@@ -345,7 +696,7 @@ export function FloatingToolbar() {
                     class={`ve-mini-btn ${(el.style.justifyContent || computed.justifyContent) === j ? 've-active' : ''}`}
                     onClick={() => handleStyleChange('justify-content', j)}
                   >
-                    {j === 'flex-start' ? 'start' : j === 'space-between' ? 'between' : j}
+                    {j.replace('flex-', '')}
                   </button>
                 ))}
               </div>
@@ -353,10 +704,17 @@ export function FloatingToolbar() {
           </div>
         )}
 
+        {/* ================= STYLES TAB ================= */}
         {activeTab === 'style' && (
           <div>
             <div class="ve-row">
               <span class="ve-label">Background</span>
+              <input
+                type="color"
+                style={{ width: '32px', height: '26px', border: 'none', background: 'none', cursor: 'pointer' }}
+                value={computed.backgroundColor}
+                onChange={(e) => handleStyleChange('background-color', (e.target as HTMLInputElement).value)}
+              />
               <input
                 class="ve-input"
                 value={el.style.backgroundColor || computed.backgroundColor}
@@ -372,7 +730,7 @@ export function FloatingToolbar() {
               />
             </div>
             <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Border W</span>
+              <span class="ve-label">Border</span>
               <input
                 class="ve-input"
                 value={el.style.borderWidth || computed.borderWidth}
@@ -382,52 +740,54 @@ export function FloatingToolbar() {
           </div>
         )}
 
+        {/* ================= CLASSES TAB ================= */}
         {activeTab === 'class' && (
           <div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
-              {Array.from(el.classList).map((cls) => (
+              {Array.from(el.classList).map((c) => (
                 <span
-                  key={cls}
+                  key={c}
                   style={{
-                    background: '#334155',
+                    fontSize: '11px',
+                    background: '#1e293b',
+                    border: '1px solid #475569',
                     padding: '2px 6px',
                     borderRadius: '4px',
-                    fontSize: '11px',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
                   }}
                 >
-                  {cls}
+                  {c}
                   <button
-                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
-                    onClick={() => state.removeClass(cls)}
+                    style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                    onClick={() => state.removeClass(c)}
+                    title="Remove class"
                   >
                     ×
                   </button>
                 </span>
               ))}
             </div>
-
             <div class="ve-row">
               <input
                 class="ve-input"
-                placeholder="Add class (e.g. shadow-lg, rounded-xl)..."
+                placeholder="Add class (e.g. shadow-lg, text-center)..."
                 value={newClassInput}
                 onInput={(e) => setNewClassInput((e.target as HTMLInputElement).value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newClassInput.trim()) {
-                    state.addClass(newClassInput);
+                    state.addClass(newClassInput.trim());
                     setNewClassInput('');
                   }
                 }}
               />
               <button
-                class="ve-mini-btn"
-                style={{ flex: 'none', padding: '4px 12px' }}
+                class="ve-mini-btn primary"
+                style={{ flex: 'none', padding: '5px 10px' }}
                 onClick={() => {
                   if (newClassInput.trim()) {
-                    state.addClass(newClassInput);
+                    state.addClass(newClassInput.trim());
                     setNewClassInput('');
                   }
                 }}
@@ -438,43 +798,40 @@ export function FloatingToolbar() {
           </div>
         )}
 
+        {/* ================= DOM ACTIONS TAB ================= */}
         {activeTab === 'actions' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button class="ve-mini-btn" onClick={() => state.moveElement('up')}>
-                ▲ Move Up
-              </button>
-              <button class="ve-mini-btn" onClick={() => state.moveElement('down')}>
-                ▼ Move Down
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button class="ve-mini-btn" onClick={() => state.duplicateElement()}>
-                ⧉ Duplicate
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                class="ve-mini-btn"
+                onClick={() => state.moveElement('up')}
+                title="Move element before previous sibling"
+              >
+                ↑ Move Up
               </button>
               <button
                 class="ve-mini-btn"
-                style={{ background: '#7f1d1d', borderColor: '#991b1b', color: '#fecaca' }}
-                onClick={() => state.deleteElement()}
+                onClick={() => state.moveElement('down')}
+                title="Move element after next sibling"
               >
-                🗑 Delete
+                ↓ Move Down
               </button>
             </div>
-            <span style={{ fontSize: '10px', color: '#64748b', marginTop: '4px', textTransform: 'uppercase' }}>
-              Insert Mock Sibling
-            </span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-              <button class="ve-mini-btn" onClick={() => insertMockElement('button')}>
-                + Button
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                class="ve-mini-btn"
+                onClick={() => state.duplicateElement()}
+                title="Create clone of this element"
+              >
+                Duplicate
               </button>
-              <button class="ve-mini-btn" onClick={() => insertMockElement('heading')}>
-                + Heading
-              </button>
-              <button class="ve-mini-btn" onClick={() => insertMockElement('card')}>
-                + Card
-              </button>
-              <button class="ve-mini-btn" onClick={() => insertMockElement('text')}>
-                + Paragraph
+              <button
+                class="ve-mini-btn"
+                style={{ color: '#f43f5e' }}
+                onClick={() => state.deleteElement()}
+                title="Remove element from page"
+              >
+                Delete
               </button>
             </div>
           </div>
