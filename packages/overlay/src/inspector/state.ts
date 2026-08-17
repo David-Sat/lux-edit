@@ -179,6 +179,9 @@ export class OverlayStateManager {
       type: 'element',
       targetSelector: sourceLocation?.selector,
       sourceLocation,
+      url: window.location.href,
+      pathname: window.location.pathname,
+      pageTitle: document.title,
       bounds: bounds ? { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height } : undefined,
       comment: comment.trim(),
     };
@@ -314,15 +317,17 @@ export class OverlayStateManager {
     if (mutation.targetSelector) {
       try {
         targetEl = document.querySelector(mutation.targetSelector) as HTMLElement | null;
-      } catch (e) {
-        // ignore selector error
-      }
+      } catch (e) {}
     }
 
     if (targetEl) {
       const snapshot = this.snapshots.get(targetEl);
       if (mutation.type === 'STYLE_CHANGE' && mutation.property) {
-        targetEl.style.removeProperty(mutation.property);
+        if (snapshot && snapshot.styles[mutation.property] !== undefined && snapshot.styles[mutation.property] !== '') {
+          targetEl.style.setProperty(mutation.property, snapshot.styles[mutation.property]);
+        } else {
+          targetEl.style.removeProperty(mutation.property);
+        }
       } else if (mutation.type === 'TEXT_EDIT') {
         if (snapshot) {
           targetEl.innerText = snapshot.text;
@@ -333,10 +338,22 @@ export class OverlayStateManager {
         if (snapshot) {
           targetEl.className = snapshot.classes.join(' ');
         }
+      } else if (mutation.type === 'DOM_INSERT') {
+        targetEl.remove();
+        if (this.activeElement === targetEl) {
+          this.setActiveElement(null);
+        }
       }
+
+      if (this.activeElement === targetEl && document.body.contains(targetEl)) {
+        this.syncMutationsForElement(targetEl);
+      } else {
+        this.mutations = this.mutations.filter((m) => m.id !== mutationId);
+      }
+    } else {
+      this.mutations = this.mutations.filter((m) => m.id !== mutationId);
     }
 
-    this.mutations = this.mutations.filter((m) => m.id !== mutationId);
     this.notify();
   }
 
@@ -426,12 +443,22 @@ export class OverlayStateManager {
     };
 
     const styleDiffs = computeStyleDiff(snapshot.styles, currentStyles, selector, sourceLocation);
+    styleDiffs.forEach((m) => {
+      m.url = window.location.href;
+      m.pathname = window.location.pathname;
+      m.pageTitle = document.title;
+    });
     this.mutations.push(...styleDiffs);
 
     const currentClasses = typeof el.className === 'string'
       ? el.className.trim().split(/\s+/).filter(Boolean)
       : [];
     const classDiffs = computeClassDiff(snapshot.classes, currentClasses, selector, sourceLocation);
+    classDiffs.forEach((m) => {
+      m.url = window.location.href;
+      m.pathname = window.location.pathname;
+      m.pageTitle = document.title;
+    });
     this.mutations.push(...classDiffs);
   }
 
@@ -442,10 +469,22 @@ export class OverlayStateManager {
 
     const primarySource = this.activeElement ? resolveSourceLocation(this.activeElement) : this.mutations[0]?.sourceLocation;
 
+    const visitedSet = new Set<string>();
+    visitedSet.add(window.location.pathname);
+    this.mutations.forEach((m) => {
+      if (m.pathname) visitedSet.add(m.pathname);
+    });
+    this.annotations.forEach((a) => {
+      if (a.pathname) visitedSet.add(a.pathname);
+    });
+
     return {
       id: this.sessionId,
       timestamp: Date.now(),
       route: window.location.pathname + window.location.search,
+      url: window.location.href,
+      pageTitle: document.title,
+      pagesVisited: Array.from(visitedSet),
       status: this.sessionStatus,
       userPrompt: this.userPrompt,
       primarySource,

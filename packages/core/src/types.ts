@@ -28,6 +28,9 @@ export interface MutationRecord {
   targetSelector: string;
   sourceLocation?: SourceLocation;
   htmlSnippet?: string;
+  url?: string;
+  pathname?: string;
+  pageTitle?: string;
   property?: string;
   before: string;
   after: string;
@@ -42,6 +45,9 @@ export interface CommentAnnotation {
   targetSelector?: string;
   sourceLocation?: SourceLocation;
   htmlSnippet?: string;
+  url?: string;
+  pathname?: string;
+  pageTitle?: string;
   bounds?: { x: number; y: number; width: number; height: number };
   comment: string;
   screenshot?: string;
@@ -72,6 +78,9 @@ export interface VisualEditBatch {
   id: string;
   timestamp: number;
   route: string;
+  url?: string;
+  pageTitle?: string;
+  pagesVisited?: string[];
   appId?: string;
   status: SessionStatus;
   userPrompt?: string;

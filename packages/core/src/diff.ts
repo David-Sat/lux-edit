@@ -101,7 +101,13 @@ export function computeClassDiff(
 export function formatBatchSummary(batch: VisualEditBatch): string {
   const lines: string[] = [];
   lines.push(`### Visual Edit Batch: ${batch.id}`);
-  lines.push(`**Route**: \`${batch.route}\``);
+  lines.push(`**Route**: \`${batch.route}\`${batch.pageTitle ? ` ("${batch.pageTitle}")` : ''}`);
+  if (batch.url) {
+    lines.push(`**URL**: \`${batch.url}\``);
+  }
+  if (batch.pagesVisited && batch.pagesVisited.length > 1) {
+    lines.push(`**Pages Edited**: ${batch.pagesVisited.map((p) => `\`${p}\``).join(', ')}`);
+  }
 
   if (batch.userPrompt) {
     lines.push(`**User Intent**: "${batch.userPrompt}"`);
@@ -124,18 +130,19 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
         ? `\`<${m.sourceLocation.componentName}>\``
         : `\`${m.targetSelector}\``;
 
+      const pageTag = m.pathname && m.pathname !== batch.route ? ` [Page: \`${m.pathname}\`]` : '';
       const snippet = m.htmlSnippet || m.sourceLocation?.htmlSnippet;
 
       switch (m.type) {
         case 'TEXT_EDIT':
-          lines.push(`- **Text Change** on ${loc}:`);
+          lines.push(`- **Text Change** on ${loc}${pageTag}:`);
           if (snippet) lines.push(`  - Element: \`${snippet}\``);
           lines.push(`  - Before: \`"${m.before}"\``);
           lines.push(`  - After:  \`"${m.after}"\``);
           break;
         case 'STYLE_CHANGE': {
           const tw = m.tailwindSuggestion ? ` *(Tailwind suggestion: \`${m.tailwindSuggestion}\`)*` : '';
-          lines.push(`- **Style** \`${m.property}\` on ${loc}: \`${m.before}\` ➔ \`${m.after}\`${tw}`);
+          lines.push(`- **Style** \`${m.property}\` on ${loc}${pageTag}: \`${m.before}\` ➔ \`${m.after}\`${tw}`);
           if (snippet) lines.push(`  - Element: \`${snippet}\``);
           break;
         }
