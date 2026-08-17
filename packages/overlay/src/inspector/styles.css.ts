@@ -302,7 +302,9 @@ export const OVERLAY_STYLES = `
   border: 1px solid #334155;
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
-  width: 320px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
   z-index: 2147483645;
   color: #f8fafc;
   overflow: hidden;
@@ -320,6 +322,7 @@ export const OVERLAY_STYLES = `
   border-bottom: 1px solid #334155;
   font-size: 11px;
   font-weight: 600;
+  box-sizing: border-box;
 }
 
 .ve-target-tag {
@@ -337,6 +340,7 @@ export const OVERLAY_STYLES = `
   background: #0f172a;
   padding: 2px 4px;
   gap: 2px;
+  box-sizing: border-box;
 }
 
 .ve-tab-btn {
@@ -351,6 +355,7 @@ export const OVERLAY_STYLES = `
   border-radius: 6px;
   transition: all 0.15s ease;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .ve-tab-btn:hover {
@@ -366,11 +371,12 @@ export const OVERLAY_STYLES = `
 
 .ve-toolbar-content {
   padding: 12px;
-  max-height: 280px;
+  max-height: 300px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-sizing: border-box;
 }
 
 /* Controls */
@@ -379,6 +385,9 @@ export const OVERLAY_STYLES = `
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .ve-label {
@@ -386,14 +395,18 @@ export const OVERLAY_STYLES = `
   color: #94a3b8;
   font-weight: 500;
   min-width: 60px;
+  flex-shrink: 0;
 }
 
 .ve-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   background: #1e293b;
   border: 1px solid #475569;
   color: #f8fafc;
   font-size: 12px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   border-radius: 6px;
   outline: none;
   flex: 1;
@@ -408,6 +421,8 @@ export const OVERLAY_STYLES = `
   display: flex;
   gap: 4px;
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .ve-mini-btn {
@@ -419,8 +434,10 @@ export const OVERLAY_STYLES = `
   border-radius: 6px;
   cursor: pointer;
   flex: 1;
+  min-width: 0;
   text-align: center;
   transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .ve-mini-btn:hover {
@@ -441,20 +458,30 @@ export const OVERLAY_STYLES = `
   border-radius: 8px;
   padding: 8px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ve-box-field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .ve-box-field span {
   font-size: 10px;
-  color: #64748b;
+  color: #94a3b8;
   text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Edit Review Drawer / Floating Panel Above Dock */
