@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lux": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["packages/cli/dist/cli.js", "mcp"]
+    }
+  }
+}

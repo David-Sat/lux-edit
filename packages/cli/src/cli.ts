@@ -9,8 +9,9 @@ import os from 'node:os';
 const program = new Command();
 
 program
-  .name('visual-edit')
-  .description('Live Visual Edit Overlay for Web Apps & AI Coding Agents (MCP)')
+  .name('lux')
+  .alias('lux-edit')
+  .description('LUX: Live User eXperience Overlay for Visual UI Editing & AI Coding Agents')
   .version('0.1.0');
 
 // Command: Run Server / Proxy (default)
@@ -35,13 +36,13 @@ program
 
     try {
       const reviewUrl = await server.listen();
-      console.log('\n🚀  \x1b[1m\x1b[36mLive Visual Edit Overlay Server\x1b[0m');
-      console.log(`👉  Review URL: \x1b[1m\x1b[32m${reviewUrl}\x1b[0m`);
-      console.log(`📦  Target:     \x1b[90m${normalizedTarget}\x1b[0m`);
-      console.log(`⚡  MCP Server: \x1b[90mRun 'visual-edit mcp' in your agent\x1b[0m`);
+      console.log('\n✨  \x1b[1m\x1b[35mLUX\x1b[0m \x1b[90m— Live User eXperience Overlay\x1b[0m');
+      console.log(`👉  \x1b[1mReview URL:\x1b[0m  \x1b[1m\x1b[36m${reviewUrl}\x1b[0m`);
+      console.log(`📦  \x1b[1mTarget:\x1b[0m      \x1b[90m${normalizedTarget}\x1b[0m`);
+      console.log(`⚡  \x1b[1mMCP Server:\x1b[0m  \x1b[90mRun 'npx lux-edit mcp' in your agent\x1b[0m`);
       console.log('\n\x1b[90mPress Ctrl+C to stop.\x1b[0m\n');
     } catch (err: any) {
-      console.error('\x1b[31mFailed to start visual-edit server:\x1b[0m', err.message);
+      console.error('\x1b[31mFailed to start LUX server:\x1b[0m', err.message);
       process.exit(1);
     }
   });
@@ -55,42 +56,84 @@ program
     await startMcpStdio(options.root);
   });
 
-// Command: Install agent skills & MCP config
+// Command: Initialize Agent Plugins manifest, MCP config, and skills
 program
-  .command('install')
-  .description('Install agent skills and MCP server configuration')
-  .option('--mcp-json', 'Create local .mcp.json file', true)
-  .action(async () => {
+  .command('init')
+  .alias('install')
+  .description('Initialize LUX Agent Plugin, MCP configuration, and skills in the current workspace')
+  .option('--dry-run', 'Show planned changes without writing files', false)
+  .action(async (options) => {
     const cwd = process.cwd();
-    const mcpConfigPath = path.join(cwd, '.mcp.json');
+    console.log('\n✨  \x1b[1m\x1b[35mInitializing LUX for AI Agents\x1b[0m\n');
 
+    // 1. Write standard mcp.json
+    const mcpConfigPath = path.join(cwd, 'mcp.json');
     const mcpConfig = {
       mcpServers: {
-        'visual-edit': {
+        lux: {
+          type: 'stdio',
           command: 'npx',
-          args: ['-y', 'visual-edit', 'mcp'],
+          args: ['-y', 'lux-edit', 'mcp'],
         },
       },
     };
 
-    fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + '\n');
-    console.log(`✓ Created project MCP configuration: ${mcpConfigPath}`);
-
-    // Install Claude Code skill if ~/.claude exists
-    const claudeDir = path.join(os.homedir(), '.claude', 'skills');
-    if (fs.existsSync(path.join(os.homedir(), '.claude'))) {
-      const skillDir = path.join(claudeDir, 'visual-edit');
-      fs.mkdirSync(skillDir, { recursive: true });
-      const skillMd = `# visual-edit skill
-Use this skill when reviewing or implementing visual UI modifications requested through visual-edit.
-1. Run \`visual_edit_list_sessions\` to inspect pending drafts.
-2. Call \`visual_edit_get_session\` to read detailed DOM and CSS diffs.
-3. Apply the changes cleanly to the repository code.
-4. Mark the session as \`implemented\` via \`visual_edit_update_status\`.
-`;
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skillMd);
-      console.log(`✓ Installed Claude Code skill: ${path.join(skillDir, 'SKILL.md')}`);
+    if (!options.dryRun) {
+      fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + '\n');
     }
+    console.log(`✓ \x1b[32mStandard MCP Config:\x1b[0m ${mcpConfigPath}`);
+
+    // 2. Write standard plugin.json
+    const pluginManifestPath = path.join(cwd, 'plugin.json');
+    const pluginManifest = {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'lux-edit',
+      description: 'Live User eXperience overlay for visual UI editing and multi-agent feedback',
+      version: '0.1.0',
+    };
+
+    if (!options.dryRun) {
+      fs.writeFileSync(pluginManifestPath, JSON.stringify(pluginManifest, null, 2) + '\n');
+    }
+    console.log(`✓ \x1b[32mAgent Plugin Manifest:\x1b[0m ${pluginManifestPath}`);
+
+    // 3. Write standard skills/lux-review/SKILL.md
+    const skillDir = path.join(cwd, 'skills', 'lux-review');
+    const skillFile = path.join(skillDir, 'SKILL.md');
+    const skillContent = `---
+name: lux-review
+description: Live visual UI review and in-browser draft editing with LUX. Use when reviewing web pages, inspecting HTML/React apps, waiting for human visual feedback, and applying DOM/style diffs.
+---
+
+# LUX Live Visual Review & UI Editing
+
+LUX injects a visual overlay into local web apps and dev servers. When the user requests a review:
+1. Start the LUX server: \`lux <url-or-file> --port 4320\`
+2. Call \`lux_wait_for_review\` to wait for the user to submit their edits.
+3. Apply the returned diffs and component modifications to the codebase.
+4. Mark the review as implemented with \`lux_update_status\`.
+`;
+
+    if (!options.dryRun) {
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(skillFile, skillContent);
+    }
+    console.log(`✓ \x1b[32mPortable Agent Skill:\x1b[0m ${skillFile}`);
+
+    // 4. Auto-detect Claude Code ~/.claude/skills
+    const claudeDir = path.join(os.homedir(), '.claude', 'skills', 'lux-review');
+    try {
+      if (fs.existsSync(path.join(os.homedir(), '.claude'))) {
+        if (!options.dryRun) {
+          fs.mkdirSync(claudeDir, { recursive: true });
+          fs.writeFileSync(path.join(claudeDir, 'SKILL.md'), skillContent);
+        }
+        console.log(`✓ \x1b[32mClaude Code Skill Synced:\x1b[0m ${path.join(claudeDir, 'SKILL.md')}`);
+      }
+    } catch (e) {}
+
+    console.log('\n\x1b[1m\x1b[32mAll done!\x1b[0m Any compatible agent (Antigravity, Claude, Cursor, Codex) can now use LUX.');
+    console.log('Run \x1b[36mlux <url-or-file>\x1b[0m to start visual editing.\n');
   });
 
 program.parse(process.argv);
