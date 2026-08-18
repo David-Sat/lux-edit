@@ -62,7 +62,7 @@ export class VisualEditServer {
           if (filename && (filename.startsWith('.') || filename.includes('.visual-edit'))) return;
           if (reloadDebounce) clearTimeout(reloadDebounce);
           reloadDebounce = setTimeout(() => {
-            console.log(`[visual-edit] Detected code change in ${filename || watchTarget}, notifying browser...`);
+            console.log(`[lux] Detected code change in ${filename || watchTarget}, notifying browser...`);
             this.wsHub.broadcast({
               type: 'RELOAD_PAGE',
               payload: { file: filename || watchTarget },
@@ -70,7 +70,7 @@ export class VisualEditServer {
           }, 150);
         });
       } catch (e) {
-        console.debug('[visual-edit] File watch not active for this target');
+        console.debug('[lux] File watch not active for this target');
       }
     }
 

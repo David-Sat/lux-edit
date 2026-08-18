@@ -27,7 +27,7 @@ if (typeof window !== 'undefined') {
     if (!document.querySelector('visual-edit-overlay')) {
       const overlayEl = document.createElement('visual-edit-overlay');
       document.body.appendChild(overlayEl);
-      console.log('[visual-edit] Live Visual Edit Overlay initialized.');
+      console.log('[lux] Live User eXperience Overlay initialized.');
     }
   };
 
