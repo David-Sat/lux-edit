@@ -25,7 +25,7 @@ jobs:
       # When a release PR is merged, publish to npm
       - name: Checkout repository
         if: ${{ steps.release.outputs.release_created }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         if: ${{ steps.release.outputs.release_created }}
