@@ -9,8 +9,8 @@
     "lint": "tsc --build"
   },
   "devDependencies": {
-    "@types/node": "^22.13.0",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.5"
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }
