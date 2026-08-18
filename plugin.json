@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "lux-edit",
   "description": "Live User eXperience overlay for visual UI editing, design token tweaking, and multi-agent feedback",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "homepage": "https://github.com/David-Sat/lux-edit",
   "repository": "https://github.com/David-Sat/lux-edit",
   "license": "MIT"
