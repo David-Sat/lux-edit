@@ -24,32 +24,32 @@ jobs:
 
       # When a release PR is merged, publish to npm
       - name: Checkout repository
-        if: ${{ steps.release.outputs['packages/cli--release_created'] }}
+        if: ${{ steps.release.outputs.release_created }}
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        if: ${{ steps.release.outputs['packages/cli--release_created'] }}
+        if: ${{ steps.release.outputs.release_created }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install pnpm
-        if: ${{ steps.release.outputs['packages/cli--release_created'] }}
+        if: ${{ steps.release.outputs.release_created }}
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Install dependencies
-        if: ${{ steps.release.outputs['packages/cli--release_created'] }}
+        if: ${{ steps.release.outputs.release_created }}
         run: pnpm install --frozen-lockfile
 
       - name: Build all packages
-        if: ${{ steps.release.outputs['packages/cli--release_created'] }}
+        if: ${{ steps.release.outputs.release_created }}
         run: pnpm build
 
       - name: Publish to npm with Provenance
-        if: ${{ steps.release.outputs['packages/cli--release_created'] }}
+        if: ${{ steps.release.outputs.release_created }}
         working-directory: packages/cli
         run: npm publish --provenance --access public
         env:

@@ -45,6 +45,10 @@ importers:
 
   packages/cli:
     dependencies:
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+    devDependencies:
       '@visual-edit/core':
         specifier: workspace:*
         version: link:../core
@@ -57,10 +61,6 @@ importers:
       '@visual-edit/server':
         specifier: workspace:*
         version: link:../server
-      commander:
-        specifier: ^13.1.0
-        version: 13.1.0
-    devDependencies:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.26)(typescript@5.9.3)
