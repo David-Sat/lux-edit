@@ -19,7 +19,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "commander": "^13.1.0"
+    "commander": "^15.0.0"
   },
   "devDependencies": {
     "@visual-edit/core": "workspace:*",
