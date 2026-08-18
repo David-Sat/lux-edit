@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "packages/cli": {
+      "release-type": "node",
+      "package-name": "lux-edit",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "../../plugin.json"
+      ]
+    }
+  }
+}

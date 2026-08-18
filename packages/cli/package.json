@@ -1,26 +1,38 @@
 {
   "name": "lux-edit",
   "version": "0.1.0",
+  "description": "Live User eXperience overlay for visual UI editing, design tokens, and AI coding agents",
   "type": "module",
   "bin": {
     "lux": "./dist/cli.js",
     "lux-edit": "./dist/cli.js",
     "visual-edit": "./dist/cli.js"
   },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/cli.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc --build && chmod +x ./dist/cli.js",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo"
+    "build": "tsup",
+    "clean": "rm -rf dist"
   },
   "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
     "@visual-edit/core": "workspace:*",
     "@visual-edit/mcp": "workspace:*",
     "@visual-edit/overlay": "workspace:*",
     "@visual-edit/server": "workspace:*",
-    "commander": "^13.1.0"
-  },
-  "devDependencies": {
+    "tsup": "^8.5.1",
     "typescript": "^5.7.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/David-Sat/lux-edit.git"
+  },
+  "homepage": "https://github.com/David-Sat/lux-edit",
+  "license": "MIT"
 }

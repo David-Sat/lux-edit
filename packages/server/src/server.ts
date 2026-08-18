@@ -90,6 +90,7 @@ export class VisualEditServer {
 
   private resolveOverlayPath(): string {
     const candidatePaths = [
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), './overlay.js'),
       path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../overlay/dist/overlay.js'),
       path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../overlay/overlay.js'),
       path.resolve(process.cwd(), 'packages/overlay/dist/overlay.js'),
