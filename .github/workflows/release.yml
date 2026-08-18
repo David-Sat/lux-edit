@@ -5,6 +5,9 @@ on:
     branches:
       - master
       - main
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,39 +20,39 @@ jobs:
     steps:
       - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # When a release PR is merged, publish to npm
+      # When a release PR is merged, or manually triggered, publish to npm
       - name: Checkout repository
-        if: ${{ steps.release.outputs.release_created }}
-        uses: actions/checkout@v7
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        if: ${{ steps.release.outputs.release_created }}
-        uses: actions/setup-node@v7
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install pnpm
-        if: ${{ steps.release.outputs.release_created }}
-        uses: pnpm/action-setup@v6
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
+        uses: pnpm/action-setup@v4
         with:
           version: 10
 
       - name: Install dependencies
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
         run: pnpm install --frozen-lockfile
 
       - name: Build all packages
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
         run: pnpm build
 
       - name: Publish to npm with Provenance
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
         working-directory: packages/cli
         run: npm publish --provenance --access public
         env:
