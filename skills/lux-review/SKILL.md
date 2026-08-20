@@ -1,33 +1,33 @@
 ---
 name: lux-review
-description: Live visual UI review and in-browser draft editing with LUX. Use when the user asks to review, visually tweak, inspect, or edit a web application, HTML file, or React component.
+description: In-browser visual review and editing with lux. Use when reviewing web pages, inspecting HTML or React apps, waiting for visual feedback, and applying DOM or style diffs.
 ---
 
-# LUX Live Visual Review & UI Editing
+# lux-edit Visual Review & UI Editing
 
-LUX (Live User eXperience) injects a high-performance visual overlay into local web apps, dev servers (Vite, Next.js, etc.), and static HTML files. It allows human reviewers to draft visual edits (spacing, typography, colors, layout, themes) and pin comments, then hands structured AST diffs back to the AI agent to implement in the codebase.
+lux-edit injects a visual overlay into local web apps, dev servers, and static HTML files. Reviewers can edit styles, typography, colors, layout, and pin comments, producing structured diffs for agents to apply.
 
 ## Workflow Overview
 
 ```
-Agent starts LUX ──> User edits visually in browser ──> User clicks "Send to Agent" ──> Agent receives diff & modifies code
+Agent starts lux -> User edits in browser -> User clicks "Send to Agent" -> Agent receives diff & modifies code
 ```
 
-## Step-by-Step Agent Guide
+## Instructions for Agents
 
-### 1. Start the LUX Review Server
-When the user wants to review or visually edit their web UI:
-- Run the LUX server targeting their dev server or file in the background:
+### 1. Start the Review Server
+When the user asks to review or visually edit their web UI:
+- Start the server targeting the active development server or file:
   ```bash
-  # For an active development server (e.g. Vite, React, Next.js):
+  # For a running development server:
   lux http://127.0.0.1:3000 --port 4320
 
-  # For a static HTML file or directory:
+  # For static HTML files:
   lux ./index.html --port 4320
   ```
-- Present the user with the clickable Review URL: `http://127.0.0.1:4320`.
+- Share the review URL: `http://127.0.0.1:4320`.
 
-### 2. Wait for User Review Submission
+### 2. Wait for Review Submission
 Call the blocking MCP tool to listen for user feedback:
 ```json
 {
@@ -37,20 +37,19 @@ Call the blocking MCP tool to listen for user feedback:
   }
 }
 ```
-* **Note**: Calling `lux_wait_for_review` automatically lights up the **Send to Agent** button inside the user's overlay dock.
-* When the user clicks **Send to Agent**, the tool immediately unblocks and returns the structured review batch containing:
-  - `mutations`: Array of CSS style changes, class additions/removals, text edits, DOM insertions/deletions, or global theme token adjustments.
-  - `annotations`: Pinned comments with element selectors, bounding boxes, and reviewer notes.
-  - `sourceLocation`: Mapped React component names and file paths (e.g. `src/components/Hero.tsx:42`).
-  - `url`, `pathname`, `pageTitle`: Specific page routes for multi-page editing.
+- Calling `lux_wait_for_review` activates the "Send to Agent" button in the overlay dock.
+- When submitted, the tool returns:
+  - `mutations`: Style changes, class updates, text edits, and theme variable adjustments.
+  - `annotations`: Pinned comments with selectors and reviewer notes.
+  - `sourceLocation`: React component names and file paths where available.
+  - `url`, `pathname`, `pageTitle`: Page route context.
 
 ### 3. Implement the Requested Changes
-1. Inspect the returned diff summary and component paths.
-2. Locate the corresponding source files in the workspace.
-3. Apply idiomatic code edits (e.g. JSX structure, Tailwind CSS utility classes, or CSS variables).
-4. For global theme tokens (`THEME_CHANGE`), update `tailwind.config.js` or `globals.css`.
+1. Read the diff summary and target files.
+2. Locate the source files in the project.
+3. Apply corresponding changes in code (JSX, Tailwind classes, CSS files, or theme configurations).
 
-### 4. Update Status & Confirm
+### 4. Update Status
 - Mark the session as implemented:
   ```json
   {
@@ -61,5 +60,4 @@ Call the blocking MCP tool to listen for user feedback:
     }
   }
   ```
-- Optionally reply to specific comment threads via `lux_reply_to_comment`.
-- Confirm the changes to the user so they can inspect the live result in their browser.
+- Optionally reply to comment threads using `lux_reply_to_comment`.

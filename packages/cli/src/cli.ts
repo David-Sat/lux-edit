@@ -11,8 +11,8 @@ const program = new Command();
 program
   .name('lux')
   .alias('lux-edit')
-  .description('LUX: Live User eXperience Overlay for Visual UI Editing & AI Coding Agents')
-  .version('0.1.0');
+  .description('In-browser visual editing overlay for web apps and AI coding agents')
+  .version('0.2.0');
 
 // Command: Run Server / Proxy (default)
 program
@@ -36,13 +36,13 @@ program
 
     try {
       const reviewUrl = await server.listen();
-      console.log('\n✨  \x1b[1m\x1b[35mLUX\x1b[0m \x1b[90m— Live User eXperience Overlay\x1b[0m');
-      console.log(`👉  \x1b[1mReview URL:\x1b[0m  \x1b[1m\x1b[36m${reviewUrl}\x1b[0m`);
-      console.log(`📦  \x1b[1mTarget:\x1b[0m      \x1b[90m${normalizedTarget}\x1b[0m`);
-      console.log(`⚡  \x1b[1mMCP Server:\x1b[0m  \x1b[90mRun 'npx lux-edit mcp' in your agent\x1b[0m`);
-      console.log('\n\x1b[90mPress Ctrl+C to stop.\x1b[0m\n');
+      console.log('\nlux-edit');
+      console.log(`Review URL:  ${reviewUrl}`);
+      console.log(`Target:      ${normalizedTarget}`);
+      console.log(`MCP server:  npx lux-edit mcp`);
+      console.log('\nPress Ctrl+C to stop.\n');
     } catch (err: any) {
-      console.error('\x1b[31mFailed to start LUX server:\x1b[0m', err.message);
+      console.error('Failed to start lux server:', err.message);
       process.exit(1);
     }
   });
@@ -50,7 +50,7 @@ program
 // Command: Run MCP stdio server
 program
   .command('mcp')
-  .description('Start the Model Context Protocol (MCP) server over stdio for coding agents')
+  .description('Start Model Context Protocol (MCP) server over stdio for coding agents')
   .option('-r, --root <path>', 'Project root directory', process.cwd())
   .action(async (options) => {
     await startMcpStdio(options.root);
@@ -60,11 +60,11 @@ program
 program
   .command('init')
   .alias('install')
-  .description('Initialize LUX Agent Plugin, MCP configuration, and skills in the current workspace')
+  .description('Initialize lux agent plugin, MCP configuration, and skills in the current workspace')
   .option('--dry-run', 'Show planned changes without writing files', false)
   .action(async (options) => {
     const cwd = process.cwd();
-    console.log('\n✨  \x1b[1m\x1b[35mInitializing LUX for AI Agents\x1b[0m\n');
+    console.log('\nInitializing lux workspace configuration\n');
 
     // 1. Write standard mcp.json
     const mcpConfigPath = path.join(cwd, 'mcp.json');
@@ -81,36 +81,39 @@ program
     if (!options.dryRun) {
       fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2) + '\n');
     }
-    console.log(`✓ \x1b[32mStandard MCP Config:\x1b[0m ${mcpConfigPath}`);
+    console.log(`Created MCP config: ${mcpConfigPath}`);
 
     // 2. Write standard plugin.json
     const pluginManifestPath = path.join(cwd, 'plugin.json');
     const pluginManifest = {
       $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
       name: 'lux-edit',
-      description: 'Live User eXperience overlay for visual UI editing and multi-agent feedback',
-      version: '0.1.0',
+      description: 'Live in-browser visual editing overlay for web apps and AI coding agents',
+      version: '0.2.0',
     };
 
     if (!options.dryRun) {
       fs.writeFileSync(pluginManifestPath, JSON.stringify(pluginManifest, null, 2) + '\n');
     }
-    console.log(`✓ \x1b[32mAgent Plugin Manifest:\x1b[0m ${pluginManifestPath}`);
+    console.log(`Created plugin manifest: ${pluginManifestPath}`);
 
     // 3. Write standard skills/lux-review/SKILL.md
     const skillDir = path.join(cwd, 'skills', 'lux-review');
     const skillFile = path.join(skillDir, 'SKILL.md');
     const skillContent = `---
 name: lux-review
-description: Live visual UI review and in-browser draft editing with LUX. Use when reviewing web pages, inspecting HTML/React apps, waiting for human visual feedback, and applying DOM/style diffs.
+description: In-browser visual review and editing with lux. Use when reviewing web pages, inspecting HTML or React apps, waiting for visual feedback, and applying DOM or style diffs.
 ---
 
-# LUX Live Visual Review & UI Editing
+# lux-edit Visual Review & UI Editing
 
-LUX injects a visual overlay into local web apps and dev servers. When the user requests a review:
-1. Start the LUX server: \`lux <url-or-file> --port 4320\`
-2. Call \`lux_wait_for_review\` to wait for the user to submit their edits.
-3. Apply the returned diffs and component modifications to the codebase.
+lux-edit injects a visual overlay into local web apps, dev servers, and static HTML files. Reviewers can edit styles, typography, colors, layout, and pin comments, producing structured diffs for agents to apply.
+
+## Instructions for Agents
+
+1. Start the review server: \`lux <url-or-file> --port 4320\`
+2. Call \`lux_wait_for_review\` to wait for user submissions.
+3. Apply returned diffs and component modifications to the codebase.
 4. Mark the review as implemented with \`lux_update_status\`.
 `;
 
@@ -118,7 +121,7 @@ LUX injects a visual overlay into local web apps and dev servers. When the user 
       fs.mkdirSync(skillDir, { recursive: true });
       fs.writeFileSync(skillFile, skillContent);
     }
-    console.log(`✓ \x1b[32mPortable Agent Skill:\x1b[0m ${skillFile}`);
+    console.log(`Created agent skill: ${skillFile}`);
 
     // 4. Auto-detect Claude Code ~/.claude/skills
     const claudeDir = path.join(os.homedir(), '.claude', 'skills', 'lux-review');
@@ -128,12 +131,12 @@ LUX injects a visual overlay into local web apps and dev servers. When the user 
           fs.mkdirSync(claudeDir, { recursive: true });
           fs.writeFileSync(path.join(claudeDir, 'SKILL.md'), skillContent);
         }
-        console.log(`✓ \x1b[32mClaude Code Skill Synced:\x1b[0m ${path.join(claudeDir, 'SKILL.md')}`);
+        console.log(`Synced Claude Code skill: ${path.join(claudeDir, 'SKILL.md')}`);
       }
     } catch (e) {}
 
-    console.log('\n\x1b[1m\x1b[32mAll done!\x1b[0m Any compatible agent (Antigravity, Claude, Cursor, Codex) can now use LUX.');
-    console.log('Run \x1b[36mlux <url-or-file>\x1b[0m to start visual editing.\n');
+    console.log('\nInitialization complete.');
+    console.log('Run `lux <url-or-file>` to start visual editing.\n');
   });
 
 program.parse(process.argv);
