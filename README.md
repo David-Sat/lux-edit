@@ -9,7 +9,7 @@ Live in-browser visual editing and annotation overlay for AI coding agents.
 
 lux-edit injects a visual editing layer into web apps and dev servers. Reviewers can adjust layout, typography, colors, button shapes, and CSS variables directly on the running application, or drop pinned feedback comments onto elements. 
 
-Visual changes are converted into structured diffs and Tailwind utility mappings, which coding agents can query and apply via the Model Context Protocol (MCP).
+Visual changes are converted into structured diffs and Tailwind utility mappings, which coding agents can query and apply via MCP.
 
 ## Features
 
