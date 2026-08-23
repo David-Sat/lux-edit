@@ -12,12 +12,16 @@ lux-edit injects a visual editing layer into running web applications and static
 
 ## Quickstart
 
-### 1. Initialize project
+### 1. Initialize configuration
 
-Run once in your project root to generate MCP configuration and agent skills:
+Run in your project root for local workspace setup, or pass `-g` to configure all agents machine-wide:
 
 ```bash
+# Local workspace setup (creates mcp.json, plugin.json, skills/)
 npx lux-edit init
+
+# Global setup (configures Claude Code, Claude Desktop, Cursor, Windsurf)
+npx lux-edit init -g
 ```
 
 ### 2. Start review session
