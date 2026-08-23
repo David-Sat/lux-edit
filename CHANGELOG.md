@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.2.0...lux-edit-v0.3.0) (2026-08-23)
+
+
+### Features
+
+* **cli:** add -g / --global flag to init command for machine-wide agent configuration ([fef294a](https://github.com/David-Sat/lux-edit/commit/fef294a383a18403fbb66051248b8ca0ab41cbb4))
+* streamline MCP review flow and refine overlay interactions ([8038757](https://github.com/David-Sat/lux-edit/commit/8038757a7c1f614bee8940312e9c9ab5a0d5da76))
+
 ## [0.2.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.1.0...lux-edit-v0.2.0) (2026-08-18)
 
 
