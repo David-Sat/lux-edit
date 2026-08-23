@@ -1,6 +1,6 @@
 {
   "name": "lux-edit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Live User eXperience overlay for visual UI editing, design tokens, and AI coding agents",
   "type": "module",
   "bin": {
