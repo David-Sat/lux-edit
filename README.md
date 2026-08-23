@@ -115,6 +115,10 @@ pnpm build
 pnpm test
 ```
 
+## Acknowledgments
+
+This project was inspired by [ui-review](https://github.com/flucas96/ui-review) by Fabian Lucas.
+
 ## License
 
 [MIT](./LICENSE) © 2026 David Satomi
