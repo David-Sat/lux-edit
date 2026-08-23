@@ -10,54 +10,40 @@ lux-edit injects a visual overlay into local web apps, dev servers, and static H
 ## Workflow Overview
 
 ```
-Agent starts lux -> User edits in browser -> User clicks "Send to Agent" -> Agent receives diff & modifies code
+User runs /lux-start -> Agent starts lux proxy -> User adds comments in browser -> User runs /lux-review -> Agent fetches comments via MCP & updates code -> File watcher auto-resolves & reloads
 ```
 
 ## Instructions for Agents
 
-### 1. Start the Review Server
-When the user asks to review or visually edit their web UI:
-- Start the server targeting the active development server or file:
+### 1. Starting the Review Server (`/lux-start`)
+When the user asks to start visual editing or runs `/lux-start`:
+- Check for a running dev server or target file:
   ```bash
-  # For a running development server:
+  # For a running development server (e.g. localhost:3000, 5173):
   lux http://127.0.0.1:3000 --port 4320
 
   # For static HTML files:
   lux ./index.html --port 4320
   ```
-- Share the review URL: `http://127.0.0.1:4320`.
+- Inform the user that the review overlay is live at `http://127.0.0.1:4320`.
 
-### 2. Wait for Review Submission
-Call the blocking MCP tool to listen for user feedback:
-```json
-{
-  "name": "lux_wait_for_review",
-  "arguments": {
-    "timeoutSeconds": 300
+### 2. Reviewing Comments & Edits (`/lux-review`)
+When the user asks to review comments or runs `/lux-review`:
+- Call the instant MCP tool:
+  ```json
+  {
+    "name": "lux_get_pending_review",
+    "arguments": {}
   }
-}
-```
-- Calling `lux_wait_for_review` activates the "Send to Agent" button in the overlay dock.
-- When submitted, the tool returns:
+  ```
+- The tool returns:
+  - `annotations`: Pinned comments with selectors, components, coordinates, and reviewer notes.
   - `mutations`: Style changes, class updates, text edits, and theme variable adjustments.
-  - `annotations`: Pinned comments with selectors and reviewer notes.
   - `sourceLocation`: React component names and file paths where available.
   - `url`, `pathname`, `pageTitle`: Page route context.
 
-### 3. Implement the Requested Changes
-1. Read the diff summary and target files.
-2. Locate the source files in the project.
-3. Apply corresponding changes in code (JSX, Tailwind classes, CSS files, or theme configurations).
-
-### 4. Update Status
-- Mark the session as implemented:
-  ```json
-  {
-    "name": "lux_update_status",
-    "arguments": {
-      "sessionId": "<session-id>",
-      "status": "implemented"
-    }
-  }
-  ```
-- Optionally reply to comment threads using `lux_reply_to_comment`.
+### 3. Implementing the Requested Changes
+1. Read the user's pinned comments and visual diffs.
+2. Locate the corresponding source files in the project.
+3. Modify the source code (JSX/TSX, Tailwind classes, CSS files, HTML).
+4. As soon as you save the files, lux's background file watcher automatically marks the feedback as implemented and reloads the browser. No status calls required.

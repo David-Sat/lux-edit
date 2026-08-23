@@ -74,7 +74,7 @@ export function App() {
           fontSize: '13px',
         }}
       >
-        © 2026 Live Visual Edit Overlay. Pair programmed with Antigravity.
+        © 2026 lux-edit. Built for AI coding agents.
       </footer>
     </div>
   );

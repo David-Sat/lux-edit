@@ -23,4 +23,4 @@ A clear and concise description of what you expected to happen.
  - OS: [e.g. macOS, Ubuntu, Windows]
  - Node.js version: [e.g. 20.x]
  - Browser: [e.g. Chrome, Safari, Firefox]
- - AI Agent / IDE: [e.g. Claude Code, Cursor, Antigravity, Windsurf]
+ - AI Agent / IDE: [e.g. Claude Code, Cursor, Codex, Windsurf]

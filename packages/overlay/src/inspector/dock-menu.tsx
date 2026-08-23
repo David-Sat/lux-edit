@@ -31,7 +31,11 @@ export function DockMenu() {
   }
 
   return (
-    <div class="ve-dock-menu">
+    <div
+      class="ve-dock-menu"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       {/* Visual Edit Mode Button - Clear Pencil / Edit Tool Icon */}
       <button
         class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''}`}

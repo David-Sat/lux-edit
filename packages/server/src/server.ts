@@ -62,7 +62,8 @@ export class VisualEditServer {
           if (filename && (filename.startsWith('.') || filename.includes('.visual-edit'))) return;
           if (reloadDebounce) clearTimeout(reloadDebounce);
           reloadDebounce = setTimeout(() => {
-            console.log(`[lux] Detected code change in ${filename || watchTarget}, notifying browser...`);
+            console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
+            this.eventStore.markPendingSessionsImplemented();
             this.wsHub.broadcast({
               type: 'RELOAD_PAGE',
               payload: { file: filename || watchTarget },

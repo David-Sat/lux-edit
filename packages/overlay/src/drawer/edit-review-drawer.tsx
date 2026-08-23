@@ -8,6 +8,8 @@ export function EditReviewDrawer() {
   const [, setTick] = useState(0);
   const [copiedToast, setCopiedToast] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
+  const [editingAnnotationText, setEditingAnnotationText] = useState<string>('');
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
@@ -215,22 +217,100 @@ export function EditReviewDrawer() {
                 <span style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Comments & Pins ({totalAnnotations})
                 </span>
-                {state.annotations.map((ann, idx) => (
-                  <div key={ann.id} class="ve-mutation-card" style={{ borderColor: '#4338ca' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span class="ve-mut-target" style={{ color: '#a5b4fc' }}>
-                        Pin #{idx + 1} {ann.targetSelector ? `• ${ann.targetSelector}` : ''}
-                      </span>
-                      <button
-                        style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
-                        onClick={() => state.deleteAnnotation(ann.id)}
-                      >
-                        Delete
-                      </button>
+                {state.annotations.map((ann, idx) => {
+                  const isEditing = editingAnnotationId === ann.id;
+                  return (
+                    <div key={ann.id} class="ve-mutation-card" style={{ borderColor: '#4338ca' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span class="ve-mut-target" style={{ color: '#a5b4fc' }}>
+                          Pin #{idx + 1} {ann.targetSelector ? `• ${ann.targetSelector}` : ''}
+                        </span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {!isEditing && (
+                            <button
+                              style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                              onClick={() => {
+                                setEditingAnnotationId(ann.id);
+                                setEditingAnnotationText(ann.comment);
+                              }}
+                            >
+                              Edit
+                            </button>
+                          )}
+                          <button
+                            style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                            onClick={() => {
+                              state.deleteAnnotation(ann.id);
+                              if (editingAnnotationId === ann.id) setEditingAnnotationId(null);
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+
+                      {isEditing ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                          <textarea
+                            style={{
+                              background: '#0f172a',
+                              color: '#f8fafc',
+                              border: '1px solid #6366f1',
+                              borderRadius: '4px',
+                              padding: '6px',
+                              fontSize: '12px',
+                              fontFamily: 'inherit',
+                              resize: 'vertical',
+                              minHeight: '48px',
+                              outline: 'none',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                            }}
+                            value={editingAnnotationText}
+                            onInput={(e) => setEditingAnnotationText((e.target as HTMLTextAreaElement).value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                                state.updateAnnotation(ann.id, editingAnnotationText);
+                                setEditingAnnotationId(null);
+                              } else if (e.key === 'Escape') {
+                                setEditingAnnotationId(null);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                            <button
+                              style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', padding: '2px 6px' }}
+                              onClick={() => setEditingAnnotationId(null)}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              style={{ background: '#6366f1', border: 'none', color: '#ffffff', borderRadius: '3px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: '3px 8px' }}
+                              onClick={() => {
+                                state.updateAnnotation(ann.id, editingAnnotationText);
+                                setEditingAnnotationId(null);
+                              }}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p
+                          style={{ color: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}
+                          onClick={() => {
+                            setEditingAnnotationId(ann.id);
+                            setEditingAnnotationText(ann.comment);
+                          }}
+                          title="Click to edit"
+                        >
+                          {ann.comment}
+                        </p>
+                      )}
                     </div>
-                    <p style={{ color: '#f8fafc', fontSize: '12px' }}>{ann.comment}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

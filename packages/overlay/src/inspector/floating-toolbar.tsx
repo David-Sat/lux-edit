@@ -18,9 +18,9 @@ export function FloatingToolbar() {
   const el = state.activeElement;
 
   // Detect element type category for Smart Start ribbon
-  const tag = el ? el.tagName.toUpperCase() : '';
-  const isButton = el ? tag === 'BUTTON' || tag === 'A' || (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type)) : false;
-  const isText = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'SPAN', 'BLOCKQUOTE', 'STRONG', 'EM', 'LABEL', 'B', 'I'].includes(tag) || (!isButton && el.children.length === 0 && (el.innerText || '').trim().length > 0) : false;
+  const tag = el ? (el.tagName || '').toUpperCase() : '';
+  const isButton = el ? tag === 'BUTTON' || (tag === 'A' && el.children.length > 0) || (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type)) : false;
+  const isText = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'SPAN', 'BLOCKQUOTE', 'STRONG', 'EM', 'LABEL', 'B', 'I', 'TEXT', 'TSPAN', 'A', 'LI', 'TD', 'TH', 'CODE', 'PRE'].includes(tag) || (!isButton && el.children.length === 0 && (el.textContent || el.innerText || '').trim().length > 0) : false;
   const isImage = el ? ['IMG', 'SVG', 'VIDEO', 'PICTURE', 'FIGURE'].includes(tag) : false;
   const isList = el ? ['UL', 'OL', 'LI'].includes(tag) : false;
   const isContainer = el ? !isText && !isButton && !isImage && !isList : true;
@@ -229,7 +229,7 @@ export function FloatingToolbar() {
                   <span class="ve-label">Text</span>
                   <input
                     class="ve-input"
-                    value={el.innerText || ''}
+                    value={el.textContent || el.innerText || ''}
                     onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
                     placeholder="Edit text content..."
                   />
@@ -333,7 +333,7 @@ export function FloatingToolbar() {
                   <span class="ve-label">Label</span>
                   <input
                     class="ve-input"
-                    value={el.innerText || ''}
+                    value={el.textContent || el.innerText || ''}
                     onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
                   />
                 </div>

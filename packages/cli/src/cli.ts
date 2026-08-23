@@ -111,10 +111,9 @@ lux-edit injects a visual overlay into local web apps, dev servers, and static H
 
 ## Instructions for Agents
 
-1. Start the review server: \`lux <url-or-file> --port 4320\`
-2. Call \`lux_wait_for_review\` to wait for user submissions.
-3. Apply returned diffs and component modifications to the codebase.
-4. Mark the review as implemented with \`lux_update_status\`.
+1. Start review server on user command (/lux-start): \`lux <url-or-file> --port 4320\`
+2. When asked to review (/lux-review): Call \`lux_get_pending_review\` to retrieve comments & diffs.
+3. Apply changes to source code. File watcher auto-resolves feedback and reloads browser upon save.
 `;
 
     if (!options.dryRun) {

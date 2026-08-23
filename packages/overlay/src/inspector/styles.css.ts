@@ -13,6 +13,22 @@ export const OVERLAY_STYLES = `
   left: 0;
   width: 0;
   height: 0;
+  pointer-events: none !important;
+}
+
+.ve-root {
+  pointer-events: none !important;
+}
+
+.ve-launcher-btn,
+.ve-dock-menu,
+.ve-toolbar,
+.ve-comment-popover,
+.ve-pin,
+.ve-pin-tooltip,
+.ve-drawer,
+.ve-theme-panel {
+  pointer-events: auto !important;
 }
 
 * {
@@ -274,7 +290,6 @@ export const OVERLAY_STYLES = `
 }
 
 .ve-pin:hover {
-  transform: translate(-50%, -50%) scale(1.2);
   background: #9333ea;
 }
 
@@ -284,15 +299,29 @@ export const OVERLAY_STYLES = `
   left: 50%;
   transform: translateX(-50%);
   background: #0f172a;
-  border: 1px solid #334155;
+  border: 1px solid #4338ca;
   color: #f8fafc;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
   font-size: 11px;
-  max-width: 240px;
+  min-width: 220px;
+  max-width: 280px;
   white-space: normal;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.3);
+  pointer-events: auto;
+  cursor: default;
+  z-index: 2147483648;
+}
+
+.ve-pin-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: -16px;
+  left: -20px;
+  right: -20px;
+  height: 20px;
+  background: transparent;
+  pointer-events: auto;
 }
 
 /* --- Floating Toolbar --- */

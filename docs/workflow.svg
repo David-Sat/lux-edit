@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 230" width="100%" height="100%">
+  <defs>
+    <marker id="arr-accent" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#e8592c" />
+    </marker>
+    <pattern id="dotGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#e2e5eb" />
+    </pattern>
+    <style>
+      .bg-panel { fill: #f8fafc; stroke: #e2e8f0; }
+      .text-title { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; fill: #0f172a; font-size: 11.5px; }
+      .text-body { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #64748b; font-size: 8.5px; }
+      .text-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .agent-box { fill: rgba(43, 108, 176, 0.05); stroke: rgba(43, 108, 176, 0.35); stroke-width: 1.3; stroke-dasharray: 5,4; }
+      .review-box { fill: rgba(232, 89, 44, 0.05); stroke: rgba(232, 89, 44, 0.35); stroke-width: 1.2; }
+      .auto-box { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.2; stroke-dasharray: 3,3; }
+    </style>
+  </defs>
+
+  <rect width="1000" height="230" fill="#ffffff" rx="8" stroke="#e2e8f0" stroke-width="1" />
+  <rect width="1000" height="230" fill="url(#dotGrid)" rx="8" />
+
+  <!-- Connecting Step Arrows -->
+  <path d="M 236,115 H 274" fill="none" stroke="#e8592c" stroke-width="1.4" marker-end="url(#arr-accent)" />
+  <path d="M 488,115 H 526" fill="none" stroke="#e8592c" stroke-width="1.4" marker-end="url(#arr-accent)" />
+  <path d="M 740,115 H 778" fill="none" stroke="#e8592c" stroke-width="1.4" marker-end="url(#arr-accent)" />
+
+  <!-- Step 1: Initialize -->
+  <g id="flow-step-1">
+    <rect x="24" y="24" width="212" height="182" rx="8" class="agent-box" />
+    <rect x="36" y="36" width="80" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.4)" stroke-width="1" />
+    <text x="76" y="48" fill="#2563eb" font-size="8" class="text-mono" font-weight="700" text-anchor="middle">START</text>
+    
+    <rect x="36" y="64" width="188" height="36" rx="4" fill="#ffffff" stroke="#2563eb" stroke-width="1" />
+    <text x="46" y="81" fill="#2563eb" font-size="10.5" class="text-mono" font-weight="700">/lux-start</text>
+    <text x="46" y="93" fill="#64748b" font-size="7.5" class="text-mono">Chat Command or npx lux</text>
+
+    <text x="36" y="120" class="text-title">Agent Starts Proxy</text>
+    <text x="36" y="136" class="text-body">User types /lux-start in chat.</text>
+    <text x="36" y="150" class="text-body">Agent starts proxy on :4320.</text>
+    
+    <rect x="36" y="172" width="128" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.35)" stroke-width="0.8" />
+    <text x="100" y="184" fill="#2563eb" font-size="8" class="text-mono" font-weight="600" text-anchor="middle">Reverse Proxy &amp; Injection</text>
+  </g>
+
+  <!-- Step 2: In-Browser Visual Review -->
+  <g id="flow-step-2">
+    <rect x="276" y="24" width="212" height="182" rx="8" class="review-box" />
+    <rect x="288" y="36" width="60" height="18" rx="3" fill="#ffffff" stroke="rgba(232, 89, 44, 0.4)" stroke-width="0.8" />
+    <text x="318" y="48" fill="#e8592c" font-size="8" class="text-mono" font-weight="700" text-anchor="middle">REVIEW</text>
+
+    <rect x="288" y="64" width="188" height="36" rx="4" fill="#ffffff" stroke="#e8592c" stroke-width="1" />
+    <text x="298" y="81" fill="#e8592c" font-size="10.5" class="text-mono" font-weight="700">V (Edit) • C (Pin) • R</text>
+    <text x="298" y="93" fill="#64748b" font-size="7.5" class="text-mono">In-Browser Overlay Hotkeys</text>
+
+    <text x="288" y="120" class="text-title">Visual Edits &amp; Pins</text>
+    <text x="288" y="136" class="text-body">Inspect elements, adjust styling,</text>
+    <text x="288" y="150" class="text-body">and drop pinned comment notes.</text>
+
+    <rect x="288" y="172" width="124" height="18" rx="3" fill="#ffffff" stroke="rgba(232, 89, 44, 0.35)" stroke-width="0.8" />
+    <text x="350" y="184" fill="#e8592c" font-size="8" class="text-mono" font-weight="600" text-anchor="middle">Real-Time WS Draft Sync</text>
+  </g>
+
+  <!-- Step 3: Agent Ingestion via MCP -->
+  <g id="flow-step-3">
+    <rect x="528" y="24" width="212" height="182" rx="8" class="agent-box" />
+    <rect x="540" y="36" width="76" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.4)" stroke-width="1" />
+    <text x="578" y="48" fill="#2563eb" font-size="8" class="text-mono" font-weight="700" text-anchor="middle">AGENT MCP</text>
+
+    <rect x="540" y="64" width="188" height="36" rx="4" fill="#ffffff" stroke="#2563eb" stroke-width="1" />
+    <text x="550" y="81" fill="#2563eb" font-size="10.5" class="text-mono" font-weight="700">/lux-review</text>
+    <text x="550" y="93" fill="#64748b" font-size="7.5" class="text-mono">lux_get_pending_review()</text>
+
+    <text x="540" y="120" class="text-title">Agent Fetches Diffs</text>
+    <text x="540" y="136" class="text-body">User runs /lux-review in chat.</text>
+    <text x="540" y="150" class="text-body">Agent retrieves AST deltas &amp; notes.</text>
+
+    <rect x="540" y="172" width="134" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.35)" stroke-width="0.8" />
+    <text x="607" y="184" fill="#2563eb" font-size="8" class="text-mono" font-weight="600" text-anchor="middle">Instant Non-Blocking Tool</text>
+  </g>
+
+  <!-- Step 4: Automated Background Resolution -->
+  <g id="flow-step-4">
+    <rect x="780" y="24" width="196" height="182" rx="8" class="auto-box" />
+    <rect x="792" y="36" width="90" height="18" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8" />
+    <text x="837" y="48" fill="#64748b" font-size="7.5" class="text-mono" font-weight="700" text-anchor="middle">AUTO-RESOLVE</text>
+
+    <rect x="792" y="64" width="172" height="36" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="2,2" />
+    <text x="802" y="81" fill="#475569" font-size="9" class="text-mono" font-weight="700">Code Edit • Auto-Sync</text>
+    <text x="802" y="93" fill="#94a3b8" font-size="7.5" class="text-mono">Background File Watcher</text>
+
+    <text x="792" y="120" class="text-title">Zero-Action Sync</text>
+    <text x="792" y="136" class="text-body">Agent edits files. Watcher auto-</text>
+    <text x="792" y="150" class="text-body">resolves and reloads app UI.</text>
+
+    <rect x="792" y="172" width="138" height="18" rx="3" fill="#f1f5f9" />
+    <text x="861" y="184" fill="#64748b" font-size="7.5" class="text-mono" font-weight="600" text-anchor="middle">Automated / No User Action</text>
+  </g>
+</svg>

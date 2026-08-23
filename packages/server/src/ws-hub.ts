@@ -70,6 +70,8 @@ export class WebSocketHub {
               sessionId: msg.payload.id,
               payload: { status: 'submitted' },
             });
+          } else if (msg.type === 'SYNC_SESSION') {
+            this.eventStore.saveBatch(msg.payload);
           }
         } catch (err) {
           console.error('[visual-edit] Failed to handle WS message:', err);

@@ -6,11 +6,12 @@ export default defineConfig({
   entry: ['src/cli.ts'],
   format: ['esm'],
   target: 'node18',
+  platform: 'node',
   clean: true,
   dts: false,
   sourcemap: false,
   banner: {
-    js: '#!/usr/bin/env node',
+    js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
   },
   noExternal: ['@visual-edit/core', '@visual-edit/mcp', '@visual-edit/overlay', '@visual-edit/server'],
   async onSuccess() {

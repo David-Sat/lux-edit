@@ -276,7 +276,16 @@ export class OverlayStateManager {
 
     this.annotations.push(annotation);
     this.commentTargetElement = null;
+    this.activeTool = 'none';
     this.notify();
+  }
+
+  public updateAnnotation(id: string, newText: string): void {
+    const ann = this.annotations.find((a) => a.id === id);
+    if (ann && newText.trim()) {
+      ann.comment = newText.trim();
+      this.notify();
+    }
   }
 
   public deleteAnnotation(id: string): void {
@@ -324,7 +333,7 @@ export class OverlayStateManager {
       : [];
 
     this.snapshots.set(el, {
-      text: el.innerText || '',
+      text: (el.textContent || el.innerText || '').trim(),
       styles,
       classes,
       sourceLocation,
@@ -340,7 +349,12 @@ export class OverlayStateManager {
 
   public updateElementText(newText: string): void {
     if (!this.activeElement) return;
-    this.activeElement.innerText = newText;
+    const tag = (this.activeElement.tagName || '').toLowerCase();
+    if ('innerText' in this.activeElement && tag !== 'text' && tag !== 'tspan') {
+      this.activeElement.innerText = newText;
+    } else {
+      this.activeElement.textContent = newText;
+    }
     this.syncMutationsForElement(this.activeElement);
     this.notify();
   }
@@ -426,12 +440,8 @@ export class OverlayStateManager {
         } else if (token === 'radius') {
           if (originalVal) document.documentElement.style.setProperty('--radius', originalVal);
           else document.documentElement.style.removeProperty('--radius');
-          document.documentElement.style.removeProperty('--border-radius');
-        } else if (token === 'fontFamily') {
-          if (originalVal) document.body.style.fontFamily = originalVal;
-          else document.body.style.removeProperty('font-family');
         }
-      } catch (e) {}
+      } catch (err) {}
       this.mutations = this.mutations.filter((m) => m.id !== mutationId);
       this.notify();
       return;
@@ -446,7 +456,11 @@ export class OverlayStateManager {
 
     if (targetEl) {
       const snapshot = this.snapshots.get(targetEl);
-      if (mutation.type === 'STYLE_CHANGE' && mutation.property) {
+      if (mutation.type === 'CLASS_ADD' && mutation.classes) {
+        mutation.classes.forEach((c) => targetEl!.classList.remove(c));
+      } else if (mutation.type === 'CLASS_REMOVE' && mutation.classes) {
+        mutation.classes.forEach((c) => targetEl!.classList.add(c));
+      } else if (mutation.type === 'STYLE_CHANGE' && mutation.property) {
         if (snapshot && snapshot.styles[mutation.property] !== undefined && snapshot.styles[mutation.property] !== '') {
           targetEl.style.setProperty(mutation.property, snapshot.styles[mutation.property]);
         } else {
@@ -454,13 +468,17 @@ export class OverlayStateManager {
         }
       } else if (mutation.type === 'TEXT_EDIT') {
         if (snapshot) {
-          targetEl.innerText = snapshot.text;
-        } else {
-          targetEl.innerText = mutation.before;
-        }
-      } else if (mutation.type === 'CLASS_CHANGE') {
-        if (snapshot) {
-          targetEl.className = snapshot.classes.join(' ');
+          if ('innerText' in targetEl && targetEl.tagName.toLowerCase() !== 'text' && targetEl.tagName.toLowerCase() !== 'tspan') {
+            targetEl.innerText = snapshot.text;
+          } else {
+            targetEl.textContent = snapshot.text;
+          }
+        } else if (mutation.before) {
+          if ('innerText' in targetEl && targetEl.tagName.toLowerCase() !== 'text' && targetEl.tagName.toLowerCase() !== 'tspan') {
+            targetEl.innerText = mutation.before;
+          } else {
+            targetEl.textContent = mutation.before;
+          }
         }
       } else if (mutation.type === 'DOM_INSERT') {
         targetEl.remove();
@@ -679,6 +697,9 @@ export class OverlayStateManager {
             this.agentReplies.push(data.payload);
             this.notify();
           } else if (data.type === 'RELOAD_PAGE') {
+            try {
+              localStorage.removeItem('visual_edit_active_draft');
+            } catch (e) {}
             window.location.reload();
           }
         } catch (e) {

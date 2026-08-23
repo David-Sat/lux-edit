@@ -14,12 +14,29 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const state = OverlayStateManager.getInstance();
 
   useEffect(() => {
+    // Check if event occurred inside our shadow DOM
+    const isInsideShadow = (e: Event): boolean => {
+      try {
+        const path = e.composedPath ? e.composedPath() : [];
+        for (const node of path) {
+          if (node === shadowRoot) return true;
+          const el = node as HTMLElement;
+          if (el && el.tagName && el.tagName.toLowerCase() === 'visual-edit-overlay') return true;
+        }
+      } catch (err) {}
+      return false;
+    };
+
     // Global mouse hover handler
     const handleMouseMove = (e: MouseEvent) => {
       if (state.activeTool === 'none') return;
+      if (isInsideShadow(e)) {
+        state.setHoveredElement(null);
+        return;
+      }
 
       const target = e.target as HTMLElement | null;
-      if (!target || target.closest('visual-edit-overlay') || target === document.body || target === document.documentElement) {
+      if (!target || target === document.body || target === document.documentElement) {
         state.setHoveredElement(null);
         return;
       }
@@ -30,9 +47,12 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
     // Global click handler
     const handleClick = (e: MouseEvent) => {
       if (state.activeTool === 'none') return;
+      if (isInsideShadow(e)) {
+        return;
+      }
 
       const target = e.target as HTMLElement | null;
-      if (!target || target.closest('visual-edit-overlay')) return;
+      if (!target || target === document.body || target === document.documentElement) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -47,9 +67,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
     // Global double-click for inline text editing (in Edit mode only)
     const handleDblClick = (e: MouseEvent) => {
       if (state.activeTool !== 'edit') return;
+      if (isInsideShadow(e)) return;
 
       const target = e.target as HTMLElement | null;
-      if (!target || target.closest('visual-edit-overlay')) return;
+      if (!target) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -68,13 +89,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
     // Global keyboard shortcuts with stepped Escape handling
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // Step 1: If comment composer popover is open, close composer
         if (state.commentTargetElement) {
           state.setCommentTarget(null);
           return;
         }
-
-        // Step 2: If review drawer or theme panel is open, close it
         if (state.isDrawerOpen) {
           state.setDrawerOpen(false);
           return;
@@ -83,25 +101,18 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           state.setThemePanelOpen(false);
           return;
         }
-
-        // Step 3: If an element is active/inspected, deselect it
         if (state.activeElement) {
           state.setActiveElement(null);
           return;
         }
-
-        // Step 4: If a tool is active ('edit' or 'comment'), deselect tool BUT keep pill open
         if (state.activeTool !== 'none') {
           state.setTool('none');
           return;
         }
-
-        // Step 5: When no tool is active, minimize pill dock back to launcher
         if (state.isDockMenuOpen) {
           state.setDockMenuOpen(false);
           return;
         }
-
         return;
       }
 
@@ -111,7 +122,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         (activeEl.tagName === 'INPUT' ||
           activeEl.tagName === 'TEXTAREA' ||
           activeEl.isContentEditable ||
-          activeEl.closest('visual-edit-overlay'));
+          isInsideShadow(e));
 
       if (isTyping) return;
 
@@ -141,10 +152,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       document.removeEventListener('dblclick', handleDblClick, { capture: true });
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [shadowRoot]);
 
   return (
-    <div>
+    <div class="ve-root">
       <style>{OVERLAY_STYLES}</style>
       <SelectionBox />
       <FloatingToolbar />

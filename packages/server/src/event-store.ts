@@ -263,4 +263,51 @@ export class EventStore {
     this.notify('STATUS_CHANGE', sessionId, { status, replies: session.replies });
     return true;
   }
+
+  public getPendingReview(): VisualEditBatch | null {
+    this.loadFromDisk();
+    const sessions = Array.from(this.sessions.values()).reverse();
+
+    // 1. Look for submitted or in-progress sessions with active edits or comments
+    for (const session of sessions) {
+      if (
+        (session.status === 'submitted' || session.status === 'in_progress') &&
+        ((session.annotations && session.annotations.length > 0) || (session.mutations && session.mutations.length > 0))
+      ) {
+        return session;
+      }
+    }
+
+    // 2. Look for active draft sessions with edits or annotations
+    for (const session of sessions) {
+      if (
+        session.status === 'draft' &&
+        ((session.annotations && session.annotations.length > 0) || (session.mutations && session.mutations.length > 0))
+      ) {
+        return session;
+      }
+    }
+
+    // 3. Return latest session or null
+    return sessions[0] || null;
+  }
+
+  public markPendingSessionsImplemented(): void {
+    this.loadFromDisk();
+    let changed = false;
+    for (const session of this.sessions.values()) {
+      if (
+        session.status === 'submitted' ||
+        session.status === 'in_progress' ||
+        (session.status === 'draft' && ((session.annotations && session.annotations.length > 0) || (session.mutations && session.mutations.length > 0)))
+      ) {
+        session.status = 'implemented';
+        changed = true;
+        this.notify('STATUS_CHANGE', session.id, { status: 'implemented', replies: session.replies || [] });
+      }
+    }
+    if (changed) {
+      this.saveToDisk();
+    }
+  }
 }

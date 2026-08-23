@@ -4,11 +4,11 @@ import { VisualEditBatch } from '../types.js';
 
 describe('Diff Utilities', () => {
   it('computes text diffs properly', () => {
-    const res = computeTextDiff('Hello World', 'Hello Antigravity', 'h1');
+    const res = computeTextDiff('Hello World', 'Hello lux-edit', 'h1');
     expect(res).not.toBeNull();
     expect(res?.type).toBe('TEXT_EDIT');
     expect(res?.before).toBe('Hello World');
-    expect(res?.after).toBe('Hello Antigravity');
+    expect(res?.after).toBe('Hello lux-edit');
   });
 
   it('computes style diffs and suggests tailwind classes', () => {

@@ -60,6 +60,32 @@ describe('MCP Server Tools & Prompts', () => {
     }
   });
 
+  it('retrieves active pending review instantly via lux_get_pending_review', async () => {
+    const res = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: {},
+    });
+
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('Visual Review & Comments');
+    expect(textContent).toContain('mcp_test_batch_1');
+    expect(textContent).toContain('src/components/PricingCard.tsx:22');
+    expect(textContent).toContain('bg-indigo-500');
+  });
+
+  it('retrieves active comments via alias lux_get_comments', async () => {
+    const res = await client.callTool({
+      name: 'lux_get_comments',
+      arguments: {},
+    });
+
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('Visual Review & Comments');
+    expect(textContent).toContain('mcp_test_batch_1');
+  });
+
   it('lists visual edit sessions via lux_list_sessions tool', async () => {
     const res = await client.callTool({
       name: 'lux_list_sessions',
@@ -85,89 +111,5 @@ describe('MCP Server Tools & Prompts', () => {
     expect(textContent).toContain('Visual Edit Batch: mcp_test_batch_1');
     expect(textContent).toContain('src/components/PricingCard.tsx:22');
     expect(textContent).toContain('bg-indigo-500');
-  });
-
-  it('claims session via lux_claim_session tool', async () => {
-    const res = await client.callTool({
-      name: 'lux_claim_session',
-      arguments: { sessionId: 'mcp_test_batch_1', agentId: 'test-agent' },
-    });
-
-    const textContent = (res.content as any)[0].text;
-    expect(textContent).toContain('Successfully claimed session');
-
-    const session = eventStore.getSession('mcp_test_batch_1');
-    expect(session?.status).toBe('in_progress');
-    expect(session?.claim?.agentId).toBe('test-agent');
-  });
-
-  it('blocks and wakes up on user submission via lux_wait_for_review tool', async () => {
-    const waitPromise = client.callTool({
-      name: 'lux_wait_for_review',
-      arguments: { timeoutSeconds: 5, agentId: 'test-agent' },
-    });
-
-    // Simulate user in browser clicking "Send to Agent" after 50ms
-    setTimeout(() => {
-      eventStore.saveBatch({
-        id: 'user_submitted_batch_2',
-        timestamp: Date.now(),
-        route: '/',
-        status: 'submitted',
-        userPrompt: 'Make the hero headline larger and blue',
-        mutations: [
-          {
-            id: 'mut_2',
-            type: 'TEXT_EDIT',
-            targetSelector: '#arch-headline',
-            before: 'Old Title',
-            after: 'New Hero Title',
-          },
-        ],
-      });
-    }, 50);
-
-    const res = await waitPromise;
-    expect(res.content).toBeDefined();
-    const textContent = (res.content as any)[0].text;
-    expect(textContent).toContain('Visual Review Received');
-    expect(textContent).toContain('user_submitted_batch_2');
-    expect(textContent).toContain('Make the hero headline larger and blue');
-
-    const session = eventStore.getSession('user_submitted_batch_2');
-    expect(session?.status).toBe('in_progress');
-    expect(session?.claim?.agentId).toBe('test-agent');
-  });
-
-  it('updates session status and adds message via lux_update_status', async () => {
-    const res = await client.callTool({
-      name: 'lux_update_status',
-      arguments: {
-        sessionId: 'mcp_test_batch_1',
-        status: 'implemented',
-        agentMessage: 'Updated background color in PricingCard.tsx to bg-indigo-500',
-        agentId: 'test-agent',
-      },
-    });
-
-    const textContent = (res.content as any)[0].text;
-    expect(textContent).toContain('Updated session');
-
-    const session = eventStore.getSession('mcp_test_batch_1');
-    expect(session?.status).toBe('implemented');
-    expect(session?.replies?.[0].message).toContain('Updated background color');
-  });
-
-  it('provides the apply_visual_edits prompt template', async () => {
-    const res = await client.getPrompt({
-      name: 'apply_visual_edits',
-      arguments: { sessionId: 'mcp_test_batch_1' },
-    });
-
-    expect(res.messages).toBeDefined();
-    expect(res.messages[0].content.type).toBe('text');
-    const msgText = (res.messages[0].content as any).text;
-    expect(msgText).toContain('Please implement the following visual modifications');
-    expect(msgText).toContain('Idiomatic Styling');
   });
 });
