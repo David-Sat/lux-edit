@@ -10,6 +10,8 @@ In-browser visual editing, annotation, and review overlay for AI coding agents.
 
 lux-edit injects a visual editing layer into running web applications and static HTML files. You can adjust styles, edit text, and drop comment pins directly on DOM elements. Edits and notes are converted into structured diffs that coding agents inspect and apply via MCP.
 
+This project was inspired by [ui-review](https://github.com/flucas96/ui-review) by Fabian Lucas.
+
 ## Quickstart
 
 ### 1. Initialize configuration
@@ -114,10 +116,6 @@ pnpm build
 # Run unit tests
 pnpm test
 ```
-
-## Acknowledgments
-
-This project was inspired by [ui-review](https://github.com/flucas96/ui-review) by Fabian Lucas.
 
 ## License
 
