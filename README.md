@@ -31,7 +31,7 @@ npx lux-edit init -g
 In your AI agent chat (Claude Code, Cursor, Codex, etc.), tell your agent:
 
 ```text
-/lux-start
+/lux
 ```
 
 The agent launches the lux proxy on `http://127.0.0.1:4320`.
@@ -47,7 +47,7 @@ The agent launches the lux proxy on `http://127.0.0.1:4320`.
 Back in your agent chat, run:
 
 ```text
-/lux-review
+/lux
 ```
 
 The agent calls `lux_get_pending_review()` to instantly retrieve all comments and visual diffs, then updates your source files. When the agent saves the files, lux's file watcher auto-resolves your feedback and refreshes the browser.

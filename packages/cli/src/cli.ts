@@ -96,28 +96,55 @@ program
     const isGlobal = !!options.global;
 
     const skillContent = `---
-name: lux-review
-description: In-browser visual review and editing with lux. Use when reviewing web pages, inspecting HTML or React apps, waiting for visual feedback, and applying DOM or style diffs.
+name: lux
+description: In-browser visual review and editing with lux. Use when the user asks to start visual editing, inspect UI, review in-browser comments, or runs /lux.
 ---
 
-# lux-edit Visual Review & UI Editing
+# lux Visual Review & UI Editing
 
-lux-edit injects a visual overlay into local web apps, dev servers, and static HTML files. Reviewers can edit styles, typography, colors, layout, and pin comments, producing structured diffs for agents to apply.
+lux injects an in-browser visual editing and annotation overlay into running web apps, dev servers, and static HTML files.
 
-## Instructions for Agents
+## Agent Workflow for \`/lux\`
 
-1. Start review server on user command (/lux-start): \`lux <url-or-file> --port 4320\`
-2. When asked to review (/lux-review): Call \`lux_get_pending_review\` to retrieve comments & diffs.
-3. Apply changes to source code. File watcher auto-resolves feedback and reloads browser upon save.
+When the user runs \`/lux\` (or asks to review / visually edit the UI):
+
+### 1. Check for Pending Review
+Call the instant MCP tool:
+\`\`\`json
+{
+  "name": "lux_get_pending_review",
+  "arguments": {}
+}
+\`\`\`
+
+### 2. If Pending Comments or Edits Exist:
+1. Read all returned annotations (pinned comments, element selectors, component names) and visual style mutations.
+2. Locate the corresponding source files in the project (React/JSX/TSX components, HTML, Tailwind classes, CSS).
+3. Apply the requested code edits directly to the codebase.
+4. Saving the files automatically marks the feedback resolved and reloads the browser via lux's file watcher.
+
+### 3. If No Pending Edits or Server Not Running:
+1. Detect any running dev server (e.g. \`http://localhost:3000\`, \`http://localhost:5173\`) or static HTML file (e.g. \`./index.html\`).
+2. Start the proxy in the background:
+   \`\`\`bash
+   lux <url-or-file> --port 4320
+   \`\`\`
+3. Share the review URL with the user: \`http://127.0.0.1:4320\`.
+4. Inform the user: "Open \`http://127.0.0.1:4320\` in your browser. Press **C** to drop comment pins or **V** to adjust styles. When finished, run \`/lux\` again and I will apply your feedback directly to the code!"
 `;
 
     if (isGlobal) {
       console.log('\nInstalling lux globally across user agent environments\n');
 
       // 1. Global Claude Code skill & config
-      const claudeSkillDir = path.join(home, '.claude', 'skills', 'lux-review');
+      const claudeSkillDir = path.join(home, '.claude', 'skills', 'lux');
       const claudeSkillFile = path.join(claudeSkillDir, 'SKILL.md');
       if (!options.dryRun) {
+        // Clean up legacy lux-review if present
+        const legacyClaudeDir = path.join(home, '.claude', 'skills', 'lux-review');
+        if (fs.existsSync(legacyClaudeDir)) {
+          fs.rmSync(legacyClaudeDir, { recursive: true, force: true });
+        }
         fs.mkdirSync(claudeSkillDir, { recursive: true });
         fs.writeFileSync(claudeSkillFile, skillContent);
       }
@@ -189,21 +216,30 @@ lux-edit injects a visual overlay into local web apps, dev servers, and static H
       }
       console.log(`✓ Created plugin manifest: ${pluginManifestPath}`);
 
-      // 3. Write standard skills/lux-review/SKILL.md
-      const skillDir = path.join(cwd, 'skills', 'lux-review');
+      // 3. Write standard skills/lux/SKILL.md
+      const skillDir = path.join(cwd, 'skills', 'lux');
       const skillFile = path.join(skillDir, 'SKILL.md');
 
       if (!options.dryRun) {
+        // Clean up legacy workspace lux-review if present
+        const legacySkillDir = path.join(cwd, 'skills', 'lux-review');
+        if (fs.existsSync(legacySkillDir)) {
+          fs.rmSync(legacySkillDir, { recursive: true, force: true });
+        }
         fs.mkdirSync(skillDir, { recursive: true });
         fs.writeFileSync(skillFile, skillContent);
       }
       console.log(`✓ Created agent skill:   ${skillFile}`);
 
       // 4. Auto-detect and sync Claude Code ~/.claude/skills
-      const claudeDir = path.join(home, '.claude', 'skills', 'lux-review');
+      const claudeDir = path.join(home, '.claude', 'skills', 'lux');
       try {
         if (fs.existsSync(path.join(home, '.claude'))) {
           if (!options.dryRun) {
+            const legacyClaudeDir = path.join(home, '.claude', 'skills', 'lux-review');
+            if (fs.existsSync(legacyClaudeDir)) {
+              fs.rmSync(legacyClaudeDir, { recursive: true, force: true });
+            }
             fs.mkdirSync(claudeDir, { recursive: true });
             fs.writeFileSync(path.join(claudeDir, 'SKILL.md'), skillContent);
           }

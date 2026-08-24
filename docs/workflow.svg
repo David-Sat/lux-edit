@@ -32,11 +32,11 @@
     <text x="76" y="48" fill="#2563eb" font-size="8" class="text-mono" font-weight="700" text-anchor="middle">START</text>
     
     <rect x="36" y="64" width="188" height="36" rx="4" fill="#ffffff" stroke="#2563eb" stroke-width="1" />
-    <text x="46" y="81" fill="#2563eb" font-size="10.5" class="text-mono" font-weight="700">/lux-start</text>
+    <text x="46" y="81" fill="#2563eb" font-size="11" class="text-mono" font-weight="700">/lux</text>
     <text x="46" y="93" fill="#64748b" font-size="7.5" class="text-mono">Chat Command or npx lux</text>
 
     <text x="36" y="120" class="text-title">Agent Starts Proxy</text>
-    <text x="36" y="136" class="text-body">User types /lux-start in chat.</text>
+    <text x="36" y="136" class="text-body">User types /lux in chat.</text>
     <text x="36" y="150" class="text-body">Agent starts proxy on :4320.</text>
     
     <rect x="36" y="172" width="128" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.35)" stroke-width="0.8" />
@@ -65,14 +65,14 @@
   <g id="flow-step-3">
     <rect x="528" y="24" width="212" height="182" rx="8" class="agent-box" />
     <rect x="540" y="36" width="76" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.4)" stroke-width="1" />
-    <text x="578" y="48" fill="#2563eb" font-size="8" class="text-mono" font-weight="700" text-anchor="middle">AGENT MCP</text>
+    <text x="578" y="48" fill="#2563eb" font-size="8" class="text-mono" font-weight="700" text-anchor="middle">APPLY</text>
 
     <rect x="540" y="64" width="188" height="36" rx="4" fill="#ffffff" stroke="#2563eb" stroke-width="1" />
-    <text x="550" y="81" fill="#2563eb" font-size="10.5" class="text-mono" font-weight="700">/lux-review</text>
+    <text x="550" y="81" fill="#2563eb" font-size="11" class="text-mono" font-weight="700">/lux</text>
     <text x="550" y="93" fill="#64748b" font-size="7.5" class="text-mono">lux_get_pending_review()</text>
 
-    <text x="540" y="120" class="text-title">Agent Fetches Diffs</text>
-    <text x="540" y="136" class="text-body">User runs /lux-review in chat.</text>
+    <text x="540" y="120" class="text-title">Agent Applies Diffs</text>
+    <text x="540" y="136" class="text-body">User runs /lux in chat.</text>
     <text x="540" y="150" class="text-body">Agent retrieves AST deltas &amp; notes.</text>
 
     <rect x="540" y="172" width="134" height="18" rx="3" fill="#ffffff" stroke="rgba(43, 108, 176, 0.35)" stroke-width="0.8" />
