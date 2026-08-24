@@ -64,6 +64,10 @@ npx lux http://localhost:3000
 
 # Target static HTML files
 npx lux ./index.html
+
+# Behind path-prefixing reverse proxies (AWS SageMaker Studio, GitHub Codespaces, JupyterHub)
+npx lux http://localhost:5173 --port 4401 --base-path /codeeditor/default/ports/4401
+# (or set LUX_BASE_PATH=/codeeditor/default/ports/4401)
 ```
 
 ## In-Browser Controls

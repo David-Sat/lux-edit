@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import http from 'node:http';
 import { VisualEditServer } from '../server.js';
 import { EventStore } from '../event-store.js';
 import path from 'node:path';
@@ -105,5 +106,220 @@ describe('Server & EventStore Integration', () => {
     const updatedSession = store.getSession('test_session_123');
     expect(updatedSession?.status).toBe('implemented');
     expect(updatedSession?.replies?.[0].message).toContain('Applied text-6xl');
+  });
+
+  it('automatically adds .visual-edit/ to .gitignore if not present', () => {
+    const gitignorePath = path.join(testDir, '.gitignore');
+    fs.writeFileSync(gitignorePath, 'node_modules/\ndist/\n');
+    const store = new EventStore(testDir);
+    const content = fs.readFileSync(gitignorePath, 'utf-8');
+    expect(content).toContain('.visual-edit/');
+  });
+});
+
+describe('Reverse Proxy & Base-Path Support (SageMaker / Codespaces)', () => {
+  const testDir = path.resolve(process.cwd(), '.test-basepath-store');
+  const basePath = '/codeeditor/default/ports/4401';
+  let upstreamServer: http.Server;
+  let upstreamPort: number;
+  let luxServer: VisualEditServer;
+  let luxUrl: string;
+
+  let originUrl: string;
+
+  beforeAll(async () => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(testDir, { recursive: true });
+
+    // 1. Create a dummy upstream dev server (like Vite / Next.js)
+    upstreamServer = http.createServer((req, res) => {
+      if (req.url === '/' || req.url === `${basePath}/` || req.url === `${basePath}`) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!DOCTYPE html><html><head><title>App</title></head><body><h1>Hello from Vite</h1></body></html>');
+        return;
+      }
+      if (req.url === '/health' || req.url === `${basePath}/health`) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', url: req.url }));
+        return;
+      }
+      res.writeHead(404);
+      res.end('Not Found');
+    });
+
+    await new Promise<void>((resolve) => {
+      upstreamServer.listen(0, '127.0.0.1', () => {
+        const addr = upstreamServer.address() as any;
+        upstreamPort = addr.port;
+        resolve();
+      });
+    });
+
+    // 2. Start lux with basePath pointing to upstream
+    luxServer = new VisualEditServer({
+      target: `http://127.0.0.1:${upstreamPort}`,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: testDir,
+      basePath,
+    });
+    luxUrl = await luxServer.listen();
+    originUrl = luxUrl.replace(basePath, '');
+  });
+
+  afterAll(async () => {
+    await luxServer.close();
+    await new Promise<void>((resolve) => upstreamServer.close(() => resolve()));
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it('injects overlay script with basePath prefix', async () => {
+    const res = await fetch(`${originUrl}${basePath}/`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(`<script type="module" src="${basePath}/__visual_edit__/overlay.js"></script>`);
+  });
+
+  it('serves overlay JS bundle under prefixed basePath', async () => {
+    const res = await fetch(`${originUrl}${basePath}/__visual_edit__/overlay.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('javascript');
+  });
+
+  it('serves overlay JS bundle under unprefixed path as fallback', async () => {
+    const res = await fetch(`${originUrl}/__visual_edit__/overlay.js`);
+    expect(res.status).toBe(200);
+  });
+
+  it('handles REST API edits endpoint under prefixed basePath', async () => {
+    const batch = {
+      id: 'basepath_session_1',
+      timestamp: Date.now(),
+      route: `${basePath}/`,
+      status: 'submitted',
+      userPrompt: 'Test base path submission',
+      mutations: [],
+      annotations: [
+        {
+          id: 'a1',
+          type: 'element',
+          targetSelector: 'h1',
+          comment: 'Make heading bigger',
+          timestamp: Date.now(),
+        },
+      ],
+    };
+
+    const res = await fetch(`${originUrl}${basePath}/__visual_edit__/api/edits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(batch),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.success).toBe(true);
+
+    const session = luxServer.getEventStore().getSession('basepath_session_1');
+    expect(session).toBeDefined();
+    expect(session?.annotations?.[0].comment).toBe('Make heading bigger');
+  });
+
+  it('proxies application endpoints upstream without stripping basePath', async () => {
+    const res = await fetch(`${originUrl}${basePath}/health`);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.status).toBe('ok');
+    expect(data.url).toBe(`${basePath}/health`);
+  });
+
+  it('connects to WebSocket with basePath prefix', async () => {
+    const wsUrl = originUrl.replace('http://', 'ws://') + `${basePath}/__visual_edit__/ws`;
+    const { WebSocket } = await import('ws');
+    const ws = new WebSocket(wsUrl);
+
+    const connected = await new Promise<boolean>((resolve) => {
+      ws.on('open', () => resolve(true));
+      ws.on('error', () => resolve(false));
+      setTimeout(() => resolve(false), 2000);
+    });
+
+    expect(connected).toBe(true);
+    ws.close();
+  });
+
+  it('returns HTTP/1.1 101 Switching Protocols on raw socket upgrade for prefixed WS path', async () => {
+    const net = await import('node:net');
+    const urlObj = new URL(originUrl);
+    const portNum = parseInt(urlObj.port, 10);
+
+    const firstLine = await new Promise<string>((resolve, reject) => {
+      const client = net.createConnection({ port: portNum, host: '127.0.0.1' }, () => {
+        client.write(
+          `GET ${basePath}/__visual_edit__/ws HTTP/1.1\r\n` +
+          `Host: 127.0.0.1:${portNum}\r\n` +
+          `Upgrade: websocket\r\n` +
+          `Connection: Upgrade\r\n` +
+          `Sec-WebSocket-Version: 13\r\n` +
+          `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`
+        );
+      });
+
+      client.on('data', (data) => {
+        const line = data.toString().split('\r\n')[0];
+        client.destroy();
+        resolve(line);
+      });
+
+      client.on('error', reject);
+      setTimeout(() => reject(new Error('Socket timeout')), 3000);
+    });
+
+    expect(firstLine).toContain('101 Switching Protocols');
+  });
+
+  it('connects to WebSocket without basePath prefix as fallback', async () => {
+    const wsUrl = originUrl.replace('http://', 'ws://') + '/__visual_edit__/ws';
+    const { WebSocket } = await import('ws');
+    const ws = new WebSocket(wsUrl);
+
+    const connected = await new Promise<boolean>((resolve) => {
+      ws.on('open', () => resolve(true));
+      ws.on('error', () => resolve(false));
+      setTimeout(() => resolve(false), 2000);
+    });
+
+    expect(connected).toBe(true);
+    ws.close();
+  });
+
+  it('watches files in rootDir and auto-resolves sessions in proxy mode', async () => {
+    const store = luxServer.getEventStore();
+    store.saveBatch({
+      id: 'session_to_resolve_on_watch',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm1', type: 'STYLE_CHANGE', targetSelector: 'h1', property: 'color', before: 'black', after: 'red' }],
+      annotations: [],
+    });
+
+    // Verify session is submitted
+    expect(store.getSession('session_to_resolve_on_watch')?.status).toBe('submitted');
+
+    // Simulate agent writing to a source file in rootDir
+    const dummySourceFile = path.join(testDir, 'App.tsx');
+    fs.writeFileSync(dummySourceFile, 'export function App() { return <h1>Updated</h1>; }');
+
+    // Wait for debounce in file watcher
+    await new Promise((r) => setTimeout(r, 400));
+
+    // Verify session was marked implemented
+    const resolved = store.getSession('session_to_resolve_on_watch');
+    expect(resolved?.status).toBe('implemented');
   });
 });

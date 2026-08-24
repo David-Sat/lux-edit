@@ -3,12 +3,16 @@ import { z } from 'zod';
 import { EventStore } from '@visual-edit/server';
 import { formatBatchSummary } from '@visual-edit/core';
 
+import path from 'node:path';
+
 export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
-  const eventStore = EventStore.getInstance(rootDir);
+  const resolvedRoot = path.resolve(rootDir);
+  const eventStore = EventStore.getInstance(resolvedRoot);
+  console.error(`[lux-mcp] Initialized MCP server (root: ${resolvedRoot})`);
 
   const server = new McpServer({
     name: 'lux-edit',
-    version: '0.2.0',
+    version: '0.4.0',
   });
 
   // Primary Tool: Get Active / Pending Visual Review and Comments (Instant & Non-blocking)

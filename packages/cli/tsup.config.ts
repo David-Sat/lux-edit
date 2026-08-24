@@ -2,6 +2,8 @@ import { defineConfig } from 'tsup';
 import fs from 'node:fs';
 import path from 'node:path';
 
+const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+
 export default defineConfig({
   entry: ['src/cli.ts'],
   format: ['esm'],
@@ -10,6 +12,9 @@ export default defineConfig({
   clean: true,
   dts: false,
   sourcemap: false,
+  define: {
+    __PACKAGE_VERSION__: JSON.stringify(pkg.version),
+  },
   banner: {
     js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
   },

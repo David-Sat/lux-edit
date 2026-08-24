@@ -6,13 +6,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+declare const __PACKAGE_VERSION__: string;
+
+let cliVersion = '0.4.0';
+try {
+  cliVersion = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+} catch (e) {}
+
 const program = new Command();
 
 program
   .name('lux')
   .alias('lux-edit')
   .description('In-browser visual editing overlay for web apps and AI coding agents')
-  .version('0.2.0');
+  .version(cliVersion);
 
 // Command: Run Server / Proxy (default)
 program
@@ -20,6 +27,7 @@ program
   .option('-p, --port <number>', 'Review server port', '4320')
   .option('-h, --host <address>', 'Bind address', '127.0.0.1')
   .option('-r, --root <path>', 'Project root directory for .visual-edit data', process.cwd())
+  .option('-b, --base-path <prefix>', 'Path prefix if running behind a reverse proxy (e.g. /codeeditor/default/ports/4401)', process.env.LUX_BASE_PATH || '')
   .action(async (target, options) => {
     let normalizedTarget = target;
     if (!isNaN(Number(target))) {
@@ -32,6 +40,7 @@ program
       port,
       host: options.host,
       rootDir: options.root,
+      basePath: options.basePath,
     });
 
     try {
@@ -39,6 +48,9 @@ program
       console.log('\nlux-edit');
       console.log(`Review URL:  ${reviewUrl}`);
       console.log(`Target:      ${normalizedTarget}`);
+      if (options.basePath) {
+        console.log(`Base Path:   ${options.basePath}`);
+      }
       console.log(`MCP server:  npx lux-edit mcp`);
       console.log('\nPress Ctrl+C to stop.\n');
     } catch (err: any) {

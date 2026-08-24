@@ -9,6 +9,15 @@ import {
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
 
+// Derive prefix dynamically from script loading URL for reverse proxies
+const BASE_PATH_PREFIX = (() => {
+  try {
+    return new URL(import.meta.url).pathname.replace(/\/__visual_edit__\/overlay\.js$/, '');
+  } catch {
+    return '';
+  }
+})();
+
 export type ActiveTool = 'none' | 'edit' | 'comment' | 'area';
 
 export interface ElementSnapshot {
@@ -131,7 +140,7 @@ export class OverlayStateManager {
       this.ws.send(JSON.stringify({ type: 'SYNC_SESSION', payload: batch }));
     } else {
       try {
-        await fetch('/__visual_edit__/api/edits', {
+        await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(batch),
@@ -655,7 +664,7 @@ export class OverlayStateManager {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'SUBMIT_BATCH', payload: batch }));
     } else {
-      await fetch('/__visual_edit__/api/edits', {
+      await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(batch),
@@ -668,7 +677,7 @@ export class OverlayStateManager {
   private initWebSocket(): void {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/__visual_edit__/ws`;
+      const wsUrl = `${protocol}//${window.location.host}${BASE_PATH_PREFIX}/__visual_edit__/ws`;
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onmessage = (event) => {

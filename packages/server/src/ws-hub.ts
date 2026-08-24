@@ -6,10 +6,12 @@ import { WebSocketMessage } from '@visual-edit/core';
 export class WebSocketHub {
   private wss: WebSocketServer;
   private eventStore: EventStore;
+  private basePath: string;
   private clients = new Set<WebSocket>();
 
-  constructor(server: Server, eventStore: EventStore) {
+  constructor(server: Server, eventStore: EventStore, basePath: string = '') {
     this.eventStore = eventStore;
+    this.basePath = basePath;
     this.wss = new WebSocketServer({ noServer: true });
 
     this.eventStore.subscribe((event) => {
@@ -22,7 +24,11 @@ export class WebSocketHub {
 
     server.on('upgrade', (request, socket, head) => {
       const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : '';
-      if (pathname === '/__visual_edit__/ws') {
+      const isVisualEditWs =
+        pathname === '/__visual_edit__/ws' ||
+        (this.basePath && pathname === `${this.basePath}/__visual_edit__/ws`);
+
+      if (isVisualEditWs) {
         this.wss.handleUpgrade(request, socket, head, (ws) => {
           this.wss.emit('connection', ws, request);
         });

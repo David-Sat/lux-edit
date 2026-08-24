@@ -12,6 +12,7 @@ export interface VisualEditServerOptions {
   host: string;
   target: string; // URL (http://...) or local file/dir path
   rootDir?: string;
+  basePath?: string;
 }
 
 export class VisualEditServer {
@@ -24,10 +25,22 @@ export class VisualEditServer {
   private eventStore: EventStore;
   private wsHub: WebSocketHub;
   private options: VisualEditServerOptions;
+  private basePath: string;
+  private rootDir: string;
+  private fileWatcher: fs.FSWatcher | null = null;
 
   constructor(options: VisualEditServerOptions) {
     this.options = options;
-    this.eventStore = EventStore.getInstance(options.rootDir);
+    this.rootDir = path.resolve(options.rootDir || process.cwd());
+    this.eventStore = EventStore.getInstance(this.rootDir);
+
+    // Normalize base path prefix (e.g., '/codeeditor/default/ports/4401')
+    let basePath = (options.basePath || process.env.LUX_BASE_PATH || '').trim();
+    if (basePath) {
+      if (!basePath.startsWith('/')) basePath = '/' + basePath;
+      basePath = basePath.replace(/\/+$/, '');
+    }
+    this.basePath = basePath;
 
     // Locate overlay bundle
     this.overlayScriptPath = this.resolveOverlayPath();
@@ -42,50 +55,70 @@ export class VisualEditServer {
       });
 
       this.setupProxyHandlers();
+      this.setupFileWatcher(this.rootDir);
     } else {
       this.isStatic = true;
       const cwdResolved = path.resolve(process.cwd(), options.target);
-      const rootResolved = path.resolve(options.rootDir || process.cwd(), options.target);
+      const rootResolved = path.resolve(this.rootDir, options.target);
       const targetPath = fs.existsSync(cwdResolved) ? cwdResolved : rootResolved;
 
       if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
         this.singleHtmlFile = targetPath;
+        this.setupFileWatcher(targetPath);
       } else {
         this.staticHandler = sirv(targetPath, { dev: true, single: true });
-      }
-
-      // Live file watcher for automatic client updates when code is modified
-      const watchTarget = this.singleHtmlFile || targetPath;
-      let reloadDebounce: any = null;
-      try {
-        fs.watch(watchTarget, { recursive: !this.singleHtmlFile }, (eventType, filename) => {
-          if (filename && (filename.startsWith('.') || filename.includes('.visual-edit'))) return;
-          if (reloadDebounce) clearTimeout(reloadDebounce);
-          reloadDebounce = setTimeout(() => {
-            console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
-            this.eventStore.markPendingSessionsImplemented();
-            this.wsHub.broadcast({
-              type: 'RELOAD_PAGE',
-              payload: { file: filename || watchTarget },
-            });
-          }, 150);
-        });
-      } catch (e) {
-        console.debug('[lux] File watch not active for this target');
+        this.setupFileWatcher(targetPath);
       }
     }
 
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
-    this.wsHub = new WebSocketHub(this.server, this.eventStore);
+    this.wsHub = new WebSocketHub(this.server, this.eventStore, this.basePath);
 
     // Forward WebSocket upgrades to upstream proxy if not our ws endpoint
     if (this.proxy) {
       this.server.on('upgrade', (req, socket, head) => {
         const pathname = req.url ? new URL(req.url, `http://${req.headers.host}`).pathname : '';
-        if (pathname !== '/__visual_edit__/ws') {
+        const isVisualEditWs =
+          pathname === '/__visual_edit__/ws' ||
+          (this.basePath && pathname === `${this.basePath}/__visual_edit__/ws`);
+
+        if (!isVisualEditWs) {
           this.proxy?.ws(req, socket, head);
         }
       });
+    }
+  }
+
+  private setupFileWatcher(watchTarget: string): void {
+    if (!fs.existsSync(watchTarget)) return;
+    const isFile = fs.statSync(watchTarget).isFile();
+    let reloadDebounce: any = null;
+
+    try {
+      this.fileWatcher = fs.watch(watchTarget, { recursive: !isFile }, (eventType, filename) => {
+        if (filename) {
+          if (
+            filename.startsWith('.') ||
+            filename.includes('.visual-edit') ||
+            filename.includes('node_modules') ||
+            filename.includes('dist') ||
+            filename.includes('.git')
+          ) {
+            return;
+          }
+        }
+        if (reloadDebounce) clearTimeout(reloadDebounce);
+        reloadDebounce = setTimeout(() => {
+          console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
+          this.eventStore.markPendingSessionsImplemented();
+          this.wsHub.broadcast({
+            type: 'RELOAD_PAGE',
+            payload: { file: filename || watchTarget },
+          });
+        }, 150);
+      });
+    } catch (e) {
+      console.debug('[lux] File watch not active for target:', watchTarget);
     }
   }
 
@@ -146,7 +179,8 @@ export class VisualEditServer {
   }
 
   private injectOverlayScript(html: string): string {
-    const scriptTag = '<script type="module" src="/__visual_edit__/overlay.js"></script>';
+    const scriptSrc = `${this.basePath}/__visual_edit__/overlay.js`;
+    const scriptTag = `<script type="module" src="${scriptSrc}"></script>`;
     if (html.includes('</head>')) {
       return html.replace('</head>', `${scriptTag}\n</head>`);
     }
@@ -158,16 +192,22 @@ export class VisualEditServer {
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
+    let pathname = url.pathname;
+
+    // Normalize pathname by stripping basePath prefix if present
+    if (this.basePath && pathname.startsWith(this.basePath)) {
+      pathname = pathname.slice(this.basePath.length) || '/';
+    }
 
     // Handle favicon.ico cleanly
-    if (url.pathname === '/favicon.ico') {
+    if (pathname === '/favicon.ico') {
       res.writeHead(204);
       res.end();
       return;
     }
 
     // Serve Overlay JS Bundle
-    if (url.pathname === '/__visual_edit__/overlay.js') {
+    if (pathname === '/__visual_edit__/overlay.js') {
       if (fs.existsSync(this.overlayScriptPath)) {
         res.writeHead(200, {
           'Content-Type': 'application/javascript; charset=utf-8',
@@ -182,7 +222,7 @@ export class VisualEditServer {
     }
 
     // REST API - Submit Edit Batch
-    if (url.pathname === '/__visual_edit__/api/edits' && req.method === 'POST') {
+    if (pathname === '/__visual_edit__/api/edits' && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk) => (body += chunk.toString()));
       req.on('end', () => {
@@ -205,7 +245,7 @@ export class VisualEditServer {
     }
 
     // REST API - List Sessions
-    if (url.pathname === '/__visual_edit__/api/sessions' && req.method === 'GET') {
+    if (pathname === '/__visual_edit__/api/sessions' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(this.eventStore.listSessions()));
       return;
@@ -213,7 +253,7 @@ export class VisualEditServer {
 
     // Static Single HTML File Mode
     if (this.isStatic && this.singleHtmlFile) {
-      if (url.pathname === '/' || url.pathname.endsWith('.html')) {
+      if (pathname === '/' || pathname.endsWith('.html')) {
         const rawHtml = fs.readFileSync(this.singleHtmlFile, 'utf-8');
         const injected = this.injectOverlayScript(rawHtml);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -228,7 +268,7 @@ export class VisualEditServer {
       return;
     }
 
-    // Reverse Proxy Mode
+    // Reverse Proxy Mode: Pass the original unmodified request to upstream dev server
     if (this.proxy) {
       this.proxy.web(req, res);
       return;
@@ -243,7 +283,7 @@ export class VisualEditServer {
       this.server.listen(this.options.port, this.options.host, () => {
         const addr = this.server.address();
         const port = typeof addr === 'object' && addr ? addr.port : this.options.port;
-        const reviewUrl = `http://${this.options.host}:${port}`;
+        const reviewUrl = `http://${this.options.host}:${port}${this.basePath || ''}`;
         resolve(reviewUrl);
       });
       this.server.on('error', reject);
@@ -251,6 +291,11 @@ export class VisualEditServer {
   }
 
   public close(): Promise<void> {
+    if (this.fileWatcher) {
+      try {
+        this.fileWatcher.close();
+      } catch (e) {}
+    }
     return new Promise((resolve) => {
       this.server.close(() => resolve());
     });

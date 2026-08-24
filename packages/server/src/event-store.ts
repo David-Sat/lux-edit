@@ -11,23 +11,42 @@ interface SubmissionWaiter {
 
 export class EventStore {
   private static instance: EventStore;
+  private rootDir: string;
   private filePath: string;
   private sessions = new Map<string, VisualEditBatch>();
   private listeners = new Set<(event: { type: string; sessionId: string; payload: any }) => void>();
   private waiters = new Set<SubmissionWaiter>();
 
   constructor(rootDir: string = process.cwd()) {
-    const dataDir = path.join(rootDir, '.visual-edit');
+    this.rootDir = path.resolve(rootDir);
+    const dataDir = path.join(this.rootDir, '.visual-edit');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     this.filePath = path.join(dataDir, 'sessions.jsonl');
+    this.ensureGitignored(this.rootDir);
     this.loadFromDisk();
   }
 
+  private ensureGitignored(rootDir: string): void {
+    try {
+      const gitignorePath = path.join(rootDir, '.gitignore');
+      if (fs.existsSync(gitignorePath)) {
+        const content = fs.readFileSync(gitignorePath, 'utf-8');
+        if (!content.includes('.visual-edit')) {
+          const separator = content.endsWith('\n') || content.length === 0 ? '' : '\n';
+          fs.appendFileSync(gitignorePath, `${separator}.visual-edit/\n`, 'utf-8');
+        }
+      }
+    } catch (e) {
+      // Ignore write errors to .gitignore
+    }
+  }
+
   public static getInstance(rootDir?: string): EventStore {
-    if (!EventStore.instance) {
-      EventStore.instance = new EventStore(rootDir);
+    const resolvedRoot = rootDir ? path.resolve(rootDir) : process.cwd();
+    if (!EventStore.instance || (rootDir && EventStore.instance.rootDir !== resolvedRoot)) {
+      EventStore.instance = new EventStore(resolvedRoot);
     }
     return EventStore.instance;
   }
@@ -52,6 +71,10 @@ export class EventStore {
 
   private saveToDisk(): void {
     try {
+      const dataDir = path.dirname(this.filePath);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
       const lines = Array.from(this.sessions.values()).map((b) => JSON.stringify(b));
       fs.writeFileSync(this.filePath, lines.join('\n') + '\n', 'utf-8');
     } catch (err) {
