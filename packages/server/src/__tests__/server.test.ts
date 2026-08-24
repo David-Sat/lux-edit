@@ -323,3 +323,77 @@ describe('Reverse Proxy & Base-Path Support (SageMaker / Codespaces)', () => {
     expect(resolved?.status).toBe('implemented');
   });
 });
+
+describe('Static Directory Target Mode', () => {
+  const testDir = path.resolve(process.cwd(), '.test-static-dir');
+  let server: VisualEditServer;
+  let reviewUrl: string;
+
+  beforeAll(async () => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.join(testDir, 'assets'), { recursive: true });
+
+    // Create an index.html, subpage.html, and a css file
+    fs.writeFileSync(
+      path.join(testDir, 'index.html'),
+      '<!DOCTYPE html><html><head><title>Home</title></head><body><h1>Directory Home</h1></body></html>'
+    );
+    fs.writeFileSync(
+      path.join(testDir, 'subpage.html'),
+      '<!DOCTYPE html><html><head><title>Subpage</title></head><body><h2>Subpage Title</h2></body></html>'
+    );
+    fs.writeFileSync(
+      path.join(testDir, 'assets', 'style.css'),
+      'body { background: #fafafa; }'
+    );
+
+    server = new VisualEditServer({
+      target: testDir,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: testDir,
+    });
+    reviewUrl = await server.listen();
+  });
+
+  afterAll(async () => {
+    await server.close();
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it('serves directory index.html with overlay injected when requesting /', async () => {
+    const res = await fetch(`${reviewUrl}/`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+    expect(html).toContain('Directory Home');
+  });
+
+  it('serves directory index.html with overlay injected when requesting /index.html', async () => {
+    const res = await fetch(`${reviewUrl}/index.html`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+    expect(html).toContain('Directory Home');
+  });
+
+  it('serves subpage.html with overlay injected', async () => {
+    const res = await fetch(`${reviewUrl}/subpage.html`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+    expect(html).toContain('Subpage Title');
+  });
+
+  it('serves non-HTML static assets without script injection', async () => {
+    const res = await fetch(`${reviewUrl}/assets/style.css`);
+    expect(res.status).toBe(200);
+    const css = await res.text();
+    expect(css).toContain('background: #fafafa;');
+    expect(css).not.toContain('overlay.js');
+  });
+});

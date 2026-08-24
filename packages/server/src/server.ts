@@ -21,6 +21,7 @@ export class VisualEditServer {
   private isStatic = false;
   private staticHandler: ((req: IncomingMessage, res: ServerResponse) => void) | null = null;
   private singleHtmlFile: string | null = null;
+  private staticDir: string | null = null;
   private overlayScriptPath: string;
   private eventStore: EventStore;
   private wsHub: WebSocketHub;
@@ -66,6 +67,7 @@ export class VisualEditServer {
         this.singleHtmlFile = targetPath;
         this.setupFileWatcher(targetPath);
       } else {
+        this.staticDir = targetPath;
         this.staticHandler = sirv(targetPath, { dev: true, single: true });
         this.setupFileWatcher(targetPath);
       }
@@ -253,19 +255,67 @@ export class VisualEditServer {
 
     // Static Single HTML File Mode
     if (this.isStatic && this.singleHtmlFile) {
-      if (pathname === '/' || pathname.endsWith('.html')) {
+      if (pathname === '/' || pathname.endsWith('.html') || !path.extname(pathname)) {
         const rawHtml = fs.readFileSync(this.singleHtmlFile, 'utf-8');
         const injected = this.injectOverlayScript(rawHtml);
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        });
         res.end(injected);
         return;
       }
     }
 
     // Static Directory Mode
-    if (this.isStatic && this.staticHandler) {
-      this.staticHandler(req, res);
-      return;
+    if (this.isStatic && this.staticDir) {
+      let cleanPath = pathname;
+      if (cleanPath.endsWith('/')) {
+        cleanPath += 'index.html';
+      }
+
+      // Check if resolving to an HTML file (direct, index.html, or SPA fallback)
+      let candidateHtml: string | null = null;
+      const directPath = path.join(this.staticDir, cleanPath);
+
+      if (fs.existsSync(directPath)) {
+        if (fs.statSync(directPath).isFile() && directPath.endsWith('.html')) {
+          candidateHtml = directPath;
+        } else if (fs.statSync(directPath).isDirectory()) {
+          const indexHtml = path.join(directPath, 'index.html');
+          if (fs.existsSync(indexHtml) && fs.statSync(indexHtml).isFile()) {
+            candidateHtml = indexHtml;
+          }
+        }
+      } else if (!path.extname(cleanPath)) {
+        const withHtmlExt = `${directPath}.html`;
+        const rootIndexHtml = path.join(this.staticDir, 'index.html');
+        if (fs.existsSync(withHtmlExt) && fs.statSync(withHtmlExt).isFile()) {
+          candidateHtml = withHtmlExt;
+        } else if (fs.existsSync(rootIndexHtml) && fs.statSync(rootIndexHtml).isFile()) {
+          candidateHtml = rootIndexHtml;
+        }
+      }
+
+      if (candidateHtml) {
+        const rawHtml = fs.readFileSync(candidateHtml, 'utf-8');
+        const injected = this.injectOverlayScript(rawHtml);
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        });
+        res.end(injected);
+        return;
+      }
+
+      // For non-HTML static assets (.css, .js, .png, etc.), delegate to sirv
+      if (this.staticHandler) {
+        const originalUrl = req.url;
+        req.url = pathname + (url.search || '');
+        this.staticHandler(req, res);
+        req.url = originalUrl;
+        return;
+      }
     }
 
     // Reverse Proxy Mode: Pass the original unmodified request to upstream dev server
