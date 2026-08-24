@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.3.0...lux-edit-v0.4.0) (2026-08-24)
+
+
+### Features
+
+* unify agent skill under single /lux command and update init generator ([a1a26d1](https://github.com/David-Sat/lux-edit/commit/a1a26d1888e3509c78d28367b45cc118bd36d5db))
+
 ## [0.3.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.2.0...lux-edit-v0.3.0) (2026-08-23)
 
 
