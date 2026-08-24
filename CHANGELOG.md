@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.4.0...lux-edit-v0.4.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* add --base-path reverse proxy support, proxy mode file watching, and dynamic CLI version ([0fc6a85](https://github.com/David-Sat/lux-edit/commit/0fc6a8558d6a3b2b43fd2a297a34528ba9a62cb4))
+
 ## [0.4.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.3.0...lux-edit-v0.4.0) (2026-08-24)
 
 
