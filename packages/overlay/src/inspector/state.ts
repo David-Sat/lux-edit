@@ -628,7 +628,7 @@ export class OverlayStateManager {
     };
 
     const styleDiffs = computeStyleDiff(snapshot.styles, currentStyles, selector, sourceLocation);
-    styleDiffs.forEach((m) => {
+    styleDiffs.forEach((m: MutationRecord) => {
       m.url = window.location.href;
       m.pathname = window.location.pathname;
       m.pageTitle = document.title;
@@ -639,7 +639,7 @@ export class OverlayStateManager {
       ? el.className.trim().split(/\s+/).filter(Boolean)
       : [];
     const classDiffs = computeClassDiff(snapshot.classes, currentClasses, selector, sourceLocation);
-    classDiffs.forEach((m) => {
+    classDiffs.forEach((m: MutationRecord) => {
       m.url = window.location.href;
       m.pathname = window.location.pathname;
       m.pageTitle = document.title;
