@@ -485,10 +485,13 @@ export class OverlayStateManager {
 
     if (targetEl) {
       const snapshot = this.snapshots.get(targetEl);
-      if (mutation.type === 'CLASS_ADD' && mutation.classes) {
-        mutation.classes.forEach((c) => targetEl!.classList.remove(c));
-      } else if (mutation.type === 'CLASS_REMOVE' && mutation.classes) {
-        mutation.classes.forEach((c) => targetEl!.classList.add(c));
+      if (mutation.type === 'CLASS_CHANGE' && mutation.details) {
+        if (mutation.details.added) {
+          (mutation.details.added as string[]).forEach((c: string) => targetEl!.classList.remove(c));
+        }
+        if (mutation.details.removed) {
+          (mutation.details.removed as string[]).forEach((c: string) => targetEl!.classList.add(c));
+        }
       } else if (mutation.type === 'STYLE_CHANGE' && mutation.property) {
         if (snapshot && snapshot.styles[mutation.property] !== undefined && snapshot.styles[mutation.property] !== '') {
           targetEl.style.setProperty(mutation.property, snapshot.styles[mutation.property]);

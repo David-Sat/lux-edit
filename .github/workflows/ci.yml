@@ -6,33 +6,46 @@ on:
   pull_request:
     branches: [master, main]
 
+# Cancel previous runs for the same branch/PR to conserve GitHub Actions minutes
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-test:
-    name: Build & Test
+    name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 20
+        uses: actions/checkout@v4
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@v4
         with:
           version: 10
 
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Type check (TypeScript)
+        run: pnpm lint
 
       - name: Build all packages
         run: pnpm build
 
       - name: Run test suite
         run: pnpm test
+
+      - name: Verify clean working directory
+        run: git diff --exit-code

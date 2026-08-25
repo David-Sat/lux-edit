@@ -187,10 +187,10 @@ export function EditReviewDrawer() {
 
                       {m.type === 'CLASS_CHANGE' && (
                         <div>
-                          {m.details?.added?.length > 0 && (
+                          {m.details?.added && m.details.added.length > 0 && (
                             <div style={{ color: '#22c55e' }}>+ {m.details.added.join(', ')}</div>
                           )}
-                          {m.details?.removed?.length > 0 && (
+                          {m.details?.removed && m.details.removed.length > 0 && (
                             <div style={{ color: '#ef4444' }}>- {m.details.removed.join(', ')}</div>
                           )}
                         </div>
