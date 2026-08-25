@@ -8,118 +8,139 @@ In-browser visual editing, annotation, and review overlay for AI coding agents.
 
 ![lux-edit Workflow](./docs/workflow.svg)
 
-lux-edit injects a visual editing layer into running web applications and static HTML files. You can adjust styles, edit text, and drop comment pins directly on DOM elements. Edits and notes are converted into structured diffs that coding agents inspect and apply via MCP.
-
-This project was inspired by [ui-review](https://github.com/flucas96/ui-review) by Fabian Lucas.
-
-## Quickstart
-
-### 1. Initialize configuration
-
-Run in your project root for local workspace setup, or pass `-g` to configure all agents machine-wide:
-
-```bash
-# Local workspace setup (creates mcp.json, plugin.json, skills/)
-npx lux-edit init
-
-# Global setup (configures Antigravity, Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Roo Code)
-npx lux-edit init -g
-```
-
-### 2. Start review session
-
-In your AI agent chat (Claude Code, Cursor, Codex, etc.), tell your agent:
-
-```text
-/lux
-```
-
-The agent launches the lux proxy on `http://127.0.0.1:4320`.
-
-### 3. Add visual edits & comments
-
-1. Open `http://127.0.0.1:4320` in your browser.
-2. Press **`V`** to visually inspect/tweak styling or **`C`** to pin comments onto elements.
-3. Edits and pins are saved automatically in real time.
-
-### 4. Review & apply
-
-Back in your agent chat, run:
-
-```text
-/lux
-```
-
-The agent calls `lux_get_pending_review()` to instantly retrieve all comments and visual diffs, then updates your source files. When the agent saves the files, lux's file watcher auto-resolves your feedback and refreshes the browser.
+lux-edit injects a live visual editing layer into your web app or static HTML. Adjust styling, edit text directly in the DOM, and highlight words or drop comment pins. Everything syncs in real time as structured diffs to your AI coding agent via MCP.
 
 ---
 
-## Manual CLI Usage
+## ⚡ Quickstart
 
-You can also run lux standalone without an agent:
+### 1. Install & Setup
 
 ```bash
-# Target a running dev server (e.g. Next.js, Vite, Remix)
-npx lux http://localhost:3000
+# 1. Install globally
+npm install -g lux-edit
 
-# Target static HTML files
-npx lux ./index.html
-
-# Behind path-prefixing reverse proxies (AWS SageMaker Studio, GitHub Codespaces, JupyterHub)
-npx lux http://localhost:5173 --port 4401 --base-path /codeeditor/default/ports/4401
-# (or set LUX_BASE_PATH=/codeeditor/default/ports/4401)
+# 2. Configure your AI coding agents machine-wide (or run without -g in a repo)
+lux init -g
 ```
 
-## In-Browser Controls
+> Configures Google Antigravity, Gemini, Claude Code, Cursor, Windsurf, Claude Desktop, Cline, and Roo Code automatically.
 
-| Shortcut | Action |
+<details>
+<summary><strong>Prefer running with <code>npx</code> without installing?</strong></summary>
+
+```bash
+# Local repo setup
+npx lux-edit init
+
+# Global machine setup
+npx lux-edit init -g
+```
+</details>
+
+---
+
+### 2. How to Use (3 Steps)
+
+1. **Start Review:** In your AI agent chat (Claude Code, Cursor, Antigravity, etc.), type:
+   ```text
+   /lux
+   ```
+   *(Or start manually in terminal: `lux http://localhost:3000` or `lux ./index.html`)*
+
+2. **Edit in Browser:** Open `http://127.0.0.1:4320`:
+   * Press **`V`** to visually inspect elements, tweak CSS, or double-click text to edit directly.
+   * Press **`C`** to drop comment pins or drag across text to comment on specific words.
+
+3. **Apply Changes:** Tell your agent:
+   ```text
+   /lux
+   ```
+   The agent reads your visual edits and comments over MCP, updates your code, and the browser auto-refreshes.
+
+---
+
+## ⌨️ Shortcuts
+
+| Key | Action |
 | --- | --- |
-| `V` | Visual edit mode (inspect elements, tweak typography, spacing, colors) |
-| `C` | Comment pin mode (click anywhere to drop a feedback pin) |
-| `Enter` | Save comment |
+| `V` | **Visual Edit** (select elements, tweak styles, box model, double-click text) |
+| `C` | **Comment Pin** (click element or highlight text selection) |
+| `Enter` | Save active comment / finish text edit |
 | `Shift` + `Enter` | Multi-line newline inside comment |
-| `Esc` | Deselect element or close active popover |
+| `Esc` | Deselect element or close active popover / drawer |
 
-## MCP Server Configuration
+---
 
-If configuring MCP manually, add this to your `.mcp.json` or agent settings:
+## 🛠️ Standalone CLI Options
+
+```bash
+# Target running dev server (Next.js, Vite, Remix, etc.)
+lux http://localhost:3000
+
+# Target static HTML file
+lux ./index.html
+
+# Custom port or behind cloud proxies (SageMaker, Codespaces, JupyterHub)
+lux http://localhost:5173 --port 4401 --base-path /codeeditor/default/ports/4401
+```
+
+<details>
+<summary><strong>Manual MCP Server Configuration</strong></summary>
+
+Add this to your `.mcp.json` or agent config:
 
 ```json
 {
   "mcpServers": {
     "lux": {
-      "command": "npx",
-      "args": ["-y", "lux-edit", "mcp"]
+      "command": "lux",
+      "args": ["mcp"]
     }
   }
 }
 ```
 
 Or with Claude Code CLI:
-
 ```bash
-claude mcp add lux -- npx -y lux-edit mcp
+claude mcp add lux -- lux mcp
 ```
 
-## MCP Tools
+### Available MCP Tools
+* `lux_get_pending_review`: Instantly retrieves active comments, text selections, and visual diffs.
+* `lux_get_session`: Retrieves details for a specific session ID.
+* `lux_list_sessions`: Lists all recorded review sessions.
+</details>
 
-- `lux_get_pending_review`: Instantly retrieves all active comment pins, selectors, and visual diffs without blocking.
-- `lux_get_session`: Retrieves details for a specific session ID.
-- `lux_list_sessions`: Lists all recorded review sessions.
+---
 
-## Development
+## 🔄 Update & Uninstall
+
+### Updating
 
 ```bash
-# Install workspace dependencies
-pnpm install
+# Update CLI to latest version
+npm install -g lux-edit@latest
 
-# Build all packages
-pnpm build
-
-# Run unit tests
-pnpm test
+# Refresh agent skills & MCP configs
+lux init -g
 ```
 
-## License
+### Uninstalling
 
-[MIT](./LICENSE) © 2026 David Satomi
+```bash
+# 1. Remove CLI package
+npm uninstall -g lux-edit
+
+# 2. Remove agent configs (if desired)
+# • Antigravity / Gemini: Remove "lux" in ~/.gemini/config/mcp_config.json and delete ~/.gemini/config/skills/lux
+# • Claude Code: Run `claude mcp remove lux`
+# • Cursor / Windsurf: Remove "lux" entry from ~/.cursor/mcp.json or ~/.codeium/windsurf/mcp_config.json
+# • Local Workspace: Delete .mcp.json in your project root
+```
+
+---
+
+## 📄 License
+
+[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review).
