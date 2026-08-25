@@ -22,7 +22,7 @@ Run in your project root for local workspace setup, or pass `-g` to configure al
 # Local workspace setup (creates mcp.json, plugin.json, skills/)
 npx lux-edit init
 
-# Global setup (configures Claude Code, Claude Desktop, Cursor, Windsurf)
+# Global setup (configures Antigravity, Claude Code, Claude Desktop, Cursor, Windsurf, Cline, Roo Code)
 npx lux-edit init -g
 ```
 
@@ -76,7 +76,6 @@ npx lux http://localhost:5173 --port 4401 --base-path /codeeditor/default/ports/
 | --- | --- |
 | `V` | Visual edit mode (inspect elements, tweak typography, spacing, colors) |
 | `C` | Comment pin mode (click anywhere to drop a feedback pin) |
-| `R` | Toggle review drawer to inspect pending diffs and history |
 | `Enter` | Save comment |
 | `Shift` + `Enter` | Multi-line newline inside comment |
 | `Esc` | Deselect element or close active popover |

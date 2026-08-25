@@ -68,6 +68,16 @@ describe('Diff Utilities', () => {
           tailwindSuggestion: 'p-4',
         },
       ],
+      annotations: [
+        {
+          id: 'ann1',
+          timestamp: Date.now(),
+          type: 'text',
+          targetSelector: 'h1.title',
+          selectedText: 'AI agent revolution',
+          comment: 'Make this wording bolder',
+        },
+      ],
     };
 
     const summary = formatBatchSummary(batch);
@@ -75,5 +85,8 @@ describe('Diff Utilities', () => {
     expect(summary).toContain('src/components/Hero.tsx:42');
     expect(summary).toContain('Get Started Free');
     expect(summary).toContain('p-4');
+    expect(summary).toContain('Comment on text selection');
+    expect(summary).toContain('AI agent revolution');
+    expect(summary).toContain('Make this wording bolder');
   });
 });

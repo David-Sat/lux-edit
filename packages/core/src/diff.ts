@@ -179,7 +179,12 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
 
       const snippet = a.htmlSnippet || a.sourceLocation?.htmlSnippet;
 
-      lines.push(`- **Comment** on ${loc}: "${a.comment}"`);
+      if (a.selectedText) {
+        lines.push(`- **Comment on text selection** on ${loc}: "${a.comment}"`);
+        lines.push(`  - Selected text: \`"${a.selectedText}"\``);
+      } else {
+        lines.push(`- **Comment** on ${loc}: "${a.comment}"`);
+      }
       if (snippet) {
         lines.push(`  - Element: \`${snippet}\``);
       }

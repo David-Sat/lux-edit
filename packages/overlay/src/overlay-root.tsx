@@ -27,6 +27,8 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       return false;
     };
 
+    let currentInlineEl: HTMLElement | null = null;
+
     // Global mouse hover handler
     const handleMouseMove = (e: MouseEvent) => {
       if (state.activeTool === 'none') return;
@@ -44,6 +46,38 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       state.setHoveredElement(target);
     };
 
+    // Global mouseup handler to detect text selection in Comment mode
+    const handleMouseUp = (e: MouseEvent) => {
+      if (state.activeTool !== 'comment') return;
+      if (isInsideShadow(e)) return;
+
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+        const text = selection.toString().trim();
+        if (text.length > 0) {
+          try {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            let container: HTMLElement | null = range.commonAncestorContainer as HTMLElement;
+            if (container && container.nodeType === Node.TEXT_NODE) {
+              container = container.parentElement;
+            }
+            if (container && !isInsideShadow(e)) {
+              state.setCommentTarget(container, {
+                selectedText: text,
+                bounds: {
+                  x: rect.left,
+                  y: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                },
+              });
+            }
+          } catch (err) {}
+        }
+      }
+    };
+
     // Global click handler
     const handleClick = (e: MouseEvent) => {
       if (state.activeTool === 'none') return;
@@ -54,41 +88,118 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       const target = e.target as HTMLElement | null;
       if (!target || target === document.body || target === document.documentElement) return;
 
+      // If user is clicking inside the element currently being edited inline,
+      // allow native cursor positioning and text selection.
+      if (target === currentInlineEl || (currentInlineEl && currentInlineEl.contains(target))) {
+        return;
+      }
+
+      // If another element was being edited inline, blur it to finalize editing
+      if (currentInlineEl && target !== currentInlineEl) {
+        currentInlineEl.blur();
+      }
+
+      const selection = window.getSelection();
+      const hasSelection = selection && !selection.isCollapsed && selection.toString().trim().length > 0;
+
       e.preventDefault();
       e.stopPropagation();
 
       if (state.activeTool === 'edit') {
         state.setActiveElement(target);
       } else if (state.activeTool === 'comment') {
-        state.setCommentTarget(target);
+        // If a text selection occurred (handled by handleMouseUp), keep the text selection target.
+        // Otherwise, if it was a plain click without selection, target the entire element.
+        if (!hasSelection && !state.commentTargetSelectedText) {
+          state.setCommentTarget(target);
+        }
       }
     };
 
-    // Global double-click for inline text editing (in Edit mode only)
+    // Global double-click for inline text editing in the DOM (in Edit mode only)
     const handleDblClick = (e: MouseEvent) => {
       if (state.activeTool !== 'edit') return;
       if (isInsideShadow(e)) return;
 
       const target = e.target as HTMLElement | null;
-      if (!target) return;
+      if (!target || target === document.body || target === document.documentElement) return;
 
       e.preventDefault();
       e.stopPropagation();
 
-      target.contentEditable = 'plaintext-only';
+      state.setActiveElement(target);
+      currentInlineEl = target;
+
+      // Enable inline content editing directly on the DOM element
+      try {
+        target.contentEditable = 'plaintext-only';
+      } catch (err) {
+        target.contentEditable = 'true';
+      }
+      target.spellcheck = false;
       target.focus();
+
+      // Select all text on double click so user can type over or click to place cursor
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch (err) {}
+
+      // Visual indicator for active inline DOM editing
+      const prevOutline = target.style.outline;
+      const prevOutlineOffset = target.style.outlineOffset;
+      target.style.outline = '2px dashed #38bdf8';
+      target.style.outlineOffset = '2px';
+
+      const handleInput = () => {
+        state.syncMutationsForElement(target);
+        state.notify();
+      };
+
+      const handleInlineKeyDown = (ke: KeyboardEvent) => {
+        ke.stopPropagation();
+        if (ke.key === 'Escape') {
+          ke.preventDefault();
+          target.blur();
+        } else if (ke.key === 'Enter' && !ke.shiftKey) {
+          const tag = (target.tagName || '').toUpperCase();
+          const isSingleLineTag = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BUTTON', 'A', 'SPAN', 'LABEL', 'P'].includes(tag);
+          if (isSingleLineTag) {
+            ke.preventDefault();
+            target.blur();
+          }
+        }
+      };
 
       const handleBlur = () => {
         target.contentEditable = 'inherit';
-        state.updateElementText(target.innerText);
+        target.style.outline = prevOutline;
+        target.style.outlineOffset = prevOutlineOffset;
+        state.syncMutationsForElement(target);
+        state.notify();
+        target.removeEventListener('input', handleInput);
+        target.removeEventListener('keydown', handleInlineKeyDown);
         target.removeEventListener('blur', handleBlur);
+        if (currentInlineEl === target) {
+          currentInlineEl = null;
+        }
       };
+
+      target.addEventListener('input', handleInput);
+      target.addEventListener('keydown', handleInlineKeyDown);
       target.addEventListener('blur', handleBlur);
     };
 
     // Global keyboard shortcuts with stepped Escape handling
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (currentInlineEl) {
+          currentInlineEl.blur();
+          return;
+        }
         if (state.commentTargetElement) {
           state.setCommentTarget(null);
           return;
@@ -116,13 +227,17 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         return;
       }
 
+      // Ignore modified keys (Cmd, Ctrl, Alt) to prevent blocking browser actions (e.g. Cmd+Shift+R, Cmd+R, Cmd+C, Cmd+V, etc.)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
       const activeEl = document.activeElement as HTMLElement | null;
       const isTyping =
-        activeEl &&
-        (activeEl.tagName === 'INPUT' ||
-          activeEl.tagName === 'TEXTAREA' ||
-          activeEl.isContentEditable ||
-          isInsideShadow(e));
+        (activeEl &&
+          (activeEl.tagName === 'INPUT' ||
+            activeEl.tagName === 'TEXTAREA' ||
+            activeEl.isContentEditable ||
+            isInsideShadow(e))) ||
+        !!currentInlineEl;
 
       if (isTyping) return;
 
@@ -134,22 +249,23 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         e.preventDefault();
         state.setDockMenuOpen(true);
         state.setTool(state.activeTool === 'comment' ? 'none' : 'comment');
-      } else if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        state.setDockMenuOpen(true);
-        state.setDrawerOpen(!state.isDrawerOpen);
       }
     };
 
     document.addEventListener('mousemove', handleMouseMove, { capture: true, passive: true });
+    document.addEventListener('mouseup', handleMouseUp, { capture: true });
     document.addEventListener('click', handleClick, { capture: true });
     document.addEventListener('dblclick', handleDblClick, { capture: true });
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove, { capture: true });
-      document.removeEventListener('click', handleClick, { capture: true });
-      document.removeEventListener('dblclick', handleDblClick, { capture: true });
+      if (currentInlineEl) {
+        currentInlineEl.blur();
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('dblclick', handleDblClick);
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [shadowRoot]);

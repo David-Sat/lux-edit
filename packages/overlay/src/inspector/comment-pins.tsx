@@ -113,7 +113,7 @@ export function CommentPins() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '8px' }}>
                   <strong style={{ color: '#a5b4fc', fontSize: '11px' }}>
-                    Pin #{idx + 1}
+                    Pin #{idx + 1} {ann.selectedText ? '• Text' : ''}
                   </strong>
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     {!isEditing && (
@@ -160,6 +160,24 @@ export function CommentPins() {
                     </button>
                   </div>
                 </div>
+
+                {ann.selectedText && (
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: '#fbbf24',
+                      background: 'rgba(251, 191, 36, 0.12)',
+                      borderLeft: '2px solid #fbbf24',
+                      padding: '3px 6px',
+                      borderRadius: '2px',
+                      marginBottom: '6px',
+                      fontStyle: 'italic',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    "{ann.selectedText}"
+                  </div>
+                )}
 
                 {isEditing ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

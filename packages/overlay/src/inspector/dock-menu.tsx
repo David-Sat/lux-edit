@@ -17,7 +17,7 @@ export function DockMenu() {
     return (
       <button
         class="ve-launcher-btn"
-        title="Open LUX Tools (V / C / R)"
+        title="Open LUX Tools (V / C)"
         onClick={() => state.setDockMenuOpen(true)}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -79,7 +79,7 @@ export function DockMenu() {
         class={`ve-dock-item ${state.isDrawerOpen ? 've-active' : ''}`}
         style={{ position: 'relative' }}
         onClick={() => state.setDrawerOpen(!state.isDrawerOpen)}
-        title={`Review Changes (${totalCount}) (R)`}
+        title={`Review Changes (${totalCount})`}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="8" y1="6" x2="21" y2="6" />

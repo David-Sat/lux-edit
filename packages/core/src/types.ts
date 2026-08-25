@@ -42,7 +42,7 @@ export interface MutationRecord {
 export interface CommentAnnotation {
   id: string;
   timestamp: number;
-  type: 'element' | 'area';
+  type: 'element' | 'area' | 'text';
   targetSelector?: string;
   sourceLocation?: SourceLocation;
   htmlSnippet?: string;
@@ -50,6 +50,7 @@ export interface CommentAnnotation {
   pathname?: string;
   pageTitle?: string;
   bounds?: { x: number; y: number; width: number; height: number };
+  selectedText?: string;
   comment: string;
   screenshot?: string;
 }

@@ -22,7 +22,24 @@ export function CommentComposer() {
 
     const updatePos = () => {
       if (!target || !popoverRef.current) return;
-      computePosition(target, popoverRef.current, {
+
+      const anchor = state.commentTargetBounds
+        ? {
+            getBoundingClientRect: () =>
+              ({
+                x: state.commentTargetBounds!.x,
+                y: state.commentTargetBounds!.y,
+                top: state.commentTargetBounds!.y,
+                left: state.commentTargetBounds!.x,
+                right: state.commentTargetBounds!.x + state.commentTargetBounds!.width,
+                bottom: state.commentTargetBounds!.y + state.commentTargetBounds!.height,
+                width: state.commentTargetBounds!.width,
+                height: state.commentTargetBounds!.height,
+              } as DOMRect),
+          }
+        : target;
+
+      computePosition(anchor, popoverRef.current, {
         strategy: 'fixed',
         placement: 'bottom-start',
         middleware: [offset(8), flip(), shift({ padding: 10 })],
@@ -44,12 +61,13 @@ export function CommentComposer() {
       window.removeEventListener('scroll', updatePos);
       window.removeEventListener('resize', updatePos);
     };
-  }, [target]);
+  }, [target, state.commentTargetBounds]);
 
   if (!target || !document.body.contains(target)) return null;
 
   const sourceLoc = resolveSourceLocation(target);
   const tagLabel = sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.selector;
+  const selectedText = state.commentTargetSelectedText;
 
   const handleSave = () => {
     if (commentText.trim()) {
@@ -76,11 +94,19 @@ export function CommentComposer() {
       onClick={(e) => e.stopPropagation()}
     >
       <div class="ve-comment-header">
-        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          Comment on <strong style={{ color: '#38bdf8' }}>{tagLabel}</strong>
+          {selectedText ? (
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Comment on <strong style={{ color: '#fbbf24' }}>"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
+            </span>
+          ) : (
+            <span>
+              Comment on <strong style={{ color: '#38bdf8' }}>{tagLabel}</strong>
+            </span>
+          )}
         </span>
         <button
           class="ve-mini-btn"

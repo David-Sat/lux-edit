@@ -1,10 +1,9 @@
 {
   "mcpServers": {
-    "visual-edit": {
-      "command": "npx",
+    "lux": {
+      "command": "node",
       "args": [
-        "-y",
-        "visual-edit",
+        "packages/cli/dist/cli.js",
         "mcp"
       ]
     }

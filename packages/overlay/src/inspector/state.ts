@@ -38,6 +38,8 @@ export class OverlayStateManager {
   public activeElement: HTMLElement | null = null;
   public hoveredElement: HTMLElement | null = null;
   public commentTargetElement: HTMLElement | null = null;
+  public commentTargetSelectedText?: string;
+  public commentTargetBounds?: { x: number; y: number; width: number; height: number };
 
   public userPrompt = '';
   public sessionId = `session_${Date.now().toString(36)}`;
@@ -161,6 +163,8 @@ export class OverlayStateManager {
     }
     if (this.activeTool !== 'comment') {
       this.commentTargetElement = null;
+      this.commentTargetSelectedText = undefined;
+      this.commentTargetBounds = undefined;
     }
     this.hoveredElement = null;
     this.notify();
@@ -258,33 +262,49 @@ export class OverlayStateManager {
     this.notify();
   }
 
-  public setCommentTarget(el: HTMLElement | null): void {
+  public setCommentTarget(
+    el: HTMLElement | null,
+    options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number } }
+  ): void {
     this.commentTargetElement = el;
+    this.commentTargetSelectedText = options?.selectedText;
+    this.commentTargetBounds = options?.bounds;
     this.notify();
   }
 
-  public addComment(comment: string, el?: HTMLElement): void {
+  public addComment(
+    comment: string,
+    el?: HTMLElement,
+    options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number } }
+  ): void {
     if (!comment.trim()) return;
 
     const target = el || this.commentTargetElement;
+    const selectedText = options?.selectedText || this.commentTargetSelectedText;
+    const customBounds = options?.bounds || this.commentTargetBounds;
+
     const sourceLocation = target ? resolveSourceLocation(target) : undefined;
-    const bounds = target ? target.getBoundingClientRect() : undefined;
+    const elBounds = target ? target.getBoundingClientRect() : undefined;
+    const bounds = customBounds || (elBounds ? { x: elBounds.left, y: elBounds.top, width: elBounds.width, height: elBounds.height } : undefined);
 
     const annotation: CommentAnnotation = {
       id: `ann_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
-      type: 'element',
+      type: selectedText ? 'text' : 'element',
       targetSelector: sourceLocation?.selector,
       sourceLocation,
       url: window.location.href,
       pathname: window.location.pathname,
       pageTitle: document.title,
-      bounds: bounds ? { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height } : undefined,
+      bounds,
+      selectedText,
       comment: comment.trim(),
     };
 
     this.annotations.push(annotation);
     this.commentTargetElement = null;
+    this.commentTargetSelectedText = undefined;
+    this.commentTargetBounds = undefined;
     this.activeTool = 'none';
     this.notify();
   }

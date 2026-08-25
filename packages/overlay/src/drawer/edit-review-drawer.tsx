@@ -224,6 +224,7 @@ export function EditReviewDrawer() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                         <span class="ve-mut-target" style={{ color: '#a5b4fc' }}>
                           Pin #{idx + 1} {ann.targetSelector ? `• ${ann.targetSelector}` : ''}
+                          {ann.selectedText ? ' • [Text Selection]' : ''}
                         </span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {!isEditing && (
@@ -248,6 +249,24 @@ export function EditReviewDrawer() {
                           </button>
                         </div>
                       </div>
+
+                      {ann.selectedText && (
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: '#fbbf24',
+                            background: 'rgba(251, 191, 36, 0.12)',
+                            borderLeft: '2px solid #fbbf24',
+                            padding: '3px 6px',
+                            borderRadius: '2px',
+                            marginBottom: '4px',
+                            fontStyle: 'italic',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          "{ann.selectedText}"
+                        </div>
+                      )}
 
                       {isEditing ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>

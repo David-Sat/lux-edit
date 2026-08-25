@@ -65,6 +65,8 @@ export class VisualEditServer {
 
       if (fs.existsSync(targetPath) && fs.statSync(targetPath).isFile()) {
         this.singleHtmlFile = targetPath;
+        this.staticDir = path.dirname(targetPath);
+        this.staticHandler = sirv(this.staticDir, { dev: true });
         this.setupFileWatcher(targetPath);
       } else {
         this.staticDir = targetPath;
@@ -255,7 +257,7 @@ export class VisualEditServer {
 
     // Static Single HTML File Mode
     if (this.isStatic && this.singleHtmlFile) {
-      if (pathname === '/' || pathname.endsWith('.html') || !path.extname(pathname)) {
+      if (pathname === '/' || pathname === `/${path.basename(this.singleHtmlFile)}` || pathname === '/index.html') {
         const rawHtml = fs.readFileSync(this.singleHtmlFile, 'utf-8');
         const injected = this.injectOverlayScript(rawHtml);
         res.writeHead(200, {
