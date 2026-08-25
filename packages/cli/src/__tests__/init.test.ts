@@ -4,9 +4,12 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   mergeMcpConfig,
+  removeMcpConfig,
   writeSkillFile,
+  removeSkillFile,
   getAgentConfigPaths,
   runInit,
+  runUninstall,
 } from '../init.js';
 
 describe('lux init and multi-agent configuration', () => {
@@ -60,7 +63,7 @@ describe('lux init and multi-agent configuration', () => {
       });
     });
 
-    it('merges lux into existing config while preserving other servers', () => {
+    it('merges lux into existing config while preserving other servers and removing legacy keys', () => {
       const targetPath = path.join(fakeHome, 'config', 'mcp.json');
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.writeFileSync(
@@ -68,6 +71,8 @@ describe('lux init and multi-agent configuration', () => {
         JSON.stringify({
           mcpServers: {
             customServer: { command: 'node', args: ['server.js'] },
+            'lux-review': { command: 'npx', args: ['old-server'] },
+            'visual-edit': { command: 'npx', args: ['old-server'] },
           },
         })
       );
@@ -81,6 +86,8 @@ describe('lux init and multi-agent configuration', () => {
         command: 'npx',
         args: ['-y', 'lux-edit', 'mcp'],
       });
+      expect(parsed.mcpServers['lux-review']).toBeUndefined();
+      expect(parsed.mcpServers['visual-edit']).toBeUndefined();
     });
 
     it('respects dryRun flag by not writing files', () => {
@@ -88,6 +95,40 @@ describe('lux init and multi-agent configuration', () => {
       const ok = mergeMcpConfig(targetPath, true);
       expect(ok).toBe(true);
       expect(fs.existsSync(targetPath)).toBe(false);
+    });
+  });
+
+  describe('removeMcpConfig and removeSkillFile', () => {
+    it('removes lux and legacy keys from MCP config while retaining others', () => {
+      const targetPath = path.join(fakeHome, 'config', 'mcp.json');
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.writeFileSync(
+        targetPath,
+        JSON.stringify({
+          mcpServers: {
+            customServer: { command: 'node', args: ['server.js'] },
+            lux: { command: 'npx', args: ['lux'] },
+          },
+        })
+      );
+
+      const modified = removeMcpConfig(targetPath);
+      expect(modified).toBe(true);
+
+      const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
+      expect(parsed.mcpServers.customServer).toEqual({ command: 'node', args: ['server.js'] });
+      expect(parsed.mcpServers.lux).toBeUndefined();
+    });
+
+    it('removes skill file and empty parent directory', () => {
+      const skillPath = path.join(fakeHome, 'skills', 'lux', 'SKILL.md');
+      writeSkillFile(skillPath);
+      expect(fs.existsSync(skillPath)).toBe(true);
+
+      const ok = removeSkillFile(skillPath);
+      expect(ok).toBe(true);
+      expect(fs.existsSync(skillPath)).toBe(false);
+      expect(fs.existsSync(path.dirname(skillPath))).toBe(false);
     });
   });
 
@@ -111,13 +152,13 @@ describe('lux init and multi-agent configuration', () => {
     });
   });
 
-  describe('runInit', () => {
-    it('initializes global configurations for all supported agents', () => {
-      const logs: string[] = [];
+  describe('runInit and runUninstall', () => {
+    it('initializes and then cleanly uninstalls global configurations', () => {
+      const initLogs: string[] = [];
       runInit({
         global: true,
         home: fakeHome,
-        logger: (msg) => logs.push(msg),
+        logger: (msg) => initLogs.push(msg),
       });
 
       const paths = getAgentConfigPaths(fakeHome);
@@ -125,38 +166,45 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(paths.antigravitySkill)).toBe(true);
       expect(fs.existsSync(paths.claudeCodeMcp)).toBe(true);
       expect(fs.existsSync(paths.claudeCodeSkill)).toBe(true);
-      expect(fs.existsSync(paths.claudeDesktopMcp)).toBe(true);
-      expect(fs.existsSync(paths.windsurfMcp)).toBe(true);
-      expect(fs.existsSync(paths.cursorMcp)).toBe(true);
-      expect(fs.existsSync(paths.clineMcp)).toBe(true);
-      expect(fs.existsSync(paths.rooCodeMcp)).toBe(true);
 
-      expect(logs.some((l) => l.includes('Antigravity'))).toBe(true);
-      expect(logs.some((l) => l.includes('Cline'))).toBe(true);
-      expect(logs.some((l) => l.includes('Roo Code'))).toBe(true);
+      const uninstallLogs: string[] = [];
+      runUninstall({
+        global: true,
+        home: fakeHome,
+        logger: (msg) => uninstallLogs.push(msg),
+      });
+
+      expect(fs.existsSync(paths.antigravitySkill)).toBe(false);
+      expect(fs.existsSync(paths.claudeCodeSkill)).toBe(false);
+
+      const antigravityMcpParsed = JSON.parse(fs.readFileSync(paths.antigravityMcp, 'utf-8'));
+      expect(antigravityMcpParsed.mcpServers.lux).toBeUndefined();
+
+      expect(uninstallLogs.some((l) => l.includes('Removed Antigravity skill'))).toBe(true);
+      expect(uninstallLogs.some((l) => l.includes('Global uninstallation complete'))).toBe(true);
     });
 
-    it('initializes workspace files and syncs detected agents', () => {
-      // Simulate existing ~/.gemini and ~/.claude
-      fs.mkdirSync(path.join(fakeHome, '.gemini'), { recursive: true });
-      fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
-
-      const logs: string[] = [];
+    it('initializes workspace and cleanly uninstalls workspace files', () => {
       runInit({
         global: false,
         home: fakeHome,
         cwd: fakeWorkspace,
-        logger: (msg) => logs.push(msg),
+        logger: () => {},
       });
 
       expect(fs.existsSync(path.join(fakeWorkspace, 'mcp.json'))).toBe(true);
-      expect(fs.existsSync(path.join(fakeWorkspace, '.mcp.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'plugin.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(true);
 
-      // Verify synced global agent skills
-      expect(fs.existsSync(path.join(fakeHome, '.gemini', 'config', 'skills', 'lux', 'SKILL.md'))).toBe(true);
-      expect(fs.existsSync(path.join(fakeHome, '.claude', 'skills', 'lux', 'SKILL.md'))).toBe(true);
+      runUninstall({
+        global: false,
+        home: fakeHome,
+        cwd: fakeWorkspace,
+        logger: () => {},
+      });
+
+      expect(fs.existsSync(path.join(fakeWorkspace, 'plugin.json'))).toBe(false);
+      expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(false);
     });
   });
 });

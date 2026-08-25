@@ -126,17 +126,16 @@ npm install -g lux-edit@latest
 lux init -g
 ```
 
-### Uninstalling
+### Uninstalling & Cleanup
 
 ```bash
-# 1. Remove CLI package
-npm uninstall -g lux-edit
+# 1. Cleanly remove MCP servers and skills from all agents (or without -g for workspace)
+lux uninstall -g
 
-# 2. Remove agent configs (if desired)
-# • Antigravity / Gemini: Remove "lux" in ~/.gemini/config/mcp_config.json and delete ~/.gemini/config/skills/lux
-# • Claude Code: Run `claude mcp remove lux`
-# • Cursor / Windsurf: Remove "lux" entry from ~/.cursor/mcp.json or ~/.codeium/windsurf/mcp_config.json
-# • Local Workspace: Delete .mcp.json in your project root
+# (or with npx: npx lux-edit uninstall -g)
+
+# 2. Remove the CLI package
+npm uninstall -g lux-edit
 ```
 
 ---

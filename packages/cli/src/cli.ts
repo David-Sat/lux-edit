@@ -68,7 +68,7 @@ program
     await startMcpStdio(options.root);
   });
 
-import { runInit } from './init.js';
+import { runInit, runUninstall } from './init.js';
 
 // Command: Initialize Agent Plugins manifest, MCP config, and skills
 program
@@ -79,6 +79,20 @@ program
   .option('--dry-run', 'Show planned changes without writing files', false)
   .action(async (options) => {
     runInit({
+      global: options.global,
+      dryRun: options.dryRun,
+    });
+  });
+
+// Command: Remove Agent MCP config, plugin manifest, and skills
+program
+  .command('uninstall')
+  .alias('remove')
+  .description('Remove lux MCP configuration and skills from agents or workspace')
+  .option('-g, --global', 'Remove globally from all user agents (Antigravity, Claude, Cursor, Windsurf, Cline, Roo Code)', false)
+  .option('--dry-run', 'Show planned changes without deleting files', false)
+  .action(async (options) => {
+    runUninstall({
       global: options.global,
       dryRun: options.dryRun,
     });
