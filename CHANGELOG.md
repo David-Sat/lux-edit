@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.4.1...lux-edit-v0.5.0) (2026-08-26)
+
+
+### Features
+
+* add multi-agent init support, inline text editing, and text selection comments ([87c738f](https://github.com/David-Sat/lux-edit/commit/87c738fb89cf22f13ea006be9306728038bfd764))
+* add packages/cli/README.md for npm, prepack sync, and multi-instance port fallback ([019869a](https://github.com/David-Sat/lux-edit/commit/019869aaef1cb3e62ea45a99a8c1492135afc7c6))
+* **cli:** add lux uninstall command and auto-clean legacy configs on update ([0df68e8](https://github.com/David-Sat/lux-edit/commit/0df68e8e092937706982419a13a01eaf2714efea))
+
+
+### Bug Fixes
+
+* inject overlay script in static directory target mode ([3fe59c5](https://github.com/David-Sat/lux-edit/commit/3fe59c5bb547668a93dc4f826273e7a198abcc2f))
+
 ## [0.4.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.4.0...lux-edit-v0.4.1) (2026-08-24)
 
 
