@@ -397,3 +397,54 @@ describe('Static Directory Target Mode', () => {
     expect(css).not.toContain('overlay.js');
   });
 });
+
+describe('Multiple Concurrent Servers & Port Fallback', () => {
+  const dirA = path.resolve(process.cwd(), '.test-multi-a');
+  const dirB = path.resolve(process.cwd(), '.test-multi-b');
+  let serverA: VisualEditServer;
+  let serverB: VisualEditServer;
+
+  beforeAll(() => {
+    fs.mkdirSync(dirA, { recursive: true });
+    fs.mkdirSync(dirB, { recursive: true });
+    fs.writeFileSync(path.join(dirA, 'index.html'), '<html><body>App A</body></html>');
+    fs.writeFileSync(path.join(dirB, 'index.html'), '<html><body>App B</body></html>');
+  });
+
+  afterAll(async () => {
+    if (serverA) await serverA.close();
+    if (serverB) await serverB.close();
+    if (fs.existsSync(dirA)) fs.rmSync(dirA, { recursive: true, force: true });
+    if (fs.existsSync(dirB)) fs.rmSync(dirB, { recursive: true, force: true });
+  });
+
+  it('runs multiple apps simultaneously and auto-assigns next port on collision', async () => {
+    const basePort = 19430;
+    serverA = new VisualEditServer({
+      target: path.join(dirA, 'index.html'),
+      port: basePort,
+      host: '127.0.0.1',
+      rootDir: dirA,
+    });
+    const urlA = await serverA.listen();
+    expect(urlA).toBe(`http://127.0.0.1:${basePort}`);
+
+    serverB = new VisualEditServer({
+      target: path.join(dirB, 'index.html'),
+      port: basePort, // Request same port
+      host: '127.0.0.1',
+      rootDir: dirB,
+    });
+    const urlB = await serverB.listen();
+    expect(urlB).toBe(`http://127.0.0.1:${basePort + 1}`);
+
+    // Both servers respond independently
+    const resA = await fetch(urlA);
+    const htmlA = await resA.text();
+    expect(htmlA).toContain('App A');
+
+    const resB = await fetch(urlB);
+    const htmlB = await resB.text();
+    expect(htmlB).toContain('App B');
+  });
+});

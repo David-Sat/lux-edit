@@ -13,6 +13,7 @@ export interface VisualEditServerOptions {
   target: string; // URL (http://...) or local file/dir path
   rootDir?: string;
   basePath?: string;
+  strictPort?: boolean;
 }
 
 export class VisualEditServer {
@@ -332,13 +333,32 @@ export class VisualEditServer {
 
   public listen(): Promise<string> {
     return new Promise((resolve, reject) => {
-      this.server.listen(this.options.port, this.options.host, () => {
-        const addr = this.server.address();
-        const port = typeof addr === 'object' && addr ? addr.port : this.options.port;
-        const reviewUrl = `http://${this.options.host}:${port}${this.basePath || ''}`;
-        resolve(reviewUrl);
-      });
-      this.server.on('error', reject);
+      const initialPort = this.options.port;
+      const host = this.options.host;
+      const strictPort = !!this.options.strictPort;
+
+      const tryListen = (port: number) => {
+        const onError = (err: any) => {
+          this.server.removeListener('error', onError);
+          // If port is in use and strictPort is false and not using random port 0, try next port
+          if (err.code === 'EADDRINUSE' && !strictPort && initialPort > 0 && port < initialPort + 50) {
+            tryListen(port + 1);
+          } else {
+            reject(err);
+          }
+        };
+
+        this.server.once('error', onError);
+        this.server.listen(port, host, () => {
+          this.server.removeListener('error', onError);
+          const addr = this.server.address();
+          const actualPort = typeof addr === 'object' && addr ? addr.port : port;
+          const reviewUrl = `http://${host}:${actualPort}${this.basePath || ''}`;
+          resolve(reviewUrl);
+        });
+      };
+
+      tryListen(initialPort);
     });
   }
 
