@@ -12,7 +12,7 @@ lux-edit injects a live visual editing layer into your web app or static HTML. A
 
 ---
 
-## ⚡ Quickstart
+## Quickstart
 
 ### 1. Install & Setup
 
@@ -60,7 +60,7 @@ npx lux-edit init -g
 
 ---
 
-## ⌨️ Shortcuts
+## Shortcuts
 
 | Key | Action |
 | --- | --- |
@@ -72,7 +72,7 @@ npx lux-edit init -g
 
 ---
 
-## 🛠️ Standalone CLI Options
+## Standalone CLI Options
 
 ```bash
 # Target running dev server (Next.js, Vite, Remix, etc.)
@@ -114,7 +114,7 @@ claude mcp add lux -- lux mcp
 
 ---
 
-## 🔄 Update & Uninstall
+## Update & Uninstall
 
 ### Updating
 
@@ -140,6 +140,6 @@ npm uninstall -g lux-edit
 
 ---
 
-## 📄 License
+## License
 
 [MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review).
