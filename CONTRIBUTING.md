@@ -41,6 +41,6 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) for automate
 
 ## Submitting a Pull Request
 
-1. Fork the repo and create your branch from `master`.
+1. Fork the repo and create your branch from `main`.
 2. Ensure `pnpm build` and `pnpm test` pass.
 3. Submit a Pull Request describing your changes.
