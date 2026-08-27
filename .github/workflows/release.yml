@@ -36,6 +36,10 @@ jobs:
         with:
           node-version: 20
 
+      - name: Upgrade npm for Trusted Publishing OIDC
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
+        run: npm install -g npm@latest
+
       - name: Install pnpm
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
         uses: pnpm/action-setup@v4
