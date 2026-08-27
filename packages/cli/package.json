@@ -32,7 +32,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/David-Sat/lux-edit.git"
+    "url": "git+https://github.com/David-Sat/lux-edit.git"
   },
   "homepage": "https://github.com/David-Sat/lux-edit",
   "license": "MIT"
