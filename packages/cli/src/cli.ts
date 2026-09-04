@@ -8,7 +8,7 @@ import os from 'node:os';
 
 declare const __PACKAGE_VERSION__: string;
 
-let cliVersion = '0.4.0';
+let cliVersion = '0.5.0';
 try {
   cliVersion = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
 } catch (e) {}
