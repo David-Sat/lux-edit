@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
+import zlib from 'node:zlib';
 import { VisualEditServer } from '../server.js';
 import { EventStore } from '../event-store.js';
 import path from 'node:path';
@@ -446,5 +447,112 @@ describe('Multiple Concurrent Servers & Port Fallback', () => {
     const resB = await fetch(urlB);
     const htmlB = await resB.text();
     expect(htmlB).toContain('App B');
+  });
+});
+
+describe('Proxy Compression Handling (Issue #22: Next.js gzip/brotli)', () => {
+  const testDir = path.resolve(process.cwd(), '.test-compression-store');
+  let upstreamServer: http.Server;
+  let upstreamPort: number;
+  let luxServer: VisualEditServer;
+  let luxUrl: string;
+
+  beforeAll(async () => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(testDir, { recursive: true });
+
+    // Upstream server that returns compressed HTML
+    upstreamServer = http.createServer((req, res) => {
+      const rawHtml = '<!DOCTYPE html><html><head><title>Compressed Page</title></head><body><h1>Hello Compressed</h1></body></html>';
+
+      if (req.url === '/gzip') {
+        const compressed = zlib.gzipSync(Buffer.from(rawHtml, 'utf-8'));
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Encoding': 'gzip',
+          'Content-Length': compressed.length.toString(),
+        });
+        res.end(compressed);
+        return;
+      }
+
+      if (req.url === '/brotli') {
+        const compressed = zlib.brotliCompressSync(Buffer.from(rawHtml, 'utf-8'));
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Encoding': 'br',
+          'Content-Length': compressed.length.toString(),
+        });
+        res.end(compressed);
+        return;
+      }
+
+      // Default: inspect accept-encoding
+      const acceptEncoding = req.headers['accept-encoding'] || '';
+      if (acceptEncoding.includes('gzip')) {
+        const compressed = zlib.gzipSync(Buffer.from(rawHtml, 'utf-8'));
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Encoding': 'gzip',
+        });
+        res.end(compressed);
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(rawHtml);
+      }
+    });
+
+    await new Promise<void>((resolve) => {
+      upstreamServer.listen(0, '127.0.0.1', () => {
+        const addr = upstreamServer.address() as any;
+        upstreamPort = addr.port;
+        resolve();
+      });
+    });
+
+    luxServer = new VisualEditServer({
+      target: `http://127.0.0.1:${upstreamPort}`,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: testDir,
+    });
+    luxUrl = await luxServer.listen();
+  });
+
+  afterAll(async () => {
+    await luxServer.close();
+    await new Promise<void>((resolve) => upstreamServer.close(() => resolve()));
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it('requests uncompressed content by sending accept-encoding: identity', async () => {
+    const res = await fetch(`${luxUrl}/`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('Hello Compressed');
+    expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+  });
+
+  it('decompresses upstream gzip HTML and injects overlay script cleanly without decoding error', async () => {
+    const res = await fetch(`${luxUrl}/gzip`);
+    expect(res.status).toBe(200);
+    // Content-Encoding header should be stripped so browser does not throw ERR_CONTENT_DECODING_FAILED
+    expect(res.headers.get('content-encoding')).toBeNull();
+    const html = await res.text();
+    expect(html).toContain('Hello Compressed');
+    expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+  });
+
+  it('decompresses upstream brotli HTML and injects overlay script cleanly', async () => {
+    const res = await fetch(`${luxUrl}/brotli`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-encoding')).toBeNull();
+    const html = await res.text();
+    expect(html).toContain('Hello Compressed');
+    expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
   });
 });

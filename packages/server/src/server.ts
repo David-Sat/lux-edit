@@ -2,6 +2,7 @@ import http, { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import httpProxy from 'http-proxy';
 import sirv from 'sirv';
 import { EventStore } from './event-store.js';
@@ -144,14 +145,20 @@ export class VisualEditServer {
   private setupProxyHandlers(): void {
     if (!this.proxy) return;
 
+    this.proxy.on('proxyReq', (proxyReq) => {
+      // Force upstream to send uncompressed HTML so we can safely inject the overlay script
+      proxyReq.setHeader('accept-encoding', 'identity');
+    });
+
     this.proxy.on('proxyRes', (proxyRes, req, res) => {
       const contentType = proxyRes.headers['content-type'] || '';
       const isHtml = contentType.includes('text/html');
 
-      // Strip Content-Length and CSP for HTML injection
+      // Strip Content-Length, Content-Encoding, and CSP for HTML injection
       const headers = { ...proxyRes.headers };
       if (isHtml) {
         delete headers['content-length'];
+        delete headers['content-encoding'];
         delete headers['content-security-policy'];
         delete headers['content-security-policy-report-only'];
       }
@@ -163,12 +170,27 @@ export class VisualEditServer {
         return;
       }
 
-      let body = '';
+      const chunks: Buffer[] = [];
       proxyRes.on('data', (chunk) => {
-        body += chunk.toString('utf-8');
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       });
 
       proxyRes.on('end', () => {
+        let buffer = Buffer.concat(chunks);
+        const encoding = (proxyRes.headers['content-encoding'] || '').toLowerCase();
+        try {
+          if (encoding.includes('gzip')) {
+            buffer = zlib.gunzipSync(buffer);
+          } else if (encoding.includes('br')) {
+            buffer = zlib.brotliDecompressSync(buffer);
+          } else if (encoding.includes('deflate')) {
+            buffer = zlib.inflateSync(buffer);
+          }
+        } catch (err: any) {
+          console.error('[lux] Failed to decompress upstream HTML payload:', err.message);
+        }
+
+        const body = buffer.toString('utf-8');
         const injected = this.injectOverlayScript(body);
         res.end(injected);
       });
