@@ -12,8 +12,73 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
 
   const server = new McpServer({
     name: 'lux-edit',
-    version: '0.4.0',
+    version: '0.5.0',
   });
+
+  // Standard MCP Resource: lux://pending-review
+  server.registerResource(
+    'pending-review',
+    'lux://pending-review',
+    {
+      description: 'Active visual review session, comments, annotations, and style edits from the browser overlay',
+      mimeType: 'text/markdown',
+    },
+    async (uri) => {
+      const batch = eventStore.getPendingReview();
+      if (!batch || ((!batch.mutations || batch.mutations.length === 0) && (!batch.annotations || batch.annotations.length === 0))) {
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: 'text/markdown',
+              text: 'No pending visual edits or comment notes found.',
+            },
+          ],
+        };
+      }
+
+      const summary = formatBatchSummary(batch);
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'text/markdown',
+            text: `### 🎯 Visual Review & Comments from User (Session: ${batch.id})\n\n${summary}\n\n### Raw Payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
+          },
+        ],
+      };
+    }
+  );
+
+  // Standard MCP Prompt: lux_apply_review
+  server.registerPrompt(
+    'lux_apply_review',
+    {
+      title: 'Apply Lux Visual Review',
+      description: 'Apply pending visual edits, comments, and design changes from the browser overlay to your codebase',
+    },
+    async () => {
+      const batch = eventStore.getPendingReview();
+      let contextText = 'No pending visual edits or comment notes found.';
+      if (batch && ((batch.mutations && batch.mutations.length > 0) || (batch.annotations && batch.annotations.length > 0))) {
+        const summary = formatBatchSummary(batch);
+        contextText = `Here is the visual review feedback from session ${batch.id}:\n\n${summary}\n\nRaw Batch JSON:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``;
+      }
+
+      return {
+        description: 'Review and implement user visual edits and annotations',
+        messages: [
+          {
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `Please review and apply the following visual edits and annotations from the Lux browser overlay to the project codebase:\n\n${contextText}\n\nCarefully update the relevant component files, styling, and copy, and verify everything builds properly.`,
+            },
+          },
+        ],
+      };
+    }
+  );
 
   // Primary Tool: Get Active / Pending Visual Review and Comments (Instant & Non-blocking)
   const getPendingReviewHandler = async () => {

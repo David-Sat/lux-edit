@@ -112,4 +112,32 @@ describe('MCP Server Tools & Prompts', () => {
     expect(textContent).toContain('src/components/PricingCard.tsx:22');
     expect(textContent).toContain('bg-indigo-500');
   });
+
+  it('reads pending review as an MCP resource (lux://pending-review)', async () => {
+    const res = await client.readResource({
+      uri: 'lux://pending-review',
+    });
+
+    expect(res.contents).toBeDefined();
+    expect(res.contents.length).toBe(1);
+    const content = res.contents[0] as any;
+    expect(content.uri).toBe('lux://pending-review');
+    expect(content.mimeType).toBe('text/markdown');
+    expect(content.text).toContain('Visual Review & Comments');
+    expect(content.text).toContain('mcp_test_batch_1');
+  });
+
+  it('retrieves prompt template via lux_apply_review', async () => {
+    const res = await client.getPrompt({
+      name: 'lux_apply_review',
+    });
+
+    expect(res.messages).toBeDefined();
+    expect(res.messages.length).toBe(1);
+    const message = res.messages[0];
+    expect(message.role).toBe('user');
+    expect((message.content as any).text).toContain('mcp_test_batch_1');
+    expect((message.content as any).text).toContain('src/components/PricingCard.tsx:22');
+  });
 });
+
