@@ -321,8 +321,7 @@ export class EventStore {
     for (const session of this.sessions.values()) {
       if (
         session.status === 'submitted' ||
-        session.status === 'in_progress' ||
-        (session.status === 'draft' && ((session.annotations && session.annotations.length > 0) || (session.mutations && session.mutations.length > 0)))
+        session.status === 'in_progress'
       ) {
         session.status = 'implemented';
         changed = true;
