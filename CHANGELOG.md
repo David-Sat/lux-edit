@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.5.0...lux-edit-v0.6.0) (2026-09-04)
+
+
+### Features
+
+* **mcp:** add MCP resource and prompt support, update MCP SDK to 1.30.0 ([72c5036](https://github.com/David-Sat/lux-edit/commit/72c50360dc0f216456909ec3f33a74732f0c2a04))
+
+
+### Bug Fixes
+
+* resolve proxy decompression and client-side SPA navigation issues ([#22](https://github.com/David-Sat/lux-edit/issues/22), [#24](https://github.com/David-Sat/lux-edit/issues/24)) ([f496aa7](https://github.com/David-Sat/lux-edit/commit/f496aa762a70b5e7d121b12344eb7d196877f6da))
+* **skill, store:** prevent server restart on /lux and protect draft sessions from auto-resolution ([01a519e](https://github.com/David-Sat/lux-edit/commit/01a519ea9b31778cbf55cc2583e7f48701613c00))
+
 ## [0.5.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.4.1...lux-edit-v0.5.0) (2026-08-26)
 
 
