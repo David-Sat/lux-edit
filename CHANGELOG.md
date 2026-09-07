@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.6.0...lux-edit-v0.7.0) (2026-09-07)
+
+
+### Features
+
+* **cli:** add Claude marketplace manifest, interactive installer, and custom path option ([e3b034f](https://github.com/David-Sat/lux-edit/commit/e3b034f2070601e346c9dbc73dd8d65531696bb5))
+* **cli:** adopt Agent Plugin standard and smart detection for legacy agents ([4b120e2](https://github.com/David-Sat/lux-edit/commit/4b120e2f25250a643784ac26a6195e2466ccb4ef))
+
 ## [0.6.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.5.0...lux-edit-v0.6.0) (2026-09-04)
 
 
