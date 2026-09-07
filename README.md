@@ -123,11 +123,21 @@ claude mcp add lux -- lux mcp
 
 ### Updating
 
+**From npm:**
 ```bash
-# Update CLI to latest version
+# Update CLI to latest published release
 npm install -g lux-edit@latest
 
 # Refresh agent skills & MCP configs
+lux init -g
+```
+
+**From local repository (monorepo / local development):**
+```bash
+# Rebuild the monorepo packages
+pnpm build
+
+# Refresh agent skills & MCP configs from the current local build
 lux init -g
 ```
 
