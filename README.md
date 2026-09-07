@@ -14,33 +14,51 @@ lux-edit injects a live visual editing layer into your web app or static HTML. A
 
 ## Quickstart
 
-### 1. Install & Setup
+### 1. Installation
 
+You can install `lux` via the Claude Marketplace/Plugin system, portable workspace configuration, or the interactive global installer:
+
+#### Option A: Claude Code Plugin (Official / Git)
+```bash
+# Install directly via Claude Code plugin manager
+claude plugin add https://github.com/David-Sat/lux-edit
+```
+
+#### Option B: Workspace Setup (Zero Global Pollution)
+Run in any web project root to generate universal `.mcp.json`, `plugin.json`, and `/lux` skills:
+```bash
+npx lux-edit init
+```
+
+#### Option C: Global Machine Setup (Interactive)
+Install the CLI and configure your AI coding agents across all projects:
 ```bash
 # 1. Install globally
 npm install -g lux-edit
 
-# 2. Configure your AI coding agents machine-wide (or run without -g in a repo)
+# 2. Interactive multi-agent installer
 lux init -g
 ```
 
-> **Plugin-First & Zero Ghost Files:**
-> - **Plugin-compatible agents** (Google Antigravity, Claude Code) are installed as standard **Agent Plugins** (`plugin.json` + `mcp_config.json` + skills).
-> - **Standalone MCP clients** (Cursor, Windsurf, Claude Desktop, Cline, Roo Code) are auto-detected so configuration files are only added if the app is actually installed.
-> - To target a specific agent: `lux init -g --agent cursor`
-> - To configure all legacy agents regardless of detection: `lux init -g --all`
+When running `lux init -g`, an interactive selector identifies installed tools and lets you pick:
+```text
+Select agents to configure with lux:
+  1. [●] Google Antigravity    (detected)
+  2. [●] Claude Code           (detected)
+  3. [○] Claude Desktop        (not detected)
+  4. [●] Cursor                (detected)
+  5. [○] Windsurf              (not detected)
+  a. Configure all
+  q. Cancel
 
-<details>
-<summary><strong>Prefer running with <code>npx</code> without installing?</strong></summary>
-
-```bash
-# Local repo setup
-npx lux-edit init
-
-# Global machine setup
-npx lux-edit init -g
+Enter numbers to select (e.g. 1,2), "a" for all, or press ENTER for detected defaults:
 ```
-</details>
+
+> **Advanced Init Options:**
+> - **Non-interactive default:** `lux init -g -y` (automatically configures detected tools)
+> - **Target specific agent:** `lux init -g --agent cursor`
+> - **Custom tool config path:** `lux init --path ~/.config/zed/settings.json` (or any custom directory/file)
+> - **Configure all major agents:** `lux init -g --all`
 
 ---
 
@@ -151,6 +169,7 @@ lux init -g
 # 1. Cleanly remove MCP servers and skills from all agents (or without -g for workspace)
 lux uninstall -g
 
+# (or remove from a custom path: lux uninstall --path ~/.config/zed/settings.json)
 # (or with npx: npx lux-edit uninstall -g)
 
 # 2. Remove the CLI package

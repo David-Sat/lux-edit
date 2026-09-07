@@ -11,6 +11,8 @@ import {
   removePluginBundle,
   isAgentInstalled,
   getAgentConfigPaths,
+  installCustomPath,
+  uninstallCustomPath,
   runInit,
   runUninstall,
 } from '../init.js';
@@ -191,11 +193,45 @@ describe('lux init and multi-agent configuration', () => {
     });
   });
 
+  describe('installCustomPath and uninstallCustomPath', () => {
+    it('installs to a specific json file and removes cleanly', () => {
+      const customFile = path.join(fakeWorkspace, 'custom-mcp.json');
+      const ok = installCustomPath(customFile);
+      expect(ok).toBe(true);
+      expect(fs.existsSync(customFile)).toBe(true);
+
+      const parsed = JSON.parse(fs.readFileSync(customFile, 'utf-8'));
+      expect(parsed.mcpServers.lux).toBeDefined();
+
+      const removed = uninstallCustomPath(customFile);
+      expect(removed).toBe(true);
+      const parsedAfter = JSON.parse(fs.readFileSync(customFile, 'utf-8'));
+      expect(parsedAfter.mcpServers.lux).toBeUndefined();
+    });
+
+    it('installs to a custom directory creating mcp.json and skill file', () => {
+      const customDir = path.join(fakeWorkspace, 'custom-agent');
+      const ok = installCustomPath(customDir);
+      expect(ok).toBe(true);
+      expect(fs.existsSync(path.join(customDir, 'mcp.json'))).toBe(true);
+      expect(fs.existsSync(path.join(customDir, 'skills', 'lux', 'SKILL.md'))).toBe(true);
+
+      const removed = uninstallCustomPath(customDir);
+      expect(removed).toBe(true);
+      expect(fs.existsSync(path.join(customDir, 'skills', 'lux', 'SKILL.md'))).toBe(false);
+    });
+  });
+
   describe('runInit and runUninstall', () => {
-    it('installs plugin bundles and skips non-detected legacy agents by default', () => {
+    it('installs plugin bundles and skips non-detected legacy agents by default', async () => {
+      // Simulate that Antigravity (.gemini) and Claude Code (.claude) are installed, but not Cursor/Windsurf
+      fs.mkdirSync(path.join(fakeHome, '.gemini'), { recursive: true });
+      fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
+
       const initLogs: string[] = [];
-      runInit({
+      await runInit({
         global: true,
+        yes: true,
         home: fakeHome,
         logger: (msg) => initLogs.push(msg),
       });
@@ -213,7 +249,7 @@ describe('lux init and multi-agent configuration', () => {
       expect(initLogs.some((l) => l.includes('Cursor') && l.includes('not detected, skipped'))).toBe(true);
 
       const uninstallLogs: string[] = [];
-      runUninstall({
+      await runUninstall({
         global: true,
         home: fakeHome,
         logger: (msg) => uninstallLogs.push(msg),
@@ -225,10 +261,11 @@ describe('lux init and multi-agent configuration', () => {
       expect(uninstallLogs.some((l) => l.includes('Global uninstallation complete'))).toBe(true);
     });
 
-    it('configures legacy agents when --all is specified', () => {
-      runInit({
+    it('configures legacy agents when --all is specified', async () => {
+      await runInit({
         global: true,
         all: true,
+        yes: true,
         home: fakeHome,
         logger: () => {},
       });
@@ -239,10 +276,11 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(paths.claudeDesktopMcp)).toBe(true);
     });
 
-    it('targets a single agent when --agent is specified', () => {
-      runInit({
+    it('targets a single agent when --agent is specified', async () => {
+      await runInit({
         global: true,
         agent: 'cursor',
+        yes: true,
         home: fakeHome,
         logger: () => {},
       });
@@ -253,8 +291,27 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(paths.antigravityPlugin)).toBe(false);
     });
 
-    it('initializes workspace as an Agent Plugin and cleanly uninstalls workspace files', () => {
-      runInit({
+    it('targets custom path when --path is specified', async () => {
+      const customPath = path.join(fakeWorkspace, 'zed-mcp.json');
+      await runInit({
+        path: customPath,
+        logger: () => {},
+      });
+
+      expect(fs.existsSync(customPath)).toBe(true);
+      const parsed = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+      expect(parsed.mcpServers.lux).toBeDefined();
+
+      await runUninstall({
+        path: customPath,
+        logger: () => {},
+      });
+      const parsedAfter = JSON.parse(fs.readFileSync(customPath, 'utf-8'));
+      expect(parsedAfter.mcpServers.lux).toBeUndefined();
+    });
+
+    it('initializes workspace as an Agent Plugin and cleanly uninstalls workspace files', async () => {
+      await runInit({
         global: false,
         home: fakeHome,
         cwd: fakeWorkspace,
@@ -267,7 +324,7 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(path.join(fakeWorkspace, '.mcp.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(true);
 
-      runUninstall({
+      await runUninstall({
         global: false,
         home: fakeHome,
         cwd: fakeWorkspace,

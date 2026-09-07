@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import readline from 'node:readline';
 
 export const SKILL_CONTENT = `---
 name: lux
@@ -271,12 +272,12 @@ export interface AgentPaths {
   claudePlugin: string;
   claudeCodeMcp: string;
   claudeCodeSkill: string;
-  // Legacy / standalone MCP agents
+  // Major standalone MCP agents
   claudeDesktopMcp: string;
   windsurfMcp: string;
   cursorMcp: string;
-  clineMcp: string;
-  rooCodeMcp: string;
+  clineMcp?: string;
+  rooCodeMcp?: string;
 }
 
 export function getAgentConfigPaths(
@@ -293,7 +294,7 @@ export function getAgentConfigPaths(
     claudeDesktopMcp = path.join(home, '.config', 'Claude', 'claude_desktop_config.json');
   }
 
-  // VS Code globalStorage base directory
+  // VS Code globalStorage base directory (for optional legacy path resolution)
   let vscodeGlobalStorage: string;
   if (platform === 'darwin') {
     vscodeGlobalStorage = path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage');
@@ -318,32 +319,178 @@ export function getAgentConfigPaths(
   };
 }
 
+// Helper to install into an explicit custom JSON file or directory path
+export function installCustomPath(
+  targetPath: string,
+  dryRun: boolean = false,
+  log: (msg: string) => void = console.log
+): boolean {
+  try {
+    const resolvedPath = path.resolve(targetPath);
+    if (resolvedPath.endsWith('.json')) {
+      if (mergeMcpConfig(resolvedPath, dryRun)) {
+        log(`✓ Configured custom MCP file: ${resolvedPath}`);
+        return true;
+      }
+    } else {
+      const mcpPath = path.join(resolvedPath, 'mcp.json');
+      const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
+      if (mergeMcpConfig(mcpPath, dryRun)) {
+        log(`✓ Created custom MCP config:  ${mcpPath}`);
+      }
+      if (writeSkillFile(skillPath, dryRun)) {
+        log(`✓ Created custom skill file:  ${skillPath}`);
+      }
+      return true;
+    }
+  } catch (err: any) {
+    log(`✗ Failed to configure custom path ${targetPath}: ${err.message}`);
+  }
+  return false;
+}
+
+// Helper to uninstall from an explicit custom JSON file or directory path
+export function uninstallCustomPath(
+  targetPath: string,
+  dryRun: boolean = false,
+  log: (msg: string) => void = console.log
+): boolean {
+  try {
+    const resolvedPath = path.resolve(targetPath);
+    if (resolvedPath.endsWith('.json')) {
+      if (removeMcpConfig(resolvedPath, dryRun)) {
+        log(`✓ Removed lux from custom file: ${resolvedPath}`);
+        return true;
+      }
+    } else {
+      const mcpPath = path.join(resolvedPath, 'mcp.json');
+      const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
+      removeMcpConfig(mcpPath, dryRun);
+      removeSkillFile(skillPath, dryRun);
+      log(`✓ Cleaned custom directory:     ${resolvedPath}`);
+      return true;
+    }
+  } catch (err: any) {
+    log(`✗ Failed to uninstall from custom path ${targetPath}: ${err.message}`);
+  }
+  return false;
+}
+
+// Interactive agent selector for terminal TTY environments
+export async function promptAgentSelection(
+  candidates: Array<{ key: string; name: string; detected: boolean }>
+): Promise<string[]> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  console.log('\nSelect agents to configure with lux:');
+  candidates.forEach((c, idx) => {
+    const status = c.detected ? 'detected' : 'not detected';
+    const mark = c.detected ? '●' : '○';
+    console.log(`  ${idx + 1}. [${mark}] ${c.name.padEnd(20)} (${status})`);
+  });
+  console.log('  a. Configure all');
+  console.log('  q. Cancel\n');
+
+  return new Promise((resolve) => {
+    rl.question('Enter numbers to select (e.g. 1,2), "a" for all, or press ENTER for detected defaults: ', (answer) => {
+      rl.close();
+      const trimmed = answer.trim().toLowerCase();
+      if (trimmed === 'q' || trimmed === 'none') {
+        resolve([]);
+        return;
+      }
+      if (trimmed === 'a' || trimmed === 'all') {
+        resolve(candidates.map((c) => c.key));
+        return;
+      }
+      if (trimmed === '') {
+        resolve(candidates.filter((c) => c.detected).map((c) => c.key));
+        return;
+      }
+      const selectedKeys: string[] = [];
+      const parts = trimmed.split(/[\s,]+/);
+      for (const part of parts) {
+        const num = parseInt(part, 10);
+        if (!isNaN(num) && num >= 1 && num <= candidates.length) {
+          selectedKeys.push(candidates[num - 1].key);
+        }
+      }
+      resolve(selectedKeys);
+    });
+  });
+}
+
 export interface InitOptions {
   global?: boolean;
   dryRun?: boolean;
   all?: boolean;
+  yes?: boolean;
   agent?: string;
+  path?: string;
   home?: string;
   cwd?: string;
   logger?: (msg: string) => void;
 }
 
-export function runInit(options: InitOptions = {}) {
+export async function runInit(options: InitOptions = {}) {
   const home = options.home || os.homedir();
   const cwd = options.cwd || process.cwd();
   const dryRun = !!options.dryRun;
   const isGlobal = !!options.global;
   const forceAll = !!options.all;
   const targetAgent = options.agent?.toLowerCase();
+  const customPath = options.path;
   const log = options.logger || console.log;
 
+  // 1. Custom Path Mode
+  if (customPath) {
+    log(`\nConfiguring custom path: ${customPath}\n`);
+    installCustomPath(customPath, dryRun, log);
+    return;
+  }
+
+  // 2. Global Agent Installation Mode
   if (isGlobal) {
     log('\nInstalling lux globally across user agent environments\n');
     const paths = getAgentConfigPaths(home);
 
-    const shouldTarget = (name: string) => !targetAgent || targetAgent === name || targetAgent === 'all';
+    const agentCandidates: Array<{
+      key: 'antigravity' | 'claude' | 'cursor' | 'windsurf' | 'desktop';
+      name: string;
+      detected: boolean;
+    }> = [
+      { key: 'antigravity', name: 'Google Antigravity', detected: isAgentInstalled('antigravity', home) },
+      { key: 'claude', name: 'Claude Code', detected: isAgentInstalled('claude', home) },
+      { key: 'cursor', name: 'Cursor', detected: isAgentInstalled('cursor', home) },
+      { key: 'windsurf', name: 'Windsurf', detected: isAgentInstalled('windsurf', home) },
+      { key: 'desktop', name: 'Claude Desktop', detected: isAgentInstalled('desktop', home) },
+    ];
 
-    // 1. Plugin-Compatible Agents (Agent Plugin Standard: plugin.json + mcp_config.json + skills/)
+    let selectedAgentKeys: string[];
+    if (targetAgent) {
+      selectedAgentKeys = [targetAgent];
+    } else if (forceAll) {
+      selectedAgentKeys = agentCandidates.map((c) => c.key);
+    } else if (!options.yes && process.stdin.isTTY && process.stdout.isTTY) {
+      selectedAgentKeys = await promptAgentSelection(agentCandidates);
+      if (selectedAgentKeys.length === 0) {
+        log('Initialization cancelled (no agents selected).\n');
+        return;
+      }
+    } else {
+      // Default non-interactive or --yes: select all detected agents
+      selectedAgentKeys = agentCandidates.filter((c) => c.detected).map((c) => c.key);
+      if (selectedAgentKeys.length === 0) {
+        selectedAgentKeys = ['antigravity', 'claude'];
+      }
+    }
+
+    const shouldTarget = (key: string) => selectedAgentKeys.includes(key);
+
+    // Tier 1: Plugin-Compatible Agents (Agent Plugin Standard: plugin.json + mcp_config.json + skills/)
     if (shouldTarget('antigravity') || shouldTarget('gemini')) {
       if (writePluginBundle(paths.antigravityPlugin, dryRun)) {
         log(`✓ Antigravity plugin:     ${paths.antigravityPlugin} (Skills + MCP)`);
@@ -376,37 +523,32 @@ export function runInit(options: InitOptions = {}) {
       }
     }
 
-    // 2. Legacy / Standalone MCP Clients (Smart Detection)
-    // Only configure if detected on the machine, or if forceAll is set, or if explicitly requested via --agent
-    const legacyAgents: Array<{
-      key: 'desktop' | 'windsurf' | 'cursor' | 'cline' | 'roo';
+    // Tier 2: Standalone MCP Clients (Cursor, Windsurf, Claude Desktop)
+    const standaloneClients: Array<{
+      key: 'desktop' | 'windsurf' | 'cursor';
       name: string;
       path: string;
     }> = [
       { key: 'desktop', name: 'Claude Desktop', path: paths.claudeDesktopMcp },
       { key: 'windsurf', name: 'Windsurf', path: paths.windsurfMcp },
       { key: 'cursor', name: 'Cursor', path: paths.cursorMcp },
-      { key: 'cline', name: 'Cline', path: paths.clineMcp },
-      { key: 'roo', name: 'Roo Code', path: paths.rooCodeMcp },
     ];
 
-    for (const agent of legacyAgents) {
-      if (!shouldTarget(agent.key) && !shouldTarget(agent.name.toLowerCase().replace(/\s+/g, ''))) {
-        continue;
-      }
-      const isDetected = isAgentInstalled(agent.key, home);
-      if (isDetected || forceAll || targetAgent === agent.key) {
-        if (mergeMcpConfig(agent.path, dryRun)) {
-          log(`✓ ${agent.name.padEnd(16)}:    ${agent.path}`);
+    for (const client of standaloneClients) {
+      if (shouldTarget(client.key)) {
+        if (mergeMcpConfig(client.path, dryRun)) {
+          log(`✓ ${client.name.padEnd(16)}:    ${client.path}`);
         }
       } else {
-        log(`- ${agent.name.padEnd(16)}:    (not detected, skipped)`);
+        const detected = isAgentInstalled(client.key, home);
+        log(`- ${client.name.padEnd(16)}:    (${detected ? 'skipped' : 'not detected, skipped'})`);
       }
     }
 
     log('\nGlobal initialization complete.');
     log('lux is now configured for your agents across all projects.\n');
   } else {
+    // 3. Workspace Initialization Mode (Agent Plugin Standard)
     log('\nInitializing lux workspace configuration (Agent Plugin standard)\n');
 
     // 1. Write standard plugin.json
@@ -423,7 +565,7 @@ export function runInit(options: InitOptions = {}) {
     }
     log(`✓ Created plugin MCP:     ${pluginMcpPath}`);
 
-    // 3. Write standard mcp.json and .mcp.json (for standalone MCP client workspace detection)
+    // 3. Write standard mcp.json and .mcp.json (universal across Cursor, Claude Code, Windsurf, Zed)
     const mcpConfigPath = path.join(cwd, 'mcp.json');
     const dotMcpConfigPath = path.join(cwd, '.mcp.json');
     if (!dryRun) {
@@ -471,25 +613,35 @@ export interface UninstallOptions {
   global?: boolean;
   dryRun?: boolean;
   agent?: string;
+  path?: string;
   home?: string;
   cwd?: string;
   logger?: (msg: string) => void;
 }
 
-export function runUninstall(options: UninstallOptions = {}) {
+export async function runUninstall(options: UninstallOptions = {}) {
   const home = options.home || os.homedir();
   const cwd = options.cwd || process.cwd();
   const dryRun = !!options.dryRun;
   const isGlobal = !!options.global;
   const targetAgent = options.agent?.toLowerCase();
+  const customPath = options.path;
   const log = options.logger || console.log;
 
+  // 1. Custom Path Mode
+  if (customPath) {
+    log(`\nRemoving lux from custom path: ${customPath}\n`);
+    uninstallCustomPath(customPath, dryRun, log);
+    return;
+  }
+
+  // 2. Global Mode
   if (isGlobal) {
     log('\nRemoving lux globally from user agent environments\n');
     const paths = getAgentConfigPaths(home);
     const shouldTarget = (name: string) => !targetAgent || targetAgent === name || targetAgent === 'all';
 
-    // 1. Google Antigravity / Gemini
+    // Tier 1: Google Antigravity / Gemini
     if (shouldTarget('antigravity') || shouldTarget('gemini')) {
       if (removePluginBundle(paths.antigravityPlugin, dryRun)) {
         log(`✓ Removed Antigravity plugin: ${paths.antigravityPlugin}`);
@@ -502,7 +654,7 @@ export function runUninstall(options: UninstallOptions = {}) {
       }
     }
 
-    // 2. Claude Code
+    // Tier 1: Claude Code
     if (shouldTarget('claude') || shouldTarget('claude-code')) {
       if (removePluginBundle(paths.claudePlugin, dryRun)) {
         log(`✓ Removed Claude Code plugin: ${paths.claudePlugin}`);
@@ -521,31 +673,30 @@ export function runUninstall(options: UninstallOptions = {}) {
       }
     }
 
-    // 3. Legacy / Standalone MCP Clients
-    const legacyAgents: Array<{
-      key: 'desktop' | 'windsurf' | 'cursor' | 'cline' | 'roo';
+    // Tier 2: Standalone MCP Clients
+    const standaloneClients: Array<{
+      key: 'desktop' | 'windsurf' | 'cursor';
       name: string;
       path: string;
     }> = [
       { key: 'desktop', name: 'Claude Desktop', path: paths.claudeDesktopMcp },
       { key: 'windsurf', name: 'Windsurf', path: paths.windsurfMcp },
       { key: 'cursor', name: 'Cursor', path: paths.cursorMcp },
-      { key: 'cline', name: 'Cline', path: paths.clineMcp },
-      { key: 'roo', name: 'Roo Code', path: paths.rooCodeMcp },
     ];
 
-    for (const agent of legacyAgents) {
-      if (!shouldTarget(agent.key) && !shouldTarget(agent.name.toLowerCase().replace(/\s+/g, ''))) {
+    for (const client of standaloneClients) {
+      if (!shouldTarget(client.key) && !shouldTarget(client.name.toLowerCase().replace(/\s+/g, ''))) {
         continue;
       }
-      if (removeMcpConfig(agent.path, dryRun)) {
-        log(`✓ Removed ${agent.name.padEnd(16)}: ${agent.path}`);
+      if (removeMcpConfig(client.path, dryRun)) {
+        log(`✓ Removed ${client.name.padEnd(16)}: ${client.path}`);
       }
     }
 
     log('\nGlobal uninstallation complete.');
     log('lux MCP servers and skills have been removed from your agents.\n');
   } else {
+    // 3. Workspace Mode
     log('\nRemoving lux from workspace\n');
 
     const mcpConfigPath = path.join(cwd, 'mcp.json');

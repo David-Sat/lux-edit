@@ -1,0 +1,10 @@
+{
+  "name": "lux",
+  "description": "Live in-browser visual editing, design token tweaking, and multi-agent review overlay for web apps.",
+  "author": {
+    "name": "David Satomi"
+  },
+  "homepage": "https://github.com/David-Sat/lux-edit",
+  "repository": "https://github.com/David-Sat/lux-edit",
+  "license": "MIT"
+}

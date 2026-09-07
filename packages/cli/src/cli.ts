@@ -76,15 +76,19 @@ program
   .alias('install')
   .description('Initialize lux agent plugin, MCP configuration, and skills')
   .option('-g, --global', 'Install globally for agents (Antigravity, Claude Code, and detected MCP clients)', false)
-  .option('--agent <name>', 'Target a specific agent (antigravity, claude, cursor, windsurf, desktop, cline, roo)')
-  .option('--all', 'Configure all legacy agents regardless of whether they are detected on this machine', false)
+  .option('-y, --yes', 'Automatic non-interactive mode; use detected defaults', false)
+  .option('--agent <name>', 'Target a specific agent (antigravity, claude, cursor, windsurf, desktop)')
+  .option('--path <path>', 'Install to custom MCP JSON config file or directory')
+  .option('--all', 'Configure all major agents regardless of whether they are detected on this machine', false)
   .option('--dry-run', 'Show planned changes without writing files', false)
   .action(async (options) => {
-    runInit({
+    await runInit({
       global: options.global,
       agent: options.agent,
       all: options.all,
       dryRun: options.dryRun,
+      yes: options.yes,
+      path: options.path,
     });
   });
 
@@ -95,12 +99,14 @@ program
   .description('Remove lux MCP configuration and skills from agents or workspace')
   .option('-g, --global', 'Remove globally from all user agents', false)
   .option('--agent <name>', 'Target a specific agent to uninstall from')
+  .option('--path <path>', 'Remove from custom MCP JSON config file or directory')
   .option('--dry-run', 'Show planned changes without deleting files', false)
   .action(async (options) => {
-    runUninstall({
+    await runUninstall({
       global: options.global,
       agent: options.agent,
       dryRun: options.dryRun,
+      path: options.path,
     });
   });
 
