@@ -5,6 +5,7 @@ In-browser visual editing, annotation, and review overlay for AI coding agents.
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-38bdf8.svg)](https://modelcontextprotocol.io)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](./LICENSE)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local-purple.svg)](./PRIVACY.md)
 
 ![lux-edit Workflow](./docs/workflow.svg)
 
@@ -164,4 +165,4 @@ npm uninstall -g lux-edit
 
 ## License
 
-[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review).
+[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review). • [Privacy Policy](./PRIVACY.md)
