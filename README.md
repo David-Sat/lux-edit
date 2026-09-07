@@ -7,7 +7,11 @@ In-browser visual editing, annotation, and review overlay for AI coding agents.
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](./LICENSE)
 [![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local-purple.svg)](./PRIVACY.md)
 
-![lux-edit Workflow](./docs/workflow.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/workflow-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/workflow-light.svg">
+  <img alt="lux-edit Workflow" src="./docs/workflow-light.svg" width="100%">
+</picture>
 
 lux-edit injects a live visual editing layer into your web app or static HTML. Adjust styling, edit text directly in the DOM, and highlight words or drop comment pins. Everything syncs in real time as structured diffs to your AI coding agent via MCP.
 
@@ -64,6 +68,18 @@ Enter numbers (e.g. 1,2), "a" for all, or press ENTER for detected defaults.
    /lux
    ```
    The agent reads your visual edits and comments over MCP, updates your code, and the browser auto-refreshes.
+
+---
+
+## Architecture
+
+lux-edit bridges the gap between browser inspection and your coding agent's local filesystem context:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/architecture-light.svg">
+  <img alt="lux-edit System Architecture" src="./docs/architecture-light.svg" width="100%">
+</picture>
 
 ---
 
