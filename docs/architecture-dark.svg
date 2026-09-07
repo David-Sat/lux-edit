@@ -1,0 +1,152 @@
+<svg class="diagram" viewBox="0 0 1000 520" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" role="img" aria-label="System architecture diagram of lux-edit">
+  <defs>
+    <pattern id="dotGridDark" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="0.8" fill="#ffffff" opacity="0.08" />
+    </pattern>
+    <marker id="arr-muted-dark" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+      <polygon points="0 0, 7 3, 0 6" fill="#8b949e" />
+    </marker>
+    <marker id="arr-accent-dark" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+      <polygon points="0 0, 7 3, 0 6" fill="#f2724b" />
+    </marker>
+    <marker id="arr-link-dark" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto">
+      <polygon points="0 0, 7 3, 0 6" fill="#58a6ff" />
+    </marker>
+    <style>
+      .font-sans-dark { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      .font-mono-dark { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    </style>
+  </defs>
+
+  <!-- Background fill with subtle dot grid -->
+  <rect width="1000" height="520" fill="#0d1117" rx="8" stroke="#30363d" stroke-width="1" />
+  <rect width="1000" height="520" fill="url(#dotGridDark)" rx="8" />
+
+  <!-- ================= 3 CLEAN ZONES ================= -->
+
+  <!-- Zone 1: User Application (Left) -->
+  <rect x="28" y="44" width="272" height="446" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1" />
+  <rect x="40" y="26" width="186" height="30" rx="5" fill="#161b22" stroke="#30363d" stroke-width="1.2" />
+  <g transform="translate(49, 33)">
+    <rect width="15" height="14" rx="2.5" fill="none" stroke="#8b949e" stroke-width="1.3" />
+    <line x1="0" y1="4.5" x2="15" y2="4.5" stroke="#8b949e" stroke-width="1.2" />
+    <circle cx="3.2" cy="2.3" r="0.7" fill="#8b949e" />
+    <circle cx="5.6" cy="2.3" r="0.7" fill="#8b949e" />
+  </g>
+  <text x="72" y="46" fill="#f0f6fc" font-size="12" class="font-mono-dark" font-weight="700" letter-spacing="0.12em">YOUR APPLICATION</text>
+
+  <!-- Zone 2: Coding Agent (Center - Dotted Line Border) -->
+  <rect x="332" y="44" width="280" height="446" rx="8" fill="rgba(56, 139, 253, 0.08)" stroke="rgba(56, 139, 253, 0.45)" stroke-width="1.3" stroke-dasharray="5,4" />
+  <rect x="344" y="26" width="168" height="30" rx="5" fill="#161b22" stroke="rgba(56, 139, 253, 0.45)" stroke-width="1.2" />
+  <g transform="translate(353, 33)">
+    <rect width="15" height="14" rx="2.5" fill="none" stroke="#58a6ff" stroke-width="1.3" />
+    <polyline points="3.5 5, 6.8 7, 3.5 9" fill="none" stroke="#58a6ff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+    <line x1="8.5" y1="9.5" x2="11.8" y2="9.5" stroke="#58a6ff" stroke-width="1.3" stroke-linecap="round" />
+  </g>
+  <text x="376" y="46" fill="#58a6ff" font-size="12" class="font-mono-dark" font-weight="700" letter-spacing="0.12em">CODING AGENT</text>
+
+  <!-- Zone 3: lux-edit Tooling (Right - Distinct Coral Container) -->
+  <rect x="644" y="44" width="328" height="446" rx="8" fill="rgba(242, 114, 75, 0.08)" stroke="rgba(242, 114, 75, 0.45)" stroke-width="1.2" />
+  <rect x="656" y="26" width="176" height="30" rx="5" fill="#161b22" stroke="rgba(242, 114, 75, 0.45)" stroke-width="1.2" />
+  <g transform="translate(665, 33)">
+    <path d="M 1 7 Q 7.5 1.5 14 7 Q 7.5 12.5 1 7 Z" fill="none" stroke="#f2724b" stroke-width="1.3" stroke-linejoin="round" />
+    <circle cx="7.5" cy="7" r="2.2" fill="none" stroke="#f2724b" stroke-width="1.2" />
+  </g>
+  <text x="688" y="46" fill="#f2724b" font-size="12" class="font-mono-dark" font-weight="700" letter-spacing="0.12em">LUX-EDIT PLUGIN</text>
+
+  <!-- ================= CONNECTORS ================= -->
+
+  <!-- 1. Web App to lux Proxy (HTTP Forward across top) -->
+  <path d="M 290,124 H 664" fill="none" stroke="#58a6ff" stroke-width="1.3" marker-end="url(#arr-link-dark)" />
+  <rect x="450" y="115" width="50" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="475" y="127" fill="#58a6ff" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">PROXY</text>
+
+  <!-- 2. Watcher triggers Live Reload back to Web App -->
+  <path d="M 664,104 H 290" fill="none" stroke="#8b949e" stroke-width="1.1" stroke-dasharray="3,3" marker-end="url(#arr-muted-dark)" />
+  <rect x="446" y="95" width="58" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="475" y="107" fill="#8b949e" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">RELOAD</text>
+
+  <!-- 3. Proxy injects Overlay into Browser (Right Vertical) -->
+  <path d="M 808,168 V 222" fill="none" stroke="#f2724b" stroke-width="1.3" marker-end="url(#arr-accent-dark)" />
+  <rect x="781" y="186" width="54" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="808" y="198" fill="#f2724b" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">INJECT</text>
+
+  <!-- 4. Overlay live-syncs to Event Store / MCP (Right Vertical) -->
+  <path d="M 808,316 V 368" fill="none" stroke="#f2724b" stroke-width="1.3" marker-end="url(#arr-accent-dark)" />
+  <rect x="775" y="333" width="66" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="808" y="345" fill="#f2724b" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">WS SYNC</text>
+
+  <!-- 5. MCP Server to Coding Agent (Right to Center) -->
+  <path d="M 664,412 H 596" fill="none" stroke="#f2724b" stroke-width="1.4" marker-end="url(#arr-accent-dark)" />
+  <rect x="604" y="403" width="52" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="630" y="415" fill="#f2724b" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">STDIO</text>
+
+  <!-- 6. Coding Agent to Project Codebase (Center to Left) -->
+  <path d="M 348,412 H 290" fill="none" stroke="#58a6ff" stroke-width="1.4" marker-end="url(#arr-link-dark)" />
+  <rect x="296" y="403" width="46" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="319" y="415" fill="#58a6ff" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">EDIT</text>
+
+  <!-- 7. Agent spawns / runs lux Proxy & Watcher -->
+  <path d="M 596,368 H 622 Q 630,368 630,360 V 152 Q 630,144 638,144 H 664"
+        fill="none" stroke="#8b949e" stroke-width="1.1" stroke-dasharray="3,3" marker-end="url(#arr-muted-dark)" />
+  <rect x="600" y="246" width="60" height="18" rx="3" fill="#161b22" stroke="#30363d" stroke-width="0.8" />
+  <text x="630" y="258" fill="#8b949e" font-size="9" class="font-mono-dark" font-weight="600" text-anchor="middle">SPAWNS</text>
+
+  <!-- ================= NODES ================= -->
+
+  <!-- Zone 1, Top Node: Target Web App -->
+  <g id="node-target-app">
+    <rect x="46" y="80" width="244" height="88" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.2" />
+    <text x="62" y="106" fill="#f0f6fc" font-size="13" class="font-sans-dark" font-weight="600">Running Web App</text>
+    <text x="62" y="124" fill="#8b949e" font-size="9" class="font-mono-dark">localhost:3000 / HTML</text>
+    <rect x="62" y="136" width="118" height="16" rx="3" fill="#21262d" />
+    <text x="121" y="147" fill="#8b949e" font-size="8" class="font-mono-dark" text-anchor="middle">Target Under Review</text>
+  </g>
+
+  <!-- Zone 1, Bottom Node: Project Source Files -->
+  <g id="node-repo-files">
+    <rect x="46" y="368" width="244" height="88" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.2" />
+    <text x="62" y="394" fill="#f0f6fc" font-size="13" class="font-sans-dark" font-weight="600">Project Codebase</text>
+    <text x="62" y="412" fill="#8b949e" font-size="9" class="font-mono-dark">src/**/*.tsx, CSS, configs</text>
+    <rect x="62" y="424" width="96" height="16" rx="3" fill="#21262d" />
+    <text x="110" y="435" fill="#8b949e" font-size="8" class="font-mono-dark" text-anchor="middle">Workspace Files</text>
+  </g>
+
+  <!-- Zone 2, Center Node: Active Agent Session -->
+  <g id="node-coding-agent">
+    <rect x="348" y="348" width="248" height="128" rx="6" fill="#161b22" stroke="rgba(56, 139, 253, 0.45)" stroke-width="1.3" />
+    <text x="366" y="378" fill="#f0f6fc" font-size="13.5" class="font-sans-dark" font-weight="700">Active Agent Session</text>
+    <text x="366" y="398" fill="#8b949e" font-size="9" class="font-mono-dark">Claude Code, Cursor, Codex, etc.</text>
+
+    <rect x="366" y="412" width="212" height="42" rx="4" fill="rgba(56, 139, 253, 0.12)" stroke="#58a6ff" stroke-width="0.8" />
+    <text x="378" y="430" fill="#58a6ff" font-size="9" class="font-mono-dark" font-weight="600">lux_get_pending_review</text>
+    <text x="378" y="444" fill="#8b949e" font-size="7.5" class="font-mono-dark">Applies changes to source files</text>
+  </g>
+
+  <!-- Zone 3, Top Node: lux Proxy & Watcher -->
+  <g id="node-proxy">
+    <rect x="664" y="80" width="288" height="88" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.2" />
+    <text x="680" y="106" fill="#f0f6fc" font-size="13" class="font-sans-dark" font-weight="600">lux Proxy &amp; File Watcher</text>
+    <text x="680" y="124" fill="#8b949e" font-size="9" class="font-mono-dark">http://127.0.0.1:4320</text>
+    <rect x="680" y="136" width="156" height="16" rx="3" fill="#21262d" />
+    <text x="758" y="147" fill="#8b949e" font-size="8" class="font-mono-dark" text-anchor="middle">Streams HTML &amp; Auto-Reloads</text>
+  </g>
+
+  <!-- Zone 3, Middle Node: Injected Visual Overlay -->
+  <g id="node-overlay">
+    <rect x="664" y="222" width="288" height="94" rx="6" fill="#161b22" stroke="#f2724b" stroke-width="1.5" />
+    <rect x="664" y="222" width="288" height="26" rx="5" fill="rgba(242, 114, 75, 0.15)" />
+    <text x="680" y="239" fill="#f2724b" font-size="12" class="font-sans-dark" font-weight="700">Injected Visual Overlay UI</text>
+    <text x="680" y="267" fill="#f0f6fc" font-size="10.5" class="font-sans-dark">Smart ribbon, range sliders &amp; tokens</text>
+    <text x="680" y="287" fill="#8b949e" font-size="9" class="font-mono-dark">Shadow DOM • Pinned element comments</text>
+  </g>
+
+  <!-- Zone 3, Bottom Node: Event Store & MCP Server -->
+  <g id="node-mcp-server">
+    <rect x="664" y="368" width="288" height="88" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.2" />
+    <text x="680" y="394" fill="#f0f6fc" font-size="13" class="font-sans-dark" font-weight="600">MCP Server &amp; Event Store</text>
+    <text x="680" y="412" fill="#8b949e" font-size="9" class="font-mono-dark">.visual-edit/sessions.jsonl</text>
+    <rect x="680" y="424" width="184" height="16" rx="3" fill="#21262d" />
+    <text x="772" y="435" fill="#8b949e" font-size="8" class="font-mono-dark" text-anchor="middle">Structured Delta &amp; Review Engine</text>
+  </g>
+</svg>

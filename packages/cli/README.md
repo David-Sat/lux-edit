@@ -3,10 +3,16 @@
 In-browser visual editing, annotation, and review overlay for AI coding agents.
 
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-38bdf8.svg)](https://modelcontextprotocol.io)
+[![Agent Plugins](https://img.shields.io/badge/Agent%20Plugin-Standard-6366f1.svg)](https://agent-plugins.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](./LICENSE)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local-purple.svg)](./PRIVACY.md)
 
-![lux-edit Workflow](./docs/workflow.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/workflow-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/workflow-light.svg">
+  <img alt="lux-edit Workflow" src="./docs/workflow-light.svg" width="100%">
+</picture>
 
 lux-edit injects a live visual editing layer into your web app or static HTML. Adjust styling, edit text directly in the DOM, and highlight words or drop comment pins. Everything syncs in real time as structured diffs to your AI coding agent via MCP.
 
@@ -16,31 +22,18 @@ lux-edit injects a live visual editing layer into your web app or static HTML. A
 
 ### 1. Installation
 
-You can install `lux` via the Claude Marketplace/Plugin system, portable workspace configuration, or the interactive global installer:
+Pick the method that best fits your workflow:
 
-#### Option A: Claude Code Plugin (Official / Git)
-```bash
-# Install directly via Claude Code plugin manager
-claude plugin add https://github.com/David-Sat/lux-edit
-```
+| Method | Command | Best For |
+| --- | --- | --- |
+| **Claude Code Plugin** | `claude plugin add https://github.com/David-Sat/lux-edit` | Claude Code CLI users |
+| **Current Project** | `npx lux-edit init` | Zero global pollution (`.mcp.json` + skills) |
+| **Global Machine** | `npm i -g lux-edit && lux init -g` | Interactive setup for Cursor, Antigravity, Claude, Windsurf |
 
-#### Option B: Workspace Setup (Zero Global Pollution)
-Run in any web project root to generate universal `.mcp.json`, `plugin.json`, and `/lux` skills:
-```bash
-npx lux-edit init
-```
+<details>
+<summary><strong>Interactive Global Installer & Advanced Options</strong></summary>
 
-#### Option C: Global Machine Setup (Interactive)
-Install the CLI and configure your AI coding agents across all projects:
-```bash
-# 1. Install globally
-npm install -g lux-edit
-
-# 2. Interactive multi-agent installer
-lux init -g
-```
-
-When running `lux init -g`, an interactive selector identifies installed tools and lets you pick:
+Running `lux init -g` provides an interactive checklist of detected coding tools:
 ```text
 Select agents to configure with lux:
   1. [●] Google Antigravity    (detected)
@@ -48,17 +41,14 @@ Select agents to configure with lux:
   3. [○] Claude Desktop        (not detected)
   4. [●] Cursor                (detected)
   5. [○] Windsurf              (not detected)
-  a. Configure all
-  q. Cancel
 
-Enter numbers to select (e.g. 1,2), "a" for all, or press ENTER for detected defaults:
+Enter numbers (e.g. 1,2), "a" for all, or press ENTER for detected defaults.
 ```
 
-> **Advanced Init Options:**
-> - **Non-interactive default:** `lux init -g -y` (automatically configures detected tools)
-> - **Target specific agent:** `lux init -g --agent cursor`
-> - **Custom tool config path:** `lux init --path ~/.config/zed/settings.json` (or any custom directory/file)
-> - **Configure all major agents:** `lux init -g --all`
+* **Non-interactive / CI**: `lux init -g -y` (auto-configures detected tools)
+* **Target single agent**: `lux init -g --agent cursor`
+* **Custom path (Zed, Aider, etc.)**: `lux init --path ~/.config/zed/settings.json`
+</details>
 
 ---
 
@@ -79,6 +69,18 @@ Enter numbers to select (e.g. 1,2), "a" for all, or press ENTER for detected def
    /lux
    ```
    The agent reads your visual edits and comments over MCP, updates your code, and the browser auto-refreshes.
+
+---
+
+## Architecture
+
+lux-edit bridges the gap between browser inspection and your coding agent's local filesystem context:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/architecture-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/architecture-light.svg">
+  <img alt="lux-edit System Architecture" src="./docs/architecture-light.svg" width="100%">
+</picture>
 
 ---
 
@@ -180,4 +182,4 @@ npm uninstall -g lux-edit
 
 ## License
 
-[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review).
+[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review). • [Privacy Policy](./PRIVACY.md)

@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 238" width="100%" height="100%">
+  <defs>
+    <marker id="arr-accent-dark" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#f2724b" />
+    </marker>
+    <style>
+      .text-title-dark { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; fill: #f0f6fc; font-size: 12.5px; }
+      .text-body-dark { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #8b949e; font-size: 9px; line-height: 1.4; }
+      .text-mono-dark { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .agent-box-dark { fill: #161b22; stroke: rgba(56, 139, 253, 0.5); stroke-width: 1.4; stroke-dasharray: 5,4; }
+      .review-box-dark { fill: #1a1716; stroke: rgba(242, 114, 75, 0.55); stroke-width: 1.4; }
+      .auto-box-dark { fill: #161b22; stroke: #30363d; stroke-width: 1.4; stroke-dasharray: 4,4; }
+      .tag-link-dark { text-decoration: none; }
+      .tag-link-dark:hover rect { fill: #1f242c; stroke: #818cf8; }
+    </style>
+  </defs>
+
+  <!-- Top Tag: agent-plugins.org -->
+  <a href="https://agent-plugins.org/" target="_blank" class="tag-link-dark">
+    <g id="top-plugin-tag">
+      <rect x="382" y="3" width="236" height="24" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1" />
+      <circle cx="396" cy="15" r="3.5" fill="#34d399" />
+      <text x="406" y="18.5" fill="#818cf8" font-size="9" class="text-mono-dark" font-weight="700">AGENT-PLUGINS.ORG</text>
+      <text x="522" y="18.5" fill="#8b949e" font-size="9" class="text-mono-dark">STANDARD</text>
+      <path d="M 602 12 L 606 15 L 602 18" fill="none" stroke="#8b949e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+  </a>
+
+  <!-- Connecting Step Arrows -->
+  <path d="M 232,133 H 262" fill="none" stroke="#f2724b" stroke-width="1.6" marker-end="url(#arr-accent-dark)" />
+  <path d="M 488,133 H 518" fill="none" stroke="#f2724b" stroke-width="1.6" marker-end="url(#arr-accent-dark)" />
+  <path d="M 744,133 H 774" fill="none" stroke="#f2724b" stroke-width="1.6" marker-end="url(#arr-accent-dark)" />
+
+  <!-- Step 1: Initialize -->
+  <g id="flow-step-1">
+    <rect x="6" y="38" width="226" height="190" rx="10" class="agent-box-dark" />
+    <rect x="18" y="48" width="80" height="20" rx="4" fill="#0d1117" stroke="rgba(56, 139, 253, 0.5)" stroke-width="1" />
+    <text x="58" y="62" fill="#58a6ff" font-size="8.5" class="text-mono-dark" font-weight="700" text-anchor="middle">START</text>
+    
+    <rect x="18" y="74" width="202" height="40" rx="5" fill="#0d1117" stroke="#58a6ff" stroke-width="1.2" />
+    <text x="28" y="93" fill="#58a6ff" font-size="12" class="text-mono-dark" font-weight="700">/lux</text>
+    <text x="28" y="106" fill="#8b949e" font-size="8" class="text-mono-dark">Chat Command or npx lux</text>
+
+    <text x="18" y="133" class="text-title-dark">Agent Starts Proxy</text>
+    <text x="18" y="150" class="text-body-dark">User types /lux in chat.</text>
+    <text x="18" y="165" class="text-body-dark">Agent starts proxy on :4320.</text>
+    
+    <rect x="18" y="188" width="138" height="20" rx="4" fill="#0d1117" stroke="rgba(56, 139, 253, 0.45)" stroke-width="0.9" />
+    <text x="87" y="202" fill="#58a6ff" font-size="8.5" class="text-mono-dark" font-weight="600" text-anchor="middle">Reverse Proxy &amp; Injection</text>
+  </g>
+
+  <!-- Step 2: In-Browser Visual Review -->
+  <g id="flow-step-2">
+    <rect x="262" y="38" width="226" height="190" rx="10" class="review-box-dark" />
+    <rect x="274" y="48" width="66" height="20" rx="4" fill="#0d1117" stroke="rgba(242, 114, 75, 0.5)" stroke-width="1" />
+    <text x="307" y="62" fill="#f2724b" font-size="8.5" class="text-mono-dark" font-weight="700" text-anchor="middle">REVIEW</text>
+
+    <rect x="274" y="74" width="202" height="40" rx="5" fill="#0d1117" stroke="#f2724b" stroke-width="1.2" />
+    <text x="284" y="93" fill="#f2724b" font-size="11" class="text-mono-dark" font-weight="700">V (Edit) • C (Pin) • R</text>
+    <text x="284" y="106" fill="#8b949e" font-size="8" class="text-mono-dark">In-Browser Overlay Hotkeys</text>
+
+    <text x="274" y="133" class="text-title-dark">Visual Edits &amp; Pins</text>
+    <text x="274" y="150" class="text-body-dark">Inspect elements, adjust styling,</text>
+    <text x="274" y="165" class="text-body-dark">and drop pinned comment notes.</text>
+
+    <rect x="274" y="188" width="136" height="20" rx="4" fill="#0d1117" stroke="rgba(242, 114, 75, 0.45)" stroke-width="0.9" />
+    <text x="342" y="202" fill="#f2724b" font-size="8.5" class="text-mono-dark" font-weight="600" text-anchor="middle">Real-Time WS Draft Sync</text>
+  </g>
+
+  <!-- Step 3: Agent Ingestion via MCP -->
+  <g id="flow-step-3">
+    <rect x="518" y="38" width="226" height="190" rx="10" class="agent-box-dark" />
+    <rect x="530" y="48" width="76" height="20" rx="4" fill="#0d1117" stroke="rgba(56, 139, 253, 0.5)" stroke-width="1" />
+    <text x="568" y="62" fill="#58a6ff" font-size="8.5" class="text-mono-dark" font-weight="700" text-anchor="middle">APPLY</text>
+
+    <rect x="530" y="74" width="202" height="40" rx="5" fill="#0d1117" stroke="#58a6ff" stroke-width="1.2" />
+    <text x="540" y="93" fill="#58a6ff" font-size="12" class="text-mono-dark" font-weight="700">/lux</text>
+    <text x="540" y="106" fill="#8b949e" font-size="8" class="text-mono-dark">lux_get_pending_review()</text>
+
+    <text x="530" y="133" class="text-title-dark">Agent Applies Diffs</text>
+    <text x="530" y="150" class="text-body-dark">User runs /lux in chat.</text>
+    <text x="530" y="165" class="text-body-dark">Agent retrieves AST deltas &amp; notes.</text>
+
+    <rect x="530" y="188" width="144" height="20" rx="4" fill="#0d1117" stroke="rgba(56, 139, 253, 0.45)" stroke-width="0.9" />
+    <text x="602" y="202" fill="#58a6ff" font-size="8.5" class="text-mono-dark" font-weight="600" text-anchor="middle">Instant Non-Blocking Tool</text>
+  </g>
+
+  <!-- Step 4: Automated Background Resolution -->
+  <g id="flow-step-4">
+    <rect x="774" y="38" width="220" height="190" rx="10" class="auto-box-dark" />
+    <rect x="786" y="48" width="94" height="20" rx="4" fill="#0d1117" stroke="#30363d" stroke-width="1" />
+    <text x="833" y="62" fill="#8b949e" font-size="8.5" class="text-mono-dark" font-weight="700" text-anchor="middle">AUTO-RESOLVE</text>
+
+    <rect x="786" y="74" width="196" height="40" rx="5" fill="#0d1117" stroke="#30363d" stroke-width="1" stroke-dasharray="3,3" />
+    <text x="796" y="93" fill="#c9d1d9" font-size="10" class="text-mono-dark" font-weight="700">Code Edit • Auto-Sync</text>
+    <text x="796" y="106" fill="#8b949e" font-size="8" class="text-mono-dark">Background File Watcher</text>
+
+    <text x="786" y="133" class="text-title-dark">Zero-Action Sync</text>
+    <text x="786" y="150" class="text-body-dark">Agent edits files. Watcher auto-</text>
+    <text x="786" y="165" class="text-body-dark">resolves and reloads app UI.</text>
+
+    <rect x="786" y="188" width="146" height="20" rx="4" fill="#0d1117" />
+    <text x="859" y="202" fill="#8b949e" font-size="8.5" class="text-mono-dark" font-weight="600" text-anchor="middle">Automated / No User Action</text>
+  </g>
+</svg>
