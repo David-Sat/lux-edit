@@ -106,10 +106,15 @@ Or with Claude Code CLI:
 claude mcp add lux -- lux mcp
 ```
 
-### Available MCP Tools
-* `lux_get_pending_review`: Instantly retrieves active comments, text selections, and visual diffs.
-* `lux_get_session`: Retrieves details for a specific session ID.
-* `lux_list_sessions`: Lists all recorded review sessions.
+### Available MCP Capabilities
+* **Tools**:
+  * `lux_get_pending_review`: Instantly retrieves active comments, text selections, and visual diffs.
+  * `lux_get_session`: Retrieves details for a specific session ID.
+  * `lux_list_sessions`: Lists all recorded review sessions.
+* **Resources**:
+  * `lux://pending-review`: Real-time markdown context of active annotations and style edits for direct agent attachment.
+* **Prompts**:
+  * `lux_apply_review`: One-click prompt template to apply review changes to the codebase.
 </details>
 
 ---
