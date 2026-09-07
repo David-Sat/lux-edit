@@ -24,7 +24,11 @@ npm install -g lux-edit
 lux init -g
 ```
 
-> Configures Google Antigravity, Gemini, Claude Code, Cursor, Windsurf, Claude Desktop, Cline, and Roo Code automatically.
+> **Plugin-First & Zero Ghost Files:**
+> - **Plugin-compatible agents** (Google Antigravity, Claude Code) are installed as standard **Agent Plugins** (`plugin.json` + `mcp_config.json` + skills).
+> - **Standalone MCP clients** (Cursor, Windsurf, Claude Desktop, Cline, Roo Code) are auto-detected so configuration files are only added if the app is actually installed.
+> - To target a specific agent: `lux init -g --agent cursor`
+> - To configure all legacy agents regardless of detection: `lux init -g --all`
 
 <details>
 <summary><strong>Prefer running with <code>npx</code> without installing?</strong></summary>
