@@ -378,12 +378,10 @@ export class OverlayStateManager {
 
   public updateElementText(newText: string): void {
     if (!this.activeElement) return;
-    const tag = (this.activeElement.tagName || '').toLowerCase();
-    if ('innerText' in this.activeElement && tag !== 'text' && tag !== 'tspan') {
-      this.activeElement.innerText = newText;
-    } else {
-      this.activeElement.textContent = newText;
+    if (newText.includes('\n') && this.activeElement.style.whiteSpace !== 'pre-wrap') {
+      this.activeElement.style.whiteSpace = 'pre-wrap';
     }
+    this.activeElement.textContent = newText;
     this.syncMutationsForElement(this.activeElement);
     this.notify();
   }

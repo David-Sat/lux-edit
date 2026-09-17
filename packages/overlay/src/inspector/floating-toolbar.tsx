@@ -4,6 +4,116 @@ import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
 
+function getElementCleanText(el: HTMLElement | null): string {
+  if (!el) return '';
+  const raw = el.textContent || el.innerText || '';
+  // If the raw text starts with newline and indentation (classic formatted HTML file artifact),
+  // strip leading and trailing whitespace so paragraphs don't open with 10 empty spaces!
+  if (/^\s*[\r\n]/.test(raw)) {
+    return (el.innerText || raw).trim();
+  }
+  return raw;
+}
+
+interface AdaptiveTextEditorProps {
+  initialValue: string;
+  isParagraphLike: boolean;
+  isHeading: boolean;
+  tag: string;
+  onUpdate: (val: string) => void;
+}
+
+function AdaptiveTextEditor({ initialValue, isParagraphLike, isHeading, tag, onUpdate }: AdaptiveTextEditorProps) {
+  const [value, setValue] = useState(initialValue);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isFocusedRef = useRef(false);
+
+  // Sync external changes (e.g. from undo or element re-selection), but NEVER while the user is actively focused/typing
+  useEffect(() => {
+    if (!isFocusedRef.current && initialValue !== value) {
+      setValue(initialValue);
+    }
+  }, [initialValue]);
+
+  const adjustHeight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    const isMulti = isParagraphLike || value.length > 60 || value.includes('\n');
+    const minHeight = isParagraphLike ? 84 : isHeading ? 34 : (isMulti ? 68 : 34);
+    const maxHeight = 240;
+    const computedHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+    textarea.style.height = `${computedHeight}px`;
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [value, isParagraphLike, isHeading]);
+
+  const isMulti = isParagraphLike || value.length > 60 || value.includes('\n');
+  const label = isParagraphLike ? 'Paragraph' : isHeading ? `Heading (${tag})` : 'Text';
+
+  if (!isMulti && !isParagraphLike) {
+    return (
+      <div class="ve-row" style={{ alignItems: 'flex-start' }}>
+        <span class="ve-label" style={{ paddingTop: '6px' }}>{label}</span>
+        <textarea
+          ref={textareaRef}
+          class="ve-textarea-adaptive"
+          rows={1}
+          value={value}
+          placeholder="Edit text content..."
+          onFocus={() => {
+            isFocusedRef.current = true;
+          }}
+          onBlur={() => {
+            isFocusedRef.current = false;
+          }}
+          onInput={(e) => {
+            const nextVal = (e.target as HTMLTextAreaElement).value;
+            setValue(nextVal);
+            adjustHeight();
+            onUpdate(nextVal);
+          }}
+          style={{ minHeight: '32px', maxHeight: '80px' }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div class="ve-field-group">
+      <div class="ve-field-header">
+        <span class="ve-label">{label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span class="ve-badge-subtle">{value.length} chars</span>
+          {tag && <span class="ve-badge-subtle" style={{ textTransform: 'uppercase' }}>{tag}</span>}
+        </div>
+      </div>
+      <textarea
+        ref={textareaRef}
+        class="ve-textarea-adaptive"
+        rows={isParagraphLike ? 4 : 2}
+        value={value}
+        placeholder="Edit text content..."
+        onFocus={() => {
+          isFocusedRef.current = true;
+        }}
+        onBlur={() => {
+          isFocusedRef.current = false;
+        }}
+        onInput={(e) => {
+          const nextVal = (e.target as HTMLTextAreaElement).value;
+          setValue(nextVal);
+          adjustHeight();
+          onUpdate(nextVal);
+        }}
+        style={{ minHeight: isParagraphLike ? '84px' : '64px' }}
+      />
+    </div>
+  );
+}
+
 export function FloatingToolbar() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
@@ -21,6 +131,10 @@ export function FloatingToolbar() {
   const tag = el ? (el.tagName || '').toUpperCase() : '';
   const isButton = el ? tag === 'BUTTON' || (tag === 'A' && el.children.length > 0) || (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type)) : false;
   const isText = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'SPAN', 'BLOCKQUOTE', 'STRONG', 'EM', 'LABEL', 'B', 'I', 'TEXT', 'TSPAN', 'A', 'LI', 'TD', 'TH', 'CODE', 'PRE'].includes(tag) || (!isButton && el.children.length === 0 && (el.textContent || el.innerText || '').trim().length > 0) : false;
+  const isParagraphLike = el ? ['P', 'BLOCKQUOTE', 'ARTICLE', 'SECTION', 'PRE'].includes(tag) : false;
+  const isHeading = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(tag) : false;
+  const currentTextContent = el ? getElementCleanText(el) : '';
+  const isMultilineText = isText && (isParagraphLike || currentTextContent.length > 60 || currentTextContent.includes('\n'));
   const isImage = el ? ['IMG', 'SVG', 'VIDEO', 'PICTURE', 'FIGURE'].includes(tag) : false;
   const isList = el ? ['UL', 'OL', 'LI'].includes(tag) : false;
   const isContainer = el ? !isText && !isButton && !isImage && !isList : true;
@@ -123,7 +237,7 @@ export function FloatingToolbar() {
   return (
     <div
       ref={toolbarRef}
-      class="ve-toolbar"
+      class={`ve-toolbar ${activeTab === 'quick' && isMultilineText ? 've-toolbar-wide' : ''}`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -225,15 +339,14 @@ export function FloatingToolbar() {
             {/* Quick Text / Heading Options */}
             {isText && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div class="ve-row">
-                  <span class="ve-label">Text</span>
-                  <input
-                    class="ve-input"
-                    value={el.textContent || el.innerText || ''}
-                    onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
-                    placeholder="Edit text content..."
-                  />
-                </div>
+                <AdaptiveTextEditor
+                  key={sourceLoc.selector || el.tagName}
+                  initialValue={getElementCleanText(el)}
+                  isParagraphLike={isParagraphLike}
+                  isHeading={isHeading}
+                  tag={tag}
+                  onUpdate={(val) => state.updateElementText(val)}
+                />
 
                 {/* Font Size with Slider, Origin Tick & Double Click Reset */}
                 <div class="ve-slider-row">
@@ -333,7 +446,8 @@ export function FloatingToolbar() {
                   <span class="ve-label">Label</span>
                   <input
                     class="ve-input"
-                    value={el.textContent || el.innerText || ''}
+                    key={sourceLoc.selector || el.tagName}
+                    defaultValue={getElementCleanText(el)}
                     onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
                   />
                 </div>

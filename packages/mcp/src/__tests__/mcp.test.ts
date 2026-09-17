@@ -68,7 +68,7 @@ describe('MCP Server Tools & Prompts', () => {
 
     expect(res.content).toBeDefined();
     const textContent = (res.content as any)[0].text;
-    expect(textContent).toContain('Visual Review & Comments');
+    expect(textContent).toContain('Visual review and comments');
     expect(textContent).toContain('mcp_test_batch_1');
     expect(textContent).toContain('src/components/PricingCard.tsx:22');
     expect(textContent).toContain('bg-indigo-500');
@@ -82,8 +82,47 @@ describe('MCP Server Tools & Prompts', () => {
 
     expect(res.content).toBeDefined();
     const textContent = (res.content as any)[0].text;
-    expect(textContent).toContain('Visual Review & Comments');
+    expect(textContent).toContain('Visual review and comments');
     expect(textContent).toContain('mcp_test_batch_1');
+  });
+
+  it('retrieves pending review from a specific workspaceDir', async () => {
+    const customDir = path.resolve(process.cwd(), '.test-mcp-store-custom');
+    if (fs.existsSync(customDir)) {
+      fs.rmSync(customDir, { recursive: true, force: true });
+    }
+    const customStore = EventStore.getInstance(customDir);
+    customStore.saveBatch({
+      id: 'custom_workspace_batch_99',
+      timestamp: Date.now(),
+      route: '/custom',
+      status: 'submitted',
+      userPrompt: 'Custom workspace prompt',
+      mutations: [
+        {
+          id: 'mut_custom',
+          type: 'STYLE_CHANGE',
+          targetSelector: '#custom-el',
+          property: 'color',
+          before: '#000',
+          after: '#fff',
+        },
+      ],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: {
+        workspaceDir: customDir,
+      },
+    });
+
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('custom_workspace_batch_99');
+    expect(textContent).toContain('#custom-el');
+
+    fs.rmSync(customDir, { recursive: true, force: true });
   });
 
   it('lists visual edit sessions via lux_list_sessions tool', async () => {
@@ -123,7 +162,7 @@ describe('MCP Server Tools & Prompts', () => {
     const content = res.contents[0] as any;
     expect(content.uri).toBe('lux://pending-review');
     expect(content.mimeType).toBe('text/markdown');
-    expect(content.text).toContain('Visual Review & Comments');
+    expect(content.text).toContain('Visual review and comments');
     expect(content.text).toContain('mcp_test_batch_1');
   });
 
