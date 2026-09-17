@@ -1,6 +1,61 @@
 import { h, Fragment } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
+
+function EditCommentTextarea({
+  value,
+  onInput,
+  onKeyDown,
+}: {
+  value: string;
+  onInput: (val: string) => void;
+  onKeyDown: (e: KeyboardEvent) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const computedHeight = Math.min(Math.max(el.scrollHeight, 60), 220);
+    el.style.height = `${computedHeight}px`;
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [value]);
+
+  return (
+    <textarea
+      ref={textareaRef}
+      style={{
+        background: '#0f172a',
+        color: '#f8fafc',
+        border: '1px solid #4338ca',
+        borderRadius: '6px',
+        padding: '8px 10px',
+        fontSize: '12px',
+        fontFamily: 'inherit',
+        resize: 'none',
+        minHeight: '60px',
+        maxHeight: '220px',
+        lineHeight: '1.45',
+        outline: 'none',
+        width: '100%',
+        boxSizing: 'border-box',
+        overflowY: 'auto',
+      }}
+      value={value}
+      onInput={(e) => {
+        const val = (e.target as HTMLTextAreaElement).value;
+        onInput(val);
+        adjustHeight();
+      }}
+      onKeyDown={onKeyDown}
+      autoFocus
+    />
+  );
+}
 
 export function CommentPins() {
   const state = OverlayStateManager.getInstance();
@@ -73,6 +128,17 @@ export function CommentPins() {
         const isHovered = hoveredPinId === ann.id || editingPinId === ann.id;
         const isEditing = editingPinId === ann.id;
 
+        // Smart placement logic: if pin is in the upper viewport (y < 220), flip tooltip below the pin
+        const isNearTop = y < 220;
+        const isNearLeft = x < 190;
+        const isNearRight = x > (window.innerWidth || 1000) - 200;
+
+        const tooltipPositionStyle: Record<string, string> = {
+          left: isNearLeft ? '-8px' : isNearRight ? 'auto' : '50%',
+          right: isNearRight ? '-8px' : 'auto',
+          transform: isNearLeft || isNearRight ? 'none' : 'translateX(-50%)',
+        };
+
         return (
           <div
             key={ann.id}
@@ -107,7 +173,8 @@ export function CommentPins() {
             <span>{idx + 1}</span>
             {isHovered && (
               <div
-                class="ve-pin-tooltip"
+                class={`ve-pin-tooltip ${isNearTop ? 've-pin-tooltip-below' : 've-pin-tooltip-above'}`}
+                style={tooltipPositionStyle}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
@@ -181,23 +248,9 @@ export function CommentPins() {
 
                 {isEditing ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <textarea
-                      style={{
-                        background: '#0f172a',
-                        color: '#f8fafc',
-                        border: '1px solid #4338ca',
-                        borderRadius: '4px',
-                        padding: '6px',
-                        fontSize: '12px',
-                        fontFamily: 'inherit',
-                        resize: 'vertical',
-                        minHeight: '48px',
-                        outline: 'none',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                      }}
+                    <EditCommentTextarea
                       value={editText}
-                      onInput={(e) => setEditText((e.target as HTMLTextAreaElement).value)}
+                      onInput={(val) => setEditText(val)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
@@ -209,7 +262,6 @@ export function CommentPins() {
                           setEditingPinId(null);
                         }
                       }}
-                      autoFocus
                     />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
                       <button
@@ -247,7 +299,7 @@ export function CommentPins() {
                   </div>
                 ) : (
                   <div
-                    style={{ color: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}
+                    style={{ color: '#f8fafc', fontSize: '12px', cursor: 'pointer', lineHeight: '1.45', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
                     onClick={() => {
                       setEditingPinId(ann.id);
                       setEditText(ann.comment);

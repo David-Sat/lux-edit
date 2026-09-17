@@ -272,9 +272,17 @@ export class VisualEditServer {
     }
 
     // REST API - List Sessions
-    if (pathname === '/__visual_edit__/api/sessions' && req.method === 'GET') {
+    if ((pathname === '/__visual_edit__/api/sessions' || pathname === '/__lux/api/sessions') && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(this.eventStore.listSessions()));
+      return;
+    }
+
+    // REST API - Pending Review Batch
+    if ((pathname === '/__visual_edit__/api/pending' || pathname === '/__lux/api/pending') && req.method === 'GET') {
+      const pending = this.eventStore.getPendingReview();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(pending || null));
       return;
     }
 

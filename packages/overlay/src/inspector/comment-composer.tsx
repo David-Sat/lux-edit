@@ -69,6 +69,18 @@ export function CommentComposer() {
   const tagLabel = sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.selector;
   const selectedText = state.commentTargetSelectedText;
 
+  const adjustHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const computedHeight = Math.min(Math.max(el.scrollHeight, 72), 240);
+    el.style.height = `${computedHeight}px`;
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [commentText]);
+
   const handleSave = () => {
     if (commentText.trim()) {
       state.addComment(commentText, target);
@@ -122,7 +134,10 @@ export function CommentComposer() {
         class="ve-comment-textarea"
         placeholder="Type feedback, instruction, or bug note..."
         value={commentText}
-        onInput={(e) => setCommentText((e.target as HTMLTextAreaElement).value)}
+        onInput={(e) => {
+          setCommentText((e.target as HTMLTextAreaElement).value);
+          adjustHeight();
+        }}
         onKeyDown={handleKeyDown}
       />
 

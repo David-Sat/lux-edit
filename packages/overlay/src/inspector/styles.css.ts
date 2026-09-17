@@ -214,13 +214,15 @@ export const OVERLAY_STYLES = `
   border: 1px solid #4338ca;
   border-radius: 12px;
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.3);
-  width: 320px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
   z-index: 2147483647;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   animation: vePopIn 0.12s ease-out;
+  box-sizing: border-box;
 }
 
 @keyframes vePopIn {
@@ -246,14 +248,38 @@ export const OVERLAY_STYLES = `
   padding: 8px 10px;
   border-radius: 8px;
   outline: none;
-  resize: vertical;
-  min-height: 64px;
-  line-height: 1.4;
+  resize: none;
+  min-height: 72px;
+  max-height: 240px;
+  line-height: 1.45;
+  box-sizing: border-box;
+  width: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.45) transparent;
+  transition: border-color 0.15s ease;
 }
 
 .ve-comment-textarea:focus {
   border-color: #a855f7;
   box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.2);
+}
+
+.ve-comment-textarea::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ve-comment-textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ve-comment-textarea::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.45);
+  border-radius: 4px;
+}
+
+.ve-comment-textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.7);
 }
 
 .ve-comment-footer {
@@ -295,28 +321,47 @@ export const OVERLAY_STYLES = `
 
 .ve-pin-tooltip {
   position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
   background: #0f172a;
   border: 1px solid #4338ca;
   color: #f8fafc;
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 11px;
-  min-width: 220px;
-  max-width: 280px;
+  min-width: 240px;
+  max-width: 360px;
   white-space: normal;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(99, 102, 241, 0.3);
   pointer-events: auto;
   cursor: default;
   z-index: 2147483648;
+  box-sizing: border-box;
 }
 
-.ve-pin-tooltip::after {
+.ve-pin-tooltip.ve-pin-tooltip-above {
+  bottom: 28px;
+  top: auto;
+}
+
+.ve-pin-tooltip.ve-pin-tooltip-below {
+  top: 28px;
+  bottom: auto;
+}
+
+.ve-pin-tooltip.ve-pin-tooltip-above::after {
   content: '';
   position: absolute;
   bottom: -16px;
+  left: -20px;
+  right: -20px;
+  height: 20px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.ve-pin-tooltip.ve-pin-tooltip-below::after {
+  content: '';
+  position: absolute;
+  top: -16px;
   left: -20px;
   right: -20px;
   height: 20px;
@@ -340,6 +385,11 @@ export const OVERLAY_STYLES = `
   backdrop-filter: blur(16px);
   display: flex;
   flex-direction: column;
+  transition: width 0.15s ease;
+}
+
+.ve-toolbar.ve-toolbar-wide {
+  width: 390px;
 }
 
 .ve-toolbar-header {
@@ -444,6 +494,72 @@ export const OVERLAY_STYLES = `
 
 .ve-input:focus {
   border-color: #38bdf8;
+}
+
+.ve-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ve-field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.ve-badge-subtle {
+  font-size: 10px;
+  color: #94a3b8;
+  background: rgba(51, 65, 85, 0.4);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.ve-textarea-adaptive {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 7px 9px;
+  border-radius: 6px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  transition: border-color 0.15s ease;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.45) transparent;
+}
+
+.ve-textarea-adaptive:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+}
+
+.ve-textarea-adaptive::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ve-textarea-adaptive::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ve-textarea-adaptive::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.45);
+  border-radius: 4px;
+}
+
+.ve-textarea-adaptive::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.7);
 }
 
 .ve-btn-group {
