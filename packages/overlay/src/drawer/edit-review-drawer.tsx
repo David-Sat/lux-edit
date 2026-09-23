@@ -65,8 +65,8 @@ export function EditReviewDrawer() {
     if (state.sessionStatus === 'submitted') {
       return {
         label: 'Sent to Agent',
-        color: '#38bdf8',
-        dot: '#38bdf8',
+        color: 'var(--ve-accent-text, #0284c7)',
+        dot: 'var(--ve-accent-text, #0284c7)',
       };
     }
     if (isAgentListening) {
@@ -120,12 +120,12 @@ export function EditReviewDrawer() {
 
       <div class="ve-drawer-body">
         {totalItems === 0 ? (
-          <div style={{ padding: '28px 0', textAlign: 'center', color: '#64748b' }}>
-            <p style={{ marginBottom: '6px', fontWeight: 600, fontSize: '14px', color: '#94a3b8' }}>
+          <div style={{ padding: '28px 0', textAlign: 'center' }}>
+            <p style={{ marginBottom: '6px', fontWeight: 600, fontSize: '14px', color: 'var(--ve-text-primary, #f8fafc)' }}>
               No changes drafted yet
             </p>
-            <p style={{ fontSize: '12px' }}>
-              Use <strong>Visual Edit (V)</strong> to tweak styles and text, or <strong>Comment (C)</strong> to drop feedback pins.
+            <p style={{ fontSize: '12px', color: 'var(--ve-text-secondary, #cbd5e1)', lineHeight: 1.5 }}>
+              Use <strong style={{ color: 'var(--ve-accent-text, #38bdf8)' }}>Visual Edit (V)</strong> to tweak styles and text, or <strong style={{ color: 'var(--ve-accent-text, #38bdf8)' }}>Comment (C)</strong> to drop feedback pins.
             </p>
           </div>
         ) : (
@@ -134,7 +134,7 @@ export function EditReviewDrawer() {
             {totalMutations > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-accent-text, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Visual Edits ({totalMutations})
                   </span>
                 </div>
@@ -178,7 +178,7 @@ export function EditReviewDrawer() {
                           <span class="ve-mut-before">{m.before}</span> →{' '}
                           <span class="ve-mut-after">{m.after}</span>
                           {m.tailwindSuggestion && (
-                            <span style={{ color: '#38bdf8', marginLeft: '6px', fontSize: '11px' }}>
+                            <span style={{ color: 'var(--ve-accent-text, #0284c7)', marginLeft: '6px', fontSize: '11px' }}>
                               ({m.tailwindSuggestion})
                             </span>
                           )}
@@ -203,7 +203,7 @@ export function EditReviewDrawer() {
                         <span style={{ color: '#ef4444' }}>- Deleted element</span>
                       )}
                       {m.type === 'DOM_REORDER' && (
-                        <span style={{ color: '#38bdf8' }}>⇄ Reordered position</span>
+                        <span style={{ color: 'var(--ve-accent-text, #0284c7)' }}>⇄ Reordered position</span>
                       )}
                     </div>
                   </div>
@@ -214,22 +214,22 @@ export function EditReviewDrawer() {
             {/* Comments & Pins Section */}
             {totalAnnotations > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-text-primary, #f8fafc)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Comments & Pins ({totalAnnotations})
                 </span>
                 {state.annotations.map((ann, idx) => {
                   const isEditing = editingAnnotationId === ann.id;
                   return (
-                    <div key={ann.id} class="ve-mutation-card" style={{ borderColor: '#4338ca' }}>
+                    <div key={ann.id} class="ve-mutation-card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span class="ve-mut-target" style={{ color: '#a5b4fc' }}>
+                        <span class="ve-mut-target">
                           Pin #{idx + 1} {ann.targetSelector ? `• ${ann.targetSelector}` : ''}
                           {ann.selectedText ? ' • [Text Selection]' : ''}
                         </span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {!isEditing && (
                             <button
-                              style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
+                              style={{ background: 'none', border: 'none', color: 'var(--ve-text-muted, #94a3b8)', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
                               onClick={() => {
                                 setEditingAnnotationId(ann.id);
                                 setEditingAnnotationText(ann.comment);
@@ -254,9 +254,9 @@ export function EditReviewDrawer() {
                         <div
                           style={{
                             fontSize: '11px',
-                            color: '#fbbf24',
-                            background: 'rgba(251, 191, 36, 0.12)',
-                            borderLeft: '2px solid #fbbf24',
+                            color: 'var(--ve-amber-text, #d97706)',
+                            background: 'rgba(251, 191, 36, 0.14)',
+                            borderLeft: '2px solid var(--ve-amber-text, #d97706)',
                             padding: '3px 6px',
                             borderRadius: '2px',
                             marginBottom: '4px',
@@ -272,10 +272,10 @@ export function EditReviewDrawer() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
                           <textarea
                             style={{
-                              background: '#0f172a',
-                              color: '#f8fafc',
-                              border: '1px solid #6366f1',
-                              borderRadius: '4px',
+                              background: 'rgba(0, 0, 0, 0.45)',
+                              color: 'var(--ve-text-primary, #f8fafc)',
+                              border: '1px solid rgba(255, 255, 255, 0.25)',
+                              borderRadius: '6px',
                               padding: '6px',
                               fontSize: '12px',
                               fontFamily: 'inherit',
@@ -299,16 +299,26 @@ export function EditReviewDrawer() {
                           />
                           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
                             <button
-                              style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', padding: '2px 6px' }}
+                              style={{ background: 'none', border: 'none', color: 'var(--ve-text-muted, #94a3b8)', fontSize: '11px', cursor: 'pointer', padding: '2px 6px' }}
                               onClick={() => setEditingAnnotationId(null)}
                             >
                               Cancel
                             </button>
                             <button
-                              style={{ background: '#6366f1', border: 'none', color: '#ffffff', borderRadius: '3px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', padding: '3px 8px' }}
                               onClick={() => {
                                 state.updateAnnotation(ann.id, editingAnnotationText);
                                 setEditingAnnotationId(null);
+                              }}
+                              style={{
+                                background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.12) 100%)',
+                                border: '1px solid rgba(255, 255, 255, 0.4)',
+                                boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.7)',
+                                color: '#ffffff',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                padding: '3px 10px',
                               }}
                             >
                               Save
@@ -317,7 +327,7 @@ export function EditReviewDrawer() {
                         </div>
                       ) : (
                         <p
-                          style={{ color: '#f8fafc', fontSize: '12px', cursor: 'pointer' }}
+                          style={{ color: 'var(--ve-text-primary, #f8fafc)', fontSize: '12px', cursor: 'pointer' }}
                           onClick={() => {
                             setEditingAnnotationId(ann.id);
                             setEditingAnnotationText(ann.comment);
@@ -336,7 +346,7 @@ export function EditReviewDrawer() {
         )}
 
         <div class="ve-prompt-box">
-          <span style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8' }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ve-text-muted, #94a3b8)' }}>
             Instructions for AI Agent (Optional)
           </span>
           <textarea
@@ -349,7 +359,7 @@ export function EditReviewDrawer() {
 
         {state.agentReplies.length > 0 && (
           <div class="ve-replies-list">
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#a5b4fc' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ve-text-primary, #f8fafc)' }}>
               Agent Progress & Replies
             </span>
             {state.agentReplies.map((r) => (
@@ -375,7 +385,7 @@ export function EditReviewDrawer() {
         {!isAgentListening ? (
           <button
             class="ve-btn primary"
-            style={{ flex: 1, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             onClick={handleCopyPrompt}
             disabled={totalItems === 0 && !state.userPrompt.trim()}
             title="Copy formatted prompt to clipboard"
@@ -391,7 +401,7 @@ export function EditReviewDrawer() {
           <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
             <button
               class="ve-btn"
-              style={{ background: '#334155', color: '#f8fafc', padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+              style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
               onClick={handleCopyPrompt}
               disabled={totalItems === 0 && !state.userPrompt.trim()}
               title="Copy formatted prompt to clipboard"
@@ -405,7 +415,7 @@ export function EditReviewDrawer() {
 
             <button
               class="ve-btn primary"
-              style={{ flex: 1, background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
               onClick={handleSendToAgent}
               disabled={totalItems === 0 && !state.userPrompt.trim()}
               title="Wake up the waiting AI Agent to apply these changes immediately"

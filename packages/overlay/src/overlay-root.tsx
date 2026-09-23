@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { OVERLAY_STYLES } from './inspector/styles.css.js';
 import { OverlayStateManager } from './inspector/state.js';
 import { SelectionBox } from './inspector/selection-box.js';
@@ -12,6 +12,8 @@ import { ThemePanel } from './inspector/theme-panel.js';
 
 export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const state = OverlayStateManager.getInstance();
+
+
 
   useEffect(() => {
     // Check if event occurred inside our shadow DOM

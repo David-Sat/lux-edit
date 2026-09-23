@@ -29,10 +29,10 @@ function EditCommentTextarea({
     <textarea
       ref={textareaRef}
       style={{
-        background: '#0f172a',
+        background: 'rgba(0, 0, 0, 0.45)',
         color: '#f8fafc',
-        border: '1px solid #4338ca',
-        borderRadius: '6px',
+        border: '1px solid rgba(255, 255, 255, 0.25)',
+        borderRadius: '8px',
         padding: '8px 10px',
         fontSize: '12px',
         fontFamily: 'inherit',
@@ -179,21 +179,22 @@ export function CommentPins() {
                 onMouseDown={(e) => e.stopPropagation()}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '8px' }}>
-                  <strong style={{ color: '#a5b4fc', fontSize: '11px' }}>
+                  <strong style={{ color: '#ffffff', fontSize: '11px', fontWeight: 600 }}>
                     Pin #{idx + 1} {ann.selectedText ? '• Text' : ''}
                   </strong>
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     {!isEditing && (
                       <button
                         style={{
-                          background: 'rgba(99, 102, 241, 0.2)',
-                          border: '1px solid rgba(99, 102, 241, 0.4)',
-                          color: '#a5b4fc',
+                          background: 'rgba(255, 255, 255, 0.12)',
+                          border: '1px solid rgba(255, 255, 255, 0.25)',
+                          color: '#ffffff',
                           borderRadius: '4px',
                           padding: '2px 6px',
                           fontSize: '10px',
                           cursor: 'pointer',
                           fontWeight: '600',
+                          backdropFilter: 'blur(8px)',
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -279,14 +280,15 @@ export function CommentPins() {
                       </button>
                       <button
                         style={{
-                          background: '#6366f1',
-                          border: 'none',
+                          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.12) 100%)',
+                          border: '1px solid rgba(255, 255, 255, 0.4)',
+                          boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.7)',
                           color: '#ffffff',
-                          borderRadius: '3px',
+                          borderRadius: '6px',
                           fontSize: '10px',
                           fontWeight: '600',
                           cursor: 'pointer',
-                          padding: '3px 8px',
+                          padding: '3px 10px',
                         }}
                         onClick={() => {
                           state.updateAnnotation(ann.id, editText);

@@ -95,8 +95,7 @@ export function DockMenu() {
       {/* Trigger Mode: Direct Send to Agent Button in Pill (Only shown when Agent is actively listening) */}
       {isAgentListening && (
         <button
-          class="ve-dock-item"
-          style={{ background: '#6366f1', color: '#ffffff' }}
+          class="ve-dock-item ve-dock-send"
           onClick={() => state.submitBatch()}
           disabled={totalCount === 0 && !state.userPrompt.trim()}
           title="Send to Agent (Cmd+Enter)"
