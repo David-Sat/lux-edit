@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.7.0...lux-edit-v0.8.0) (2026-09-23)
+
+
+### Features
+
+* adaptive text editing, dynamic comments expansion, and mcp workspace resolution ([#28](https://github.com/David-Sat/lux-edit/issues/28)) ([1e06773](https://github.com/David-Sat/lux-edit/commit/1e06773ebc1b98dc6a7778d29b554661935b4587))
+* **overlay:** implement universal visionOS liquid glass and modern css architecture ([#30](https://github.com/David-Sat/lux-edit/issues/30)) ([712ca69](https://github.com/David-Sat/lux-edit/commit/712ca695f60b1de6f4eda1bb383692a318b41dd9))
+
 ## [0.7.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.6.0...lux-edit-v0.7.0) (2026-09-07)
 
 
