@@ -754,7 +754,7 @@ export function FloatingToolbar() {
 
               <button
                 class="ve-mini-btn"
-                style={{ padding: '6px', color: '#a855f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ padding: '6px', color: 'var(--ve-accent-text, #0284c7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 onClick={() => {
                   state.setCommentTarget(el);
                   state.setActiveElement(null);

@@ -56,7 +56,7 @@ export function ThemePanel() {
       <div class="ve-drawer-body" style={{ padding: '16px', gap: '14px' }}>
         {/* Brand Colors */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-accent-text, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Brand Colors
           </span>
 
@@ -108,7 +108,7 @@ export function ThemePanel() {
 
         {/* Global Corner Radius */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-text-primary, #f8fafc)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Corner Radius Scale
           </span>
 
@@ -135,7 +135,7 @@ export function ThemePanel() {
 
         {/* Typography Theme */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-green-text, #16a34a)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Base Typography
           </span>
 
@@ -154,7 +154,7 @@ export function ThemePanel() {
       <div class="ve-drawer-footer" style={{ justifyContent: 'flex-end' }}>
         <button
           class="ve-btn primary"
-          style={{ flex: 1, background: '#6366f1' }}
+          style={{ flex: 1 }}
           onClick={() => state.setThemePanelOpen(false)}
         >
           Done

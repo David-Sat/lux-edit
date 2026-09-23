@@ -112,11 +112,11 @@ export function CommentComposer() {
           </svg>
           {selectedText ? (
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Comment on <strong style={{ color: '#fbbf24' }}>"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
+              Comment on <strong style={{ color: 'var(--ve-amber-text, #d97706)' }}>"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
             </span>
           ) : (
             <span>
-              Comment on <strong style={{ color: '#38bdf8' }}>{tagLabel}</strong>
+              Comment on <strong style={{ color: 'var(--ve-accent-text, #0284c7)' }}>{tagLabel}</strong>
             </span>
           )}
         </span>
