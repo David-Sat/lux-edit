@@ -116,6 +116,49 @@ describe('Server & EventStore Integration', () => {
     const content = fs.readFileSync(gitignorePath, 'utf-8');
     expect(content).toContain('.visual-edit/');
   });
+
+  it('does not store empty draft sessions on disk', () => {
+    const store = new EventStore(testDir);
+    store.saveBatch({
+      id: 'empty_draft_session',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [],
+    });
+
+    expect(store.getSession('empty_draft_session')).toBeUndefined();
+    const sessions = store.listSessions();
+    expect(sessions.find((s) => s.id === 'empty_draft_session')).toBeUndefined();
+  });
+
+  it('prunes old implemented sessions when exceeding retention limit', () => {
+    const store = new EventStore(testDir);
+    const baseTime = Date.now();
+
+    // Create 60 implemented sessions
+    for (let i = 0; i < 60; i++) {
+      store.saveBatch({
+        id: `implemented_session_${i}`,
+        timestamp: baseTime + i * 1000,
+        route: '/',
+        status: 'implemented',
+        userPrompt: `Prompt ${i}`,
+        mutations: [],
+        annotations: [],
+      });
+    }
+
+    const sessions = store.listSessions();
+    expect(sessions.length).toBeLessThanOrEqual(50);
+    // Oldest sessions should be pruned
+    expect(store.getSession('implemented_session_0')).toBeUndefined();
+    expect(store.getSession('implemented_session_9')).toBeUndefined();
+    // Newer sessions should remain
+    expect(store.getSession('implemented_session_59')).toBeDefined();
+  });
 });
 
 describe('Reverse Proxy & Base-Path Support (SageMaker / Codespaces)', () => {

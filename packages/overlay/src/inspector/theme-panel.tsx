@@ -33,16 +33,7 @@ export function ThemePanel() {
         </div>
 
         <button
-          class="ve-mini-btn"
-          style={{
-            width: '24px',
-            height: '24px',
-            padding: '0',
-            flex: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          class="ve-close-btn"
           onClick={() => state.setThemePanelOpen(false)}
           title="Close (Esc)"
         >

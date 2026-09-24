@@ -742,6 +742,28 @@ export const OVERLAY_STYLES = `
   }
 }
 
+.ve-close-btn {
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--ve-text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all var(--ve-transition-fast);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+}
+
 /* Spacing Visual Box */
 .ve-box-model {
   background: rgba(0, 0, 0, 0.35);
