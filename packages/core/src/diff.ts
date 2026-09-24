@@ -179,14 +179,41 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
 
       const snippet = a.htmlSnippet || a.sourceLocation?.htmlSnippet;
 
-      if (a.selectedText) {
+      if (a.targets && a.targets.length > 1) {
+        const targetLabels = a.targets.map((t) => {
+          if (t.sourceLocation?.fileName) {
+            return `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``;
+          }
+          if (t.sourceLocation?.componentName) {
+            return `\`<${t.sourceLocation.componentName}>\``;
+          }
+          return t.targetSelector ? `\`${t.targetSelector}\`` : '`Element`';
+        });
+
+        lines.push(`- **Comment on ${a.targets.length} elements** (${targetLabels.join(' & ')}): "${a.comment}"`);
+        a.targets.forEach((t, i) => {
+          const tLoc = t.sourceLocation?.fileName
+            ? `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``
+            : t.sourceLocation?.componentName
+            ? `\`<${t.sourceLocation.componentName}>\``
+            : t.targetSelector ? `\`${t.targetSelector}\`` : '`Element`';
+          const tSnippet = t.htmlSnippet || t.sourceLocation?.htmlSnippet;
+          if (tSnippet) {
+            lines.push(`  - Target ${i + 1} (${tLoc}): \`${tSnippet}\``);
+          } else {
+            lines.push(`  - Target ${i + 1}: ${tLoc}`);
+          }
+        });
+      } else if (a.selectedText) {
         lines.push(`- **Comment on text selection** on ${loc}: "${a.comment}"`);
         lines.push(`  - Selected text: \`"${a.selectedText}"\``);
       } else {
         lines.push(`- **Comment** on ${loc}: "${a.comment}"`);
       }
-      if (snippet) {
-        lines.push(`  - Element: \`${snippet}\``);
+      if (!a.targets || a.targets.length <= 1) {
+        if (snippet) {
+          lines.push(`  - Element: \`${snippet}\``);
+        }
       }
     }
   }

@@ -460,6 +460,57 @@ export const OVERLAY_STYLES = `
   justify-content: space-between;
 }
 
+.ve-comment-targets-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-block: 2px;
+}
+
+.ve-comment-target-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: var(--ve-accent-text, #38bdf8);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 500;
+  padding-block: 2px;
+  padding-inline: 6px;
+  border-radius: 6px;
+  max-inline-size: 150px;
+  white-space: nowrap;
+}
+
+.ve-chip-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--ve-transition-fast);
+
+  &:hover {
+    color: #f43f5e;
+  }
+}
+
+.ve-pins-svg-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: calc(var(--ve-z-pin) - 1);
+  inline-size: 100vw;
+  block-size: 100vh;
+}
+
 .ve-hint {
   font-size: 11px;
   color: var(--ve-text-muted);
@@ -505,6 +556,22 @@ export const OVERLAY_STYLES = `
     box-shadow:
       0 5px 16px rgba(2, 132, 199, 0.6),
       0 0 0 1px rgba(0, 0, 0, 0.35);
+  }
+
+  &.ve-pin-multi {
+    background: linear-gradient(135deg, #0284c7 0%, #4338ca 100%);
+    border: 2px solid #38bdf8;
+    box-shadow:
+      0 3px 12px rgba(56, 189, 248, 0.45),
+      0 0 0 1px rgba(0, 0, 0, 0.3),
+      inset 0 1px 1.5px rgba(255, 255, 255, 0.5);
+
+    &:hover {
+      background: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
+      box-shadow:
+        0 6px 18px rgba(56, 189, 248, 0.7),
+        0 0 0 1px rgba(0, 0, 0, 0.35);
+    }
   }
 }
 
