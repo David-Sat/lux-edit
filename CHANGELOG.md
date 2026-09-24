@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.8.0...lux-edit-v0.8.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **store, overlay:** prevent empty draft accumulation, add session pruning, and center close buttons ([#31](https://github.com/David-Sat/lux-edit/issues/31)) ([e97ac69](https://github.com/David-Sat/lux-edit/commit/e97ac69ab4a999ed360b633785f0b71ca3775547))
+
 ## [0.8.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.7.0...lux-edit-v0.8.0) (2026-09-23)
 
 
