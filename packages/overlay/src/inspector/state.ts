@@ -343,13 +343,16 @@ export class OverlayStateManager {
   ): void {
     if (!comment.trim()) return;
 
-    const targetsList = el
-      ? [el]
-      : this.commentTargetElements.length > 0
-      ? this.commentTargetElements
-      : this.commentTargetElement
-      ? [this.commentTargetElement]
-      : [];
+    const targetsList =
+      this.commentTargetElements.length > 1
+        ? this.commentTargetElements
+        : el
+        ? [el]
+        : this.commentTargetElements.length > 0
+        ? this.commentTargetElements
+        : this.commentTargetElement
+        ? [this.commentTargetElement]
+        : [];
 
     const isMulti = targetsList.length > 1;
     const primaryTarget = targetsList[0];

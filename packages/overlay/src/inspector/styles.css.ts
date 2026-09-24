@@ -575,6 +575,34 @@ export const OVERLAY_STYLES = `
   }
 }
 
+.ve-pin-link-badge {
+  position: absolute;
+  inset-block-start: -5px;
+  inset-inline-end: -5px;
+  inline-size: 13px;
+  block-size: 13px;
+  border-radius: 50%;
+  background: #0284c7;
+  border: 1.5px solid #38bdf8;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.ve-pin-target-highlight {
+  position: fixed;
+  pointer-events: none;
+  border: 2px dashed #38bdf8;
+  background-color: rgba(56, 189, 248, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+  z-index: calc(var(--ve-z-pin) - 2);
+  transition: all 0.08s ease-out;
+}
+
 .ve-pin-tooltip {
   position: absolute;
   background: rgba(12, 18, 32, 0.94);

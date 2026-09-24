@@ -83,7 +83,7 @@ export function CommentComposer() {
 
   const handleSave = () => {
     if (commentText.trim()) {
-      state.addComment(commentText, target);
+      state.addComment(commentText);
       setCommentText('');
     }
   };
