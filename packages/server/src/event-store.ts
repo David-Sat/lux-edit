@@ -51,8 +51,43 @@ export class EventStore {
     return EventStore.instance;
   }
 
+  private hasSessionContent(batch: VisualEditBatch): boolean {
+    return (
+      (batch.mutations && batch.mutations.length > 0) ||
+      (batch.annotations && batch.annotations.length > 0) ||
+      (batch.userPrompt && batch.userPrompt.trim().length > 0) ||
+      batch.status === 'submitted' ||
+      batch.status === 'in_progress'
+    );
+  }
+
   public hasActiveWaiters(): boolean {
     return this.waiters.size > 0;
+  }
+
+  private pruneOldSessions(): void {
+    const MAX_SESSIONS = 50;
+    if (this.sessions.size <= MAX_SESSIONS) return;
+
+    // First prune oldest implemented or resolved sessions
+    const sorted = Array.from(this.sessions.values()).sort((a, b) => a.timestamp - b.timestamp);
+    for (const s of sorted) {
+      if (this.sessions.size <= MAX_SESSIONS) break;
+      if (s.status === 'implemented' || s.status === 'resolved') {
+        this.sessions.delete(s.id);
+      }
+    }
+
+    // If still over MAX_SESSIONS, prune oldest non-active sessions
+    if (this.sessions.size > MAX_SESSIONS) {
+      const remaining = Array.from(this.sessions.values()).sort((a, b) => a.timestamp - b.timestamp);
+      for (const s of remaining) {
+        if (this.sessions.size <= MAX_SESSIONS) break;
+        if (s.status !== 'in_progress' && s.status !== 'submitted') {
+          this.sessions.delete(s.id);
+        }
+      }
+    }
   }
 
   public loadFromDisk(): void {
@@ -60,9 +95,20 @@ export class EventStore {
     try {
       const content = fs.readFileSync(this.filePath, 'utf-8');
       const lines = content.split('\n').filter((l) => l.trim().length > 0);
+      let prunedAny = false;
       for (const line of lines) {
         const batch: VisualEditBatch = JSON.parse(line);
+        // Filter out empty draft sessions with no mutations, annotations, or prompts
+        if (!this.hasSessionContent(batch) && batch.status === 'draft') {
+          prunedAny = true;
+          continue;
+        }
         this.sessions.set(batch.id, batch);
+      }
+      const initialSize = this.sessions.size;
+      this.pruneOldSessions();
+      if (prunedAny || this.sessions.size < initialSize) {
+        this.saveToDisk();
       }
     } catch (err) {
       console.error('[visual-edit] Failed to load sessions from disk:', err);
@@ -92,7 +138,21 @@ export class EventStore {
   }
 
   public saveBatch(batch: VisualEditBatch): void {
+    const hasContent = this.hasSessionContent(batch);
+
+    // If an empty draft session is sent, do not store it on disk.
+    // If it was previously stored and now has no content and is in draft state, clean it up.
+    if (!hasContent && batch.status === 'draft') {
+      if (this.sessions.has(batch.id)) {
+        this.sessions.delete(batch.id);
+        this.saveToDisk();
+        this.notify('SAVE_BATCH', batch.id, batch);
+      }
+      return;
+    }
+
     this.sessions.set(batch.id, batch);
+    this.pruneOldSessions();
     this.saveToDisk();
     this.notify('SAVE_BATCH', batch.id, batch);
 
@@ -329,6 +389,7 @@ export class EventStore {
       }
     }
     if (changed) {
+      this.pruneOldSessions();
       this.saveToDisk();
     }
   }

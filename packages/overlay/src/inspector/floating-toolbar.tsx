@@ -257,16 +257,7 @@ export function FloatingToolbar() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <button
-            class="ve-mini-btn"
-            style={{
-              width: '24px',
-              height: '24px',
-              padding: '0',
-              flex: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            class="ve-close-btn"
             onClick={() => state.setActiveElement(null)}
             title="Deselect (Esc)"
           >

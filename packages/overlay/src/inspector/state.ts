@@ -101,7 +101,16 @@ export class OverlayStateManager {
 
   private saveToStorage(): void {
     try {
-      if (this.sessionStatus === 'implemented' || this.sessionStatus === 'resolved') {
+      const hasContent =
+        this.mutations.length > 0 ||
+        this.annotations.length > 0 ||
+        this.userPrompt.trim().length > 0;
+
+      if (
+        this.sessionStatus === 'implemented' ||
+        this.sessionStatus === 'resolved' ||
+        (!hasContent && this.sessionStatus === 'draft')
+      ) {
         localStorage.removeItem('visual_edit_active_draft');
       } else {
         localStorage.setItem('visual_edit_active_draft', JSON.stringify(this.getBatch()));
@@ -124,7 +133,13 @@ export class OverlayStateManager {
   public notify(): void {
     this.listeners.forEach((fn) => fn());
     this.saveToStorage();
-    this.scheduleAutoSync();
+    const hasContent =
+      this.mutations.length > 0 ||
+      this.annotations.length > 0 ||
+      this.userPrompt.trim().length > 0;
+    if (hasContent || this.sessionStatus !== 'draft') {
+      this.scheduleAutoSync();
+    }
   }
 
   private syncTimer: any = null;
@@ -137,6 +152,14 @@ export class OverlayStateManager {
 
   public async autoSync(): Promise<void> {
     const batch = this.getBatch();
+    const hasContent =
+      (batch.mutations && batch.mutations.length > 0) ||
+      (batch.annotations && batch.annotations.length > 0) ||
+      (batch.userPrompt && batch.userPrompt.trim().length > 0);
+
+    if (!hasContent && batch.status === 'draft') {
+      return;
+    }
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'SYNC_SESSION', payload: batch }));
