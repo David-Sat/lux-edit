@@ -61,6 +61,7 @@ export function CommentPins() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
+  const [hoveredPinKey, setHoveredPinKey] = useState<string | null>(null);
   const [editingPinId, setEditingPinId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
 
@@ -72,6 +73,7 @@ export function CommentPins() {
         setEditingPinId(null);
       }
       setHoveredPinId(null);
+      setHoveredPinKey(null);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -79,6 +81,7 @@ export function CommentPins() {
         state.updateAnnotation(editingPinId, editText);
         setEditingPinId(null);
         setHoveredPinId(null);
+        setHoveredPinKey(null);
       }
     };
 
@@ -99,34 +102,156 @@ export function CommentPins() {
 
   if (state.annotations.length === 0) return null;
 
-  return (
-    <Fragment>
-      {state.annotations.map((ann, idx) => {
+  const connectors: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }> = [];
+  const targetHighlights: Array<{ id: string; top: number; left: number; width: number; height: number }> = [];
+
+  const pinItems: Array<{
+    pinKey: string;
+    ann: typeof state.annotations[0];
+    annIdx: number;
+    subLabel: string;
+    isMulti: boolean;
+    multiTotal: number;
+    x: number;
+    y: number;
+  }> = [];
+
+  state.annotations.forEach((ann, idx) => {
+    if (ann.targets && ann.targets.length > 1) {
+      const coords: Array<{ x: number; y: number; tIdx: number }> = [];
+      const isAnnActive = hoveredPinId === ann.id || editingPinId === ann.id;
+
+      ann.targets.forEach((t, tIdx) => {
         let x = 0;
         let y = 0;
+        let rect: DOMRect | { top: number; left: number; width: number; height: number } | null = null;
 
-        if (ann.targetSelector) {
+        if (t.targetSelector) {
           try {
-            const el = document.querySelector(ann.targetSelector) as HTMLElement | null;
+            const el = document.querySelector(t.targetSelector) as HTMLElement | null;
             if (el) {
-              const rect = el.getBoundingClientRect();
+              rect = el.getBoundingClientRect();
               x = rect.left + 12;
               y = rect.top + 12;
             }
-          } catch (e) {
-            // invalid selector fallback
+          } catch (e) {}
+        }
+        if (x === 0 && y === 0 && t.bounds) {
+          rect = { top: t.bounds.y, left: t.bounds.x, width: t.bounds.width, height: t.bounds.height };
+          x = t.bounds.x + 12;
+          y = t.bounds.y + 12;
+        }
+
+        if (x !== 0 || y !== 0) {
+          coords.push({ x, y, tIdx });
+          pinItems.push({
+            pinKey: `${ann.id}_${tIdx}`,
+            ann,
+            annIdx: idx,
+            subLabel: `${idx + 1}${String.fromCharCode(65 + tIdx)}`,
+            isMulti: true,
+            multiTotal: ann.targets!.length,
+            x,
+            y,
+          });
+
+          if (isAnnActive && rect) {
+            targetHighlights.push({
+              id: `${ann.id}_hl_${tIdx}`,
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+            });
           }
         }
+      });
 
-        if (x === 0 && y === 0 && ann.bounds) {
-          x = ann.bounds.x + 12;
-          y = ann.bounds.y + 12;
+      if (coords.length > 1) {
+        for (let i = 0; i < coords.length - 1; i++) {
+          connectors.push({
+            id: `${ann.id}_conn_${i}`,
+            x1: coords[i].x,
+            y1: coords[i].y,
+            x2: coords[i + 1].x,
+            y2: coords[i + 1].y,
+            active: isAnnActive,
+          });
         }
+      }
+    } else {
+      let x = 0;
+      let y = 0;
+      if (ann.targetSelector) {
+        try {
+          const el = document.querySelector(ann.targetSelector) as HTMLElement | null;
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            x = rect.left + 12;
+            y = rect.top + 12;
+          }
+        } catch (e) {}
+      }
+      if (x === 0 && y === 0 && ann.bounds) {
+        x = ann.bounds.x + 12;
+        y = ann.bounds.y + 12;
+      }
+      if (x !== 0 || y !== 0) {
+        pinItems.push({
+          pinKey: ann.id,
+          ann,
+          annIdx: idx,
+          subLabel: `${idx + 1}`,
+          isMulti: false,
+          multiTotal: 1,
+          x,
+          y,
+        });
+      }
+    }
+  });
 
-        if (x === 0 && y === 0) return null;
+  return (
+    <Fragment>
+      {targetHighlights.map((hl) => (
+        <div
+          key={hl.id}
+          class="ve-pin-target-highlight"
+          style={{
+            top: `${hl.top}px`,
+            left: `${hl.left}px`,
+            width: `${hl.width}px`,
+            height: `${hl.height}px`,
+          }}
+        />
+      ))}
 
+      {connectors.length > 0 && (
+        <svg class="ve-pins-svg-overlay">
+          {connectors.map((c) => (
+            <line
+              key={c.id}
+              x1={c.x1}
+              y1={c.y1}
+              x2={c.x2}
+              y2={c.y2}
+              stroke={c.active ? '#38bdf8' : 'rgba(56, 189, 248, 0.45)'}
+              stroke-width={c.active ? '3' : '2'}
+              stroke-dasharray={c.active ? '6 3' : '4 3'}
+              style={{
+                filter: c.active ? 'drop-shadow(0 0 8px rgba(56, 189, 248, 0.95))' : undefined,
+                transition: 'all 0.15s ease-out',
+              }}
+            />
+          ))}
+        </svg>
+      )}
+
+      {pinItems.map((item) => {
+        const { pinKey, ann, annIdx, subLabel, isMulti, multiTotal, x, y } = item;
         const isHovered = hoveredPinId === ann.id || editingPinId === ann.id;
         const isEditing = editingPinId === ann.id;
+        const showTooltip = isHovered && (hoveredPinKey === pinKey || (!hoveredPinKey && isEditing));
 
         // Smart placement logic: if pin is in the upper viewport (y < 220), flip tooltip below the pin
         const isNearTop = y < 220;
@@ -141,27 +266,34 @@ export function CommentPins() {
 
         return (
           <div
-            key={ann.id}
-            class="ve-pin"
+            key={pinKey}
+            class={`ve-pin ${isMulti ? 've-pin-multi' : ''}`}
             style={{ left: `${x}px`, top: `${y}px` }}
             onMouseEnter={() => {
-              if (!editingPinId) setHoveredPinId(ann.id);
+              if (!editingPinId) {
+                setHoveredPinId(ann.id);
+                setHoveredPinKey(pinKey);
+              }
             }}
             onMouseLeave={() => {
-              if (!editingPinId) setHoveredPinId(null);
+              if (!editingPinId) {
+                setHoveredPinId(null);
+                setHoveredPinKey(null);
+              }
             }}
             onClick={(e) => {
               e.stopPropagation();
               if (editingPinId === ann.id) {
-                // Clicking pin twice closes it while preserving changes
                 state.updateAnnotation(ann.id, editText);
                 setEditingPinId(null);
                 setHoveredPinId(null);
+                setHoveredPinKey(null);
               } else {
                 if (editingPinId) {
                   state.updateAnnotation(editingPinId, editText);
                 }
                 setHoveredPinId(ann.id);
+                setHoveredPinKey(pinKey);
                 setEditingPinId(ann.id);
                 setEditText(ann.comment);
               }
@@ -170,8 +302,16 @@ export function CommentPins() {
               e.stopPropagation();
             }}
           >
-            <span>{idx + 1}</span>
-            {isHovered && (
+            <span>{subLabel}</span>
+            {isMulti && (
+              <span class="ve-pin-link-badge" title={`Linked to ${multiTotal} elements`}>
+                <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+            )}
+            {showTooltip && (
               <div
                 class={`ve-pin-tooltip ${isNearTop ? 've-pin-tooltip-below' : 've-pin-tooltip-above'}`}
                 style={tooltipPositionStyle}
@@ -180,7 +320,9 @@ export function CommentPins() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '8px' }}>
                   <strong style={{ color: '#ffffff', fontSize: '11px', fontWeight: 600 }}>
-                    Pin #{idx + 1} {ann.selectedText ? '• Text' : ''}
+                    {isMulti
+                      ? `Pin #${subLabel} • Linked (${multiTotal} elements)`
+                      : `Pin #${annIdx + 1} ${ann.selectedText ? '• Text' : ''}`}
                   </strong>
                   <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                     {!isEditing && (

@@ -47,10 +47,14 @@ export function SelectionBox() {
     <Fragment>
       {state.hoveredElement &&
         state.hoveredElement !== state.activeElement &&
+        !state.commentTargetElements.includes(state.hoveredElement) &&
         state.hoveredElement !== state.commentTargetElement &&
         renderBox(state.hoveredElement, false)}
       {state.activeTool === 'edit' && state.activeElement && renderBox(state.activeElement, true)}
-      {state.activeTool === 'comment' && state.commentTargetElement && renderBox(state.commentTargetElement, true)}
+      {state.activeTool === 'comment' &&
+        (state.commentTargetElements.length > 0
+          ? state.commentTargetElements.map((el) => renderBox(el, true))
+          : state.commentTargetElement && renderBox(state.commentTargetElement, true))}
     </Fragment>
   );
 }
