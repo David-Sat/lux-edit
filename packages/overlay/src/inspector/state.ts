@@ -44,7 +44,6 @@ export class OverlayStateManager {
   public userPrompt = '';
   public sessionId = `session_${Date.now().toString(36)}`;
   public sessionStatus: SessionStatus = 'draft';
-  public isAgentListening = false;
   public mutations: MutationRecord[] = [];
   public annotations: CommentAnnotation[] = [];
   public agentReplies: AgentReply[] = [];
@@ -742,9 +741,6 @@ export class OverlayStateManager {
             if (data.payload.replies) {
               this.agentReplies = data.payload.replies;
             }
-            this.notify();
-          } else if (data.type === 'AGENT_LISTENING') {
-            this.isAgentListening = !!data.payload?.listening;
             this.notify();
           } else if (data.type === 'AGENT_REPLY') {
             this.agentReplies.push(data.payload);

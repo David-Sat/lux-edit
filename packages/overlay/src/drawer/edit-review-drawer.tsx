@@ -45,8 +45,6 @@ export function EditReviewDrawer() {
     }
   };
 
-  const isAgentListening = state.isAgentListening;
-
   const getStatusDisplay = () => {
     if (state.sessionStatus === 'in_progress') {
       return {
@@ -64,22 +62,15 @@ export function EditReviewDrawer() {
     }
     if (state.sessionStatus === 'submitted') {
       return {
-        label: 'Sent to Agent',
+        label: 'Ready for /lux',
         color: 'var(--ve-accent-text, #0284c7)',
         dot: 'var(--ve-accent-text, #0284c7)',
       };
     }
-    if (isAgentListening) {
-      return {
-        label: 'Agent Ready',
-        color: '#a855f7',
-        dot: '#c084fc',
-      };
-    }
     return {
-      label: 'Drafting',
-      color: '#94a3b8',
-      dot: '#64748b',
+      label: totalItems > 0 ? 'Active Review' : 'Drafting',
+      color: totalItems > 0 ? 'var(--ve-accent-text, #0284c7)' : '#94a3b8',
+      dot: totalItems > 0 ? 'var(--ve-accent-text, #0284c7)' : '#64748b',
     };
   };
 
@@ -384,61 +375,41 @@ export function EditReviewDrawer() {
           Reset All
         </button>
 
-        {/* DEFAULT MODE: Clean, Full-Width Copy Prompt (When agent is not listening) */}
-        {!isAgentListening ? (
-          <button
-            class="ve-btn primary"
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-            onClick={handleCopyPrompt}
-            disabled={totalItems === 0 && !state.userPrompt.trim()}
-            title="Copy formatted prompt to clipboard"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            {copiedToast ? 'Copied to Clipboard' : 'Copy Prompt for Chat'}
-          </button>
-        ) : (
-          /* AGENT LISTENING MODE: Compact Copy + Send to Agent */
-          <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
-            <button
-              class="ve-btn"
-              style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              onClick={handleCopyPrompt}
-              disabled={totalItems === 0 && !state.userPrompt.trim()}
-              title="Copy formatted prompt to clipboard"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              {copiedToast ? 'Copied' : 'Copy'}
-            </button>
+        <button
+          class="ve-btn"
+          style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          onClick={handleCopyPrompt}
+          disabled={totalItems === 0 && !state.userPrompt.trim()}
+          title="Copy formatted prompt to clipboard"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          {copiedToast ? 'Copied' : 'Copy Prompt'}
+        </button>
 
-            <button
-              class="ve-btn primary"
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-              onClick={handleSendToAgent}
-              disabled={totalItems === 0 && !state.userPrompt.trim()}
-              title="Wake up the waiting AI Agent to apply these changes immediately"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-              {isSubmitting
-                ? 'Sending...'
-                : state.sessionStatus === 'submitted'
-                ? 'Sent (Waiting...)'
-                : state.sessionStatus === 'in_progress'
-                ? 'Working...'
-                : state.sessionStatus === 'implemented'
-                ? 'Implemented'
-                : 'Send to Agent'}
-            </button>
-          </div>
-        )}
+        <button
+          class="ve-btn primary"
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+          onClick={handleSendToAgent}
+          disabled={totalItems === 0 && !state.userPrompt.trim()}
+          title="Flush sync and mark review ready for /lux"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+          {isSubmitting
+            ? 'Syncing...'
+            : state.sessionStatus === 'submitted'
+            ? 'Ready for /lux'
+            : state.sessionStatus === 'in_progress'
+            ? 'Agent Working...'
+            : state.sessionStatus === 'implemented'
+            ? 'Implemented'
+            : 'Submit Review'}
+        </button>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ export class WebSocketHub {
   private eventStore: EventStore;
   private basePath: string;
   private clients = new Set<WebSocket>();
+  private clientSessionMap = new Map<WebSocket, string>();
 
   constructor(server: Server, eventStore: EventStore, basePath: string = '') {
     this.eventStore = eventStore;
@@ -38,17 +39,8 @@ export class WebSocketHub {
     this.wss.on('connection', (ws) => {
       this.clients.add(ws);
 
-      // Immediately sync latest session status and agent listener state to newly connected client
+      // Immediately sync latest session status to newly connected client
       try {
-        const isListening = this.eventStore.hasActiveWaiters();
-        ws.send(
-          JSON.stringify({
-            type: 'AGENT_LISTENING',
-            sessionId: '',
-            payload: { listening: isListening },
-          })
-        );
-
         const latestSessions = this.eventStore.listSessions();
         if (latestSessions.length > 0) {
           const latest = latestSessions[latestSessions.length - 1];
@@ -70,6 +62,9 @@ export class WebSocketHub {
         try {
           const msg: WebSocketMessage = JSON.parse(data.toString());
           if (msg.type === 'SUBMIT_BATCH') {
+            if (msg.payload?.id) {
+              this.clientSessionMap.set(ws, msg.payload.id);
+            }
             this.eventStore.saveBatch(msg.payload);
             this.broadcast({
               type: 'STATUS_CHANGE',
@@ -77,6 +72,9 @@ export class WebSocketHub {
               payload: { status: 'submitted' },
             });
           } else if (msg.type === 'SYNC_SESSION') {
+            if (msg.payload?.id) {
+              this.clientSessionMap.set(ws, msg.payload.id);
+            }
             this.eventStore.saveBatch(msg.payload);
           }
         } catch (err) {
@@ -86,8 +84,17 @@ export class WebSocketHub {
 
       ws.on('close', () => {
         this.clients.delete(ws);
+        this.clientSessionMap.delete(ws);
       });
     });
+  }
+
+  public getActiveSessionIds(): string[] {
+    return Array.from(new Set(this.clientSessionMap.values())).filter(Boolean);
+  }
+
+  public getConnectedClientCount(): number {
+    return this.clients.size;
   }
 
   public broadcast(msg: WebSocketMessage): void {
