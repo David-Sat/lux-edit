@@ -47,32 +47,34 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   };
 
   const resolvePendingBatch = async (args?: { workspaceDir?: string; serverUrl?: string }): Promise<VisualEditBatch | null> => {
-    // 1. If explicit workspaceDir provided, check that store first
+    // 1. If explicit serverUrl provided, probe that specific server URL first
+    if (args?.serverUrl && args.serverUrl.trim()) {
+      const live = await fetchFromRunningServer(args.serverUrl.trim());
+      if (live) return live;
+    }
+
+    // 2. If explicit workspaceDir provided, check that store on disk
     if (args?.workspaceDir && args.workspaceDir.trim()) {
       const store = resolveEventStore(args.workspaceDir);
-      const batch = store.getPendingReview();
+      const batch = store.getPendingReview({ serverUrl: args?.serverUrl });
       if (batch && ((batch.mutations && batch.mutations.length > 0) || (batch.annotations && batch.annotations.length > 0))) {
         return batch;
       }
     }
 
-    // 2. Check default eventStore (local workspace)
-    const localBatch = defaultEventStore.getPendingReview();
+    // 3. Check default eventStore on disk
+    const localBatch = defaultEventStore.getPendingReview({ serverUrl: args?.serverUrl });
     if (localBatch && ((localBatch.mutations && localBatch.mutations.length > 0) || (localBatch.annotations && localBatch.annotations.length > 0))) {
       return localBatch;
     }
 
-    // 3. Fall back to probing live running review server (e.g. 4320, 4321, or custom serverUrl)
-    const candidateUrls: string[] = [];
-    if (args?.serverUrl && args.serverUrl.trim()) {
-      candidateUrls.push(args.serverUrl.trim());
-    } else {
-      candidateUrls.push('http://127.0.0.1:4320', 'http://127.0.0.1:4321');
-    }
-
-    for (const url of candidateUrls) {
-      const live = await fetchFromRunningServer(url);
-      if (live) return live;
+    // 4. Fall back to probing live running review servers if no reviews on disk
+    if (!args?.workspaceDir) {
+      const candidateUrls = ['http://127.0.0.1:4320', 'http://127.0.0.1:4321', 'http://127.0.0.1:4322', 'http://127.0.0.1:4330'];
+      for (const url of candidateUrls) {
+        const live = await fetchFromRunningServer(url);
+        if (live) return live;
+      }
     }
 
     return localBatch || null;

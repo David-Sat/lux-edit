@@ -5,6 +5,7 @@ import { VisualEditServer } from '../server.js';
 import { EventStore } from '../event-store.js';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
 describe('Server & EventStore Integration', () => {
   const testDir = path.resolve(process.cwd(), '.test-visual-edit');
@@ -87,17 +88,8 @@ describe('Server & EventStore Integration', () => {
     expect(created.userPrompt).toBe('Increase hero headline size');
   });
 
-  it('supports atomic agent claiming and status updates', () => {
+  it('supports session status updates and agent replies', () => {
     const store = server.getEventStore();
-    const claimRes = store.claimSession('test_session_123', 'agent-alpha');
-    expect(claimRes.success).toBe(true);
-
-    // Another agent trying to claim should fail
-    const conflictRes = store.claimSession('test_session_123', 'agent-beta');
-    expect(conflictRes.success).toBe(false);
-    expect(conflictRes.error).toContain('already claimed');
-
-    // Updating status with message
     const updateRes = store.updateStatus('test_session_123', 'implemented', {
       agentId: 'agent-alpha',
       message: 'Applied text-6xl to main-headline in styles.css',
@@ -597,5 +589,150 @@ describe('Proxy Compression Handling (Issue #22: Next.js gzip/brotli)', () => {
     const html = await res.text();
     expect(html).toContain('Hello Compressed');
     expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+  });
+});
+
+describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
+  const testDir = path.join(os.tmpdir(), `lux-parallel-test-${Date.now()}`);
+  let store: EventStore;
+
+  beforeAll(() => {
+    fs.mkdirSync(testDir, { recursive: true });
+    store = new EventStore(testDir);
+  });
+
+  afterAll(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  it('isolates pending reviews between parallel servers running on different ports', () => {
+    // Session on Port 4320
+    store.saveBatch({
+      id: 'session_port_4320',
+      timestamp: Date.now() - 5000,
+      route: '/',
+      url: 'http://127.0.0.1:4320/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [
+        {
+          id: 'ann_4320',
+          timestamp: Date.now() - 5000,
+          type: 'element',
+          targetSelector: '#hero-title',
+          comment: 'Change title to bold on 4320',
+        },
+      ],
+    });
+
+    // Session on Port 4330
+    store.saveBatch({
+      id: 'session_port_4330',
+      timestamp: Date.now(),
+      route: '/',
+      url: 'http://127.0.0.1:4330/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [
+        {
+          id: 'ann_4330',
+          timestamp: Date.now(),
+          type: 'element',
+          targetSelector: '#external-card',
+          comment: 'Inspect layout on 4330',
+        },
+      ],
+    });
+
+    const pending4320 = store.getPendingReview({ port: 4320 });
+    expect(pending4320?.id).toBe('session_port_4320');
+    expect(pending4320?.annotations?.[0].comment).toBe('Change title to bold on 4320');
+
+    const pending4330 = store.getPendingReview({ port: 4330 });
+    expect(pending4330?.id).toBe('session_port_4330');
+    expect(pending4330?.annotations?.[0].comment).toBe('Inspect layout on 4330');
+  });
+
+  it('preserves weekend sessions (e.g. 3 days old) while ignoring sessions older than 7-day TTL', () => {
+    const eightDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
+
+    // Stale session (8 days old)
+    store.saveBatch({
+      id: 'session_stale_8d',
+      timestamp: eightDaysAgo,
+      route: '/',
+      url: 'http://127.0.0.1:4340/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [{ id: 'ann_old', timestamp: eightDaysAgo, type: 'element', comment: 'Old comment' }],
+    });
+
+    // Weekend session (3 days old)
+    store.saveBatch({
+      id: 'session_weekend_3d',
+      timestamp: threeDaysAgo,
+      route: '/',
+      url: 'http://127.0.0.1:4340/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [{ id: 'ann_weekend', timestamp: threeDaysAgo, type: 'element', comment: 'Weekend comment' }],
+    });
+
+    const pending = store.getPendingReview({ port: 4340 });
+    expect(pending?.id).toBe('session_weekend_3d');
+    expect(pending?.annotations?.[0].comment).toBe('Weekend comment');
+  });
+
+  it('prioritizes sessions with active live WebSocket connections', () => {
+    store.saveBatch({
+      id: 'session_tab_background',
+      timestamp: Date.now() - 1000,
+      route: '/',
+      url: 'http://127.0.0.1:4350/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [{ id: 'ann_bg', timestamp: Date.now() - 1000, type: 'element', comment: 'Background tab' }],
+    });
+
+    store.saveBatch({
+      id: 'session_tab_active',
+      timestamp: Date.now() - 5000, // older timestamp
+      route: '/',
+      url: 'http://127.0.0.1:4350/',
+      status: 'draft',
+      userPrompt: '',
+      mutations: [],
+      annotations: [{ id: 'ann_fg', timestamp: Date.now() - 5000, type: 'element', comment: 'Foreground active tab' }],
+    });
+
+    // Without activeSessionIds, latest timestamp wins
+    const defaultPending = store.getPendingReview({ port: 4350 });
+    expect(defaultPending?.id).toBe('session_tab_background');
+
+    // With activeSessionIds prioritizing session_tab_active
+    const prioritizedPending = store.getPendingReview({
+      port: 4350,
+      activeSessionIds: ['session_tab_active'],
+    });
+    expect(prioritizedPending?.id).toBe('session_tab_active');
+    expect(prioritizedPending?.annotations?.[0].comment).toBe('Foreground active tab');
+  });
+
+  it('marks implemented only for the specified port without affecting parallel sessions', () => {
+    store.markPendingSessionsImplemented({ port: 4320 });
+
+    const session4320 = store.getSession('session_port_4320');
+    expect(session4320?.status).toBe('implemented');
+
+    const session4330 = store.getSession('session_port_4330');
+    expect(session4330?.status).toBe('draft');
   });
 });

@@ -116,7 +116,7 @@ export class VisualEditServer {
         if (reloadDebounce) clearTimeout(reloadDebounce);
         reloadDebounce = setTimeout(() => {
           console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
-          this.eventStore.markPendingSessionsImplemented();
+          this.eventStore.markPendingSessionsImplemented({ port: this.options.port });
           this.wsHub.broadcast({
             type: 'RELOAD_PAGE',
             payload: { file: filename || watchTarget },
@@ -282,7 +282,11 @@ export class VisualEditServer {
 
     // REST API - Pending Review Batch
     if ((pathname === '/__visual_edit__/api/pending' || pathname === '/__lux/api/pending') && req.method === 'GET') {
-      const pending = this.eventStore.getPendingReview();
+      const activeSessionIds = this.wsHub.getActiveSessionIds();
+      const pending = this.eventStore.getPendingReview({
+        port: this.options.port,
+        activeSessionIds,
+      });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(pending || null));
       return;
