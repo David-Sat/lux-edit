@@ -67,6 +67,7 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(path.join(pluginDir, 'mcp_config.json'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'skills', 'lux', 'SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'skills', 'lux-web', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(pluginDir, 'skills', 'lux-demo', 'SKILL.md'))).toBe(true);
 
       const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, 'plugin.json'), 'utf-8'));
       expect(manifest.name).toBe('lux-edit');
@@ -79,6 +80,9 @@ describe('lux init and multi-agent configuration', () => {
 
       const skillWeb = fs.readFileSync(path.join(pluginDir, 'skills', 'lux-web', 'SKILL.md'), 'utf-8');
       expect(skillWeb).toContain('name: lux-web');
+
+      const skillDemo = fs.readFileSync(path.join(pluginDir, 'skills', 'lux-demo', 'SKILL.md'), 'utf-8');
+      expect(skillDemo).toContain('name: lux-demo');
     });
 
     it('removes an Agent Plugin bundle directory', () => {
@@ -328,6 +332,7 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(path.join(fakeWorkspace, '.mcp.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux-web', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux-demo', 'SKILL.md'))).toBe(true);
 
       await runUninstall({
         global: false,
@@ -340,6 +345,7 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(path.join(fakeWorkspace, 'mcp_config.json'))).toBe(false);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(false);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux-web', 'SKILL.md'))).toBe(false);
+      expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux-demo', 'SKILL.md'))).toBe(false);
     });
 
     it('non-destructively preserves existing custom servers in workspace mcp.json and syncs .agents', async () => {
