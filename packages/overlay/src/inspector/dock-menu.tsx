@@ -11,7 +11,6 @@ export function DockMenu() {
   }, []);
 
   const totalCount = state.mutations.length + state.annotations.length;
-  const isAgentListening = state.isAgentListening;
 
   if (!state.isDockMenuOpen && state.activeTool === 'none') {
     return (
@@ -91,21 +90,6 @@ export function DockMenu() {
         </svg>
         {totalCount > 0 && <span class="ve-dock-badge">{totalCount}</span>}
       </button>
-
-      {/* Trigger Mode: Direct Send to Agent Button in Pill (Only shown when Agent is actively listening) */}
-      {isAgentListening && (
-        <button
-          class="ve-dock-item ve-dock-send"
-          onClick={() => state.submitBatch()}
-          disabled={totalCount === 0 && !state.userPrompt.trim()}
-          title="Send to Agent (Cmd+Enter)"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-        </button>
-      )}
 
       {/* Close / Collapse Button */}
       <button
