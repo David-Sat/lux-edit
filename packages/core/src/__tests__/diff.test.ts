@@ -89,4 +89,55 @@ describe('Diff Utilities', () => {
     expect(summary).toContain('AI agent revolution');
     expect(summary).toContain('Make this wording bolder');
   });
+
+  it('formats multi-element annotations properly in batch summary', () => {
+    const batch: VisualEditBatch = {
+      id: 'batch_multi_test',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [],
+      annotations: [
+        {
+          id: 'ann_multi',
+          timestamp: Date.now(),
+          type: 'multi',
+          comment: 'Align these two boxes horizontally and match widths',
+          targets: [
+            {
+              targetSelector: '#box-a',
+              sourceLocation: {
+                fileName: 'src/Diagram.tsx',
+                lineNumber: 15,
+                componentName: 'BoxA',
+                selector: '#box-a',
+                tag: 'div',
+              },
+              htmlSnippet: '<div id="box-a">Box A</div>',
+            },
+            {
+              targetSelector: '#box-b',
+              sourceLocation: {
+                fileName: 'src/Diagram.tsx',
+                lineNumber: 35,
+                componentName: 'BoxB',
+                selector: '#box-b',
+                tag: 'div',
+              },
+              htmlSnippet: '<div id="box-b">Box B</div>',
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatBatchSummary(batch);
+    expect(summary).toContain('Comment on 2 elements');
+    expect(summary).toContain('src/Diagram.tsx:15');
+    expect(summary).toContain('src/Diagram.tsx:35');
+    expect(summary).toContain('Align these two boxes horizontally and match widths');
+    expect(summary).toContain('Target 1 (`src/Diagram.tsx:15`): `<div id="box-a">Box A</div>`');
+    expect(summary).toContain('Target 2 (`src/Diagram.tsx:35`): `<div id="box-b">Box B</div>`');
+  });
 });
+

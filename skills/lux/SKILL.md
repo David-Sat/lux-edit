@@ -1,9 +1,12 @@
 ---
 name: lux
-description: In-browser visual review and editing with lux. Use when the user asks to start visual editing, inspect UI, review in-browser comments, or runs /lux.
+description: In-browser visual review and UI editing with lux for local projects, dev servers (localhost/127.0.0.1), and static HTML files where code changes will be applied directly to the user's codebase. Use when the user wants to visually edit or review their own app, or runs /lux. Do NOT use for external third-party websites or online articles (use /lux-web instead).
 ---
 
 # lux visual review and UI editing
+
+> [!NOTE]
+> **User-Hosted Apps Only:** `lux` is for reviewing and visually modifying the user's own codebase (running local dev servers like `http://localhost:3000` or local files). For exploring or tearing down external, third-party websites and online articles, use `/lux-web`.
 
 lux runs an in-browser visual editing overlay on running web apps, dev servers, and static HTML files.
 
