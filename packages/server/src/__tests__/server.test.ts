@@ -688,6 +688,7 @@ describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
     const pending = store.getPendingReview({ port: 4340 });
     expect(pending?.id).toBe('session_weekend_3d');
     expect(pending?.annotations?.[0].comment).toBe('Weekend comment');
+    expect(store.getSession('session_stale_8d')).toBeUndefined();
   });
 
   it('prioritizes sessions with active live WebSocket connections', () => {

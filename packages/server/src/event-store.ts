@@ -83,6 +83,16 @@ export class EventStore {
   }
 
   private pruneOldSessions(): void {
+    const STALE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const now = Date.now();
+
+    // 1. Purge any stale sessions older than 7 days from disk
+    for (const [id, s] of this.sessions.entries()) {
+      if (now - s.timestamp > STALE_TTL) {
+        this.sessions.delete(id);
+      }
+    }
+
     const MAX_SESSIONS = 50;
     if (this.sessions.size <= MAX_SESSIONS) return;
 
