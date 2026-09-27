@@ -133,19 +133,19 @@ lux demo
 \`\`\`
 *(If \`lux\` is not in PATH, use \`npx lux-edit demo\` or \`node packages/cli/dist/cli.js demo\`)*.
 
-### 3. Give the User a 60-Second Mission Briefing
+### 3. Give the User the Challenge Briefing
 
 Provide a clean, encouraging response with the review link:
 
 \`\`\`markdown
-✦ **Lux Interactive Playground is live at http://127.0.0.1:4320**
+✦ **Spot the Difference: Lux Playground is live at http://127.0.0.1:4320**
 
-Here is your 60-second mission on the demo page:
-1. **Station 01 (Edit Tool — Press \`E\`):** Double-click the main headline to fix the typo (*"DEVLOPMENT"* → *"DEVELOPMENT"*), and select the red badge to tweak its padding/border.
-2. **Station 02 (Comment Tool — Press \`C\`):** Drag-select the marketing jargon phrase *"quantum-grade paradigm synergies"* and drop a comment asking me to rewrite it.
-3. **Station 03 (Multi-Element Pin — \`Shift + Click\`):** Hold Shift and click Card 1, Card 2, and Card 3 to link all three cards with connector pins (1A, 1B, 1C), asking to unify their heights and margins.
+**The Challenge:**
+The design spec is on the left; the live build on the right has several visual flaws.
+- Use **Edit (\`E\`)** or **Comment (\`C\`)** to tag discrepancies on the live card (typos, badges, broken metric card).
+- Use **Shift + Click** to multi-pin elements across the grid.
 
-When you're finished, simply return here and run **/lux**. I will read your visual review, edit \`lux-demo/index.html\`, and your browser will hot-reload with the fixes applied live!
+When you're finished, return here and run **/lux**. I will read your visual review, fix \`lux-demo/index.html\` to match the spec, and your browser will hot-reload live!
 \`\`\`
 
 ### 4. Applying the Demo Review
@@ -154,10 +154,10 @@ When the user returns and runs \`/lux\` (or asks you to apply the changes):
 1. Call \`lux_get_pending_review\` with \`workspaceDir: process.cwd()\`.
 2. Inspect the annotations and mutations targeting \`./lux-demo/index.html\`.
 3. Modify \`./lux-demo/index.html\`:
-   - Fix the typo in \`#demo-headline\`
-   - Clean up \`#demo-badge\`
-   - Rewrite the jargon in \`#demo-paragraph\` to sound natural and engineering-focused
-   - Align the height, border-radius, and margins of \`#metric-card-2\` with the other cards
+   - Fix the typo in \`#live-product-title\` (*"Appolo Feild Recurder"* → *"Apollo Field Recorder"*)
+   - Align \`#live-badge\` styling with the target badge \`.pill-clean\`
+   - Reset \`#live-broken-spec\` styling, height, and margins to match standard \`.spec-item\`
+   - Apply any other requested visual tweaks to make the live build match the target spec
 4. Save \`./lux-demo/index.html\`.
 5. The lux file watcher will automatically reload the user's browser, resolve the session to **Implemented**, and complete the interactive loop!
 `;

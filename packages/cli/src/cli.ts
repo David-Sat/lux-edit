@@ -109,14 +109,13 @@ program
 
     try {
       const reviewUrl = await server.listen();
-      console.log('\n✦ Lux Interactive Playground');
+      console.log('\n✦ Lux: Spot the Difference (Playground)');
       console.log(`Review URL:  ${reviewUrl}`);
       console.log(`Demo File:   ${demoFile}`);
-      console.log(`\nFollow the instructions on the demo page to try:`);
-      console.log(`  1. Direct Visual Editing (Press 'E' to fix the headline typo)`);
-      console.log(`  2. Inline Text Selection (Press 'C' to highlight and comment on jargon)`);
-      console.log(`  3. Multi-Element Pins    (Shift + Click to link the 3 cards)`);
-      console.log(`\nWhen finished, run /lux in your AI coding assistant to apply your edits!`);
+      console.log(`\nSpot the visual flaws in the live build on the right:`);
+      console.log(`  • Edit (Press 'E') or Comment (Press 'C') to flag the discrepancies`);
+      console.log(`  • Link multiple elements with Shift+Click`);
+      console.log(`\nWhen finished, run /lux in your AI coding assistant to sync the code!`);
       console.log('\nPress Ctrl+C to stop.\n');
 
       if (options.open !== false) {
