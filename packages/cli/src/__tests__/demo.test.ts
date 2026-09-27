@@ -32,15 +32,12 @@ describe('lux demo playground', () => {
 
     expect(fs.existsSync(demoFile)).toBe(true);
     const content = fs.readFileSync(demoFile, 'utf-8');
-    expect(content).toContain('Lux Interactive Playground');
-    expect(content).toContain('Station 01 // Direct Visual Editing');
-    expect(content).toContain('HYPERFAST DEVLOPMENT ENGINE');
-    expect(content).toContain('BETA v0.9');
-    expect(content).toContain('Station 02 // Inline Text Selection');
-    expect(content).toContain('quantum-grade paradigm synergies');
-    expect(content).toContain('Station 03 // Multi-Element Pins');
-    expect(content).toContain('metric-card-2');
-    expect(content).toContain('Station 04 // Complete the Loop');
+    expect(content).toContain('Spot the Difference');
+    expect(content).toContain('Figma Target Spec');
+    expect(content).toContain('Live Build');
+    expect(content).toContain('HOT NEW BETA!!!');
+    expect(content).toContain('Appolo Feild Recurder');
+    expect(content).toContain('live-broken-spec');
 
     const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
     expect(gitignoreContent).toContain('/lux-demo/');
@@ -82,11 +79,11 @@ describe('lux demo playground', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
 
-    expect(html).toContain('Lux Interactive Playground');
+    expect(html).toContain('Spot the Difference');
     expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
-    expect(html).toContain('HYPERFAST DEVLOPMENT ENGINE');
-    expect(html).toContain('quantum-grade paradigm synergies');
-    expect(html).toContain('metric-card-2');
+    expect(html).toContain('Appolo Feild Recurder');
+    expect(html).toContain('HOT NEW BETA!!!');
+    expect(html).toContain('live-broken-spec');
 
     await server.close();
   });
