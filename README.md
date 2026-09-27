@@ -52,23 +52,21 @@ Enter numbers (e.g. 1,2), "a" for all, or press ENTER for detected defaults.
 
 ---
 
-### 2. How to Use (3 Steps)
+### 2. How to Use (Local App Editing vs. Web Research)
 
-1. **Start Review:** In your AI agent chat (Claude Code, Cursor, Antigravity, etc.), type:
-   ```text
-   /lux
-   ```
-   *(Or start manually in terminal: `lux http://localhost:3000` or `lux ./index.html`)*
-
+#### Mode A: Local Dev & Code Editing (`/lux`)
+1. **Start Review:** In your AI agent chat, type `/lux` (or in terminal: `lux http://localhost:3000` or `lux ./index.html`).
 2. **Edit in Browser:** Open `http://127.0.0.1:4320`:
    * Press **`V`** to visually inspect elements, tweak CSS, or double-click text to edit directly.
    * Press **`C`** to drop comment pins or drag across text to comment on specific words.
+3. **Apply Changes:** Tell your agent `/lux`. The agent reads your visual edits and comments over MCP, updates your code, and the browser auto-refreshes.
 
-3. **Apply Changes:** Tell your agent:
-   ```text
-   /lux
-   ```
-   The agent reads your visual edits and comments over MCP, updates your code, and the browser auto-refreshes.
+#### Mode B: Web Research, UI Teardowns & Article Discussion (`/lux-web`)
+1. **Inspect Any Website:** Ask your agent `/lux-web` on a URL (or run in terminal: `lux https://overreacted.io`).
+2. **Annotate & Question:** Open `http://127.0.0.1:4320`:
+   * Drop pins on impressive UI components (*"How did they build this glassmorphic card?"*).
+   * Highlight confusing paragraphs in articles (*"Can you explain the intuition behind this section?"*).
+3. **Discuss with Agent:** Click **Submit Review** and ask your agent to review. The agent analyzes the DOM paths, computed CSS, and your notes to deconstruct the implementation or break down the text.
 
 ---
 
@@ -104,6 +102,10 @@ lux http://localhost:3000
 
 # Target static HTML file
 lux ./index.html
+
+# Target live web pages for UI teardowns or article discussion
+lux https://overreacted.io
+lux https://news.ycombinator.com --port 4330
 
 # Custom port or behind cloud proxies (SageMaker, Codespaces, JupyterHub)
 lux http://localhost:5173 --port 4401 --base-path /codeeditor/default/ports/4401
