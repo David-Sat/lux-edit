@@ -735,4 +735,112 @@ describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
     const session4330 = store.getSession('session_port_4330');
     expect(session4330?.status).toBe('draft');
   });
+
+  it('isolates parallel live running servers end-to-end with WebSockets and file watcher', async () => {
+    const liveDir = path.join(os.tmpdir(), `lux-live-parallel-${Date.now()}`);
+    fs.mkdirSync(liveDir, { recursive: true });
+    const html1 = path.join(liveDir, 'app1.html');
+    const html2 = path.join(liveDir, 'app2.html');
+    fs.writeFileSync(html1, '<html><body><h1>App 1</h1></body></html>');
+    fs.writeFileSync(html2, '<html><body><h1>App 2</h1></body></html>');
+
+    const s1 = new VisualEditServer({
+      target: html1,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: liveDir,
+    });
+    const s2 = new VisualEditServer({
+      target: html2,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: liveDir,
+    });
+
+    const url1 = await s1.listen();
+    const url2 = await s2.listen();
+    const port1 = parseInt(new URL(url1).port, 10);
+    const port2 = parseInt(new URL(url2).port, 10);
+
+    const { WebSocket } = await import('ws');
+    const ws1 = new WebSocket(`ws://127.0.0.1:${port1}/__visual_edit__/ws`);
+    const ws2 = new WebSocket(`ws://127.0.0.1:${port2}/__visual_edit__/ws`);
+
+    await Promise.all([
+      new Promise((resolve) => ws1.on('open', resolve)),
+      new Promise((resolve) => ws2.on('open', resolve)),
+    ]);
+
+    // Send session 1 to server 1
+    ws1.send(
+      JSON.stringify({
+        type: 'SYNC_SESSION',
+        payload: {
+          id: 'live_session_1',
+          timestamp: Date.now(),
+          route: '/',
+          url: `http://127.0.0.1:${port1}/`,
+          status: 'draft',
+          userPrompt: '',
+          mutations: [],
+          annotations: [{ id: 'ann_live_1', timestamp: Date.now(), type: 'element', comment: 'Review 1' }],
+        },
+      })
+    );
+
+    // Send session 2 to server 2
+    ws2.send(
+      JSON.stringify({
+        type: 'SYNC_SESSION',
+        payload: {
+          id: 'live_session_2',
+          timestamp: Date.now() + 10,
+          route: '/',
+          url: `http://127.0.0.1:${port2}/`,
+          status: 'draft',
+          userPrompt: '',
+          mutations: [],
+          annotations: [{ id: 'ann_live_2', timestamp: Date.now() + 10, type: 'element', comment: 'Review 2' }],
+        },
+      })
+    );
+
+    // Allow WS to process & save to disk
+    await new Promise((r) => setTimeout(r, 200));
+
+    // Live HTTP GET /__visual_edit__/api/pending on each server
+    const res1 = await fetch(`http://127.0.0.1:${port1}/__visual_edit__/api/pending`);
+    const data1 = await res1.json();
+    const res2 = await fetch(`http://127.0.0.1:${port2}/__visual_edit__/api/pending`);
+    const data2 = await res2.json();
+
+    expect(data1?.id).toBe('live_session_1');
+    expect(data1?.annotations?.[0].comment).toBe('Review 1');
+
+    expect(data2?.id).toBe('live_session_2');
+    expect(data2?.annotations?.[0].comment).toBe('Review 2');
+
+    // Trigger file change on app1
+    fs.appendFileSync(html1, '\n<!-- live update -->');
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Re-check HTTP pending endpoints
+    const res1After = await fetch(`http://127.0.0.1:${port1}/__visual_edit__/api/pending`);
+    const data1After = await res1After.json();
+    const res2After = await fetch(`http://127.0.0.1:${port2}/__visual_edit__/api/pending`);
+    const data2After = await res2After.json();
+
+    // Server 1 session is now implemented, so pending is null
+    expect(data1After).toBeNull();
+    // Server 2 session is untouched, still pending
+    expect(data2After?.id).toBe('live_session_2');
+
+    ws1.close();
+    ws2.close();
+    await s1.close();
+    await s2.close();
+    if (fs.existsSync(liveDir)) {
+      fs.rmSync(liveDir, { recursive: true, force: true });
+    }
+  });
 });

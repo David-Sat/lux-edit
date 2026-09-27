@@ -389,6 +389,7 @@ export class VisualEditServer {
           this.server.removeListener('error', onError);
           const addr = this.server.address();
           const actualPort = typeof addr === 'object' && addr ? addr.port : port;
+          this.options.port = actualPort;
           const reviewUrl = `http://${host}:${actualPort}${this.basePath || ''}`;
           resolve(reviewUrl);
         });
