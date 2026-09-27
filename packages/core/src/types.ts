@@ -39,10 +39,18 @@ export interface MutationRecord {
   details?: Record<string, any>;
 }
 
+export interface AnnotationTarget {
+  targetSelector: string;
+  sourceLocation?: SourceLocation;
+  bounds?: { x: number; y: number; width: number; height: number };
+  htmlSnippet?: string;
+}
+
 export interface CommentAnnotation {
   id: string;
   timestamp: number;
-  type: 'element' | 'area' | 'text';
+  type: 'element' | 'area' | 'text' | 'multi';
+  targets?: AnnotationTarget[];
   targetSelector?: string;
   sourceLocation?: SourceLocation;
   htmlSnippet?: string;

@@ -1,5 +1,6 @@
 import {
   AgentReply,
+  AnnotationTarget,
   CommentAnnotation,
   MutationRecord,
   SessionStatus,
@@ -38,6 +39,7 @@ export class OverlayStateManager {
   public activeElement: HTMLElement | null = null;
   public hoveredElement: HTMLElement | null = null;
   public commentTargetElement: HTMLElement | null = null;
+  public commentTargetElements: HTMLElement[] = [];
   public commentTargetSelectedText?: string;
   public commentTargetBounds?: { x: number; y: number; width: number; height: number };
 
@@ -186,6 +188,7 @@ export class OverlayStateManager {
     }
     if (this.activeTool !== 'comment') {
       this.commentTargetElement = null;
+      this.commentTargetElements = [];
       this.commentTargetSelectedText = undefined;
       this.commentTargetBounds = undefined;
     }
@@ -290,9 +293,47 @@ export class OverlayStateManager {
     options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number } }
   ): void {
     this.commentTargetElement = el;
+    this.commentTargetElements = el ? [el] : [];
     this.commentTargetSelectedText = options?.selectedText;
     this.commentTargetBounds = options?.bounds;
     this.notify();
+  }
+
+  public toggleCommentTarget(el: HTMLElement): void {
+    if (this.commentTargetSelectedText) {
+      this.setCommentTarget(el);
+      return;
+    }
+
+    const idx = this.commentTargetElements.indexOf(el);
+    if (idx === -1) {
+      this.commentTargetElements.push(el);
+      this.commentTargetElement = el;
+    } else {
+      if (this.commentTargetElements.length > 1) {
+        this.commentTargetElements.splice(idx, 1);
+        this.commentTargetElement = this.commentTargetElements[this.commentTargetElements.length - 1];
+      } else {
+        this.setCommentTarget(null);
+        return;
+      }
+    }
+    this.commentTargetBounds = undefined;
+    this.notify();
+  }
+
+  public removeCommentTarget(el: HTMLElement): void {
+    const idx = this.commentTargetElements.indexOf(el);
+    if (idx !== -1) {
+      this.commentTargetElements.splice(idx, 1);
+      if (this.commentTargetElements.length === 0) {
+        this.setCommentTarget(null);
+        return;
+      } else {
+        this.commentTargetElement = this.commentTargetElements[this.commentTargetElements.length - 1];
+      }
+      this.notify();
+    }
   }
 
   public addComment(
@@ -302,30 +343,62 @@ export class OverlayStateManager {
   ): void {
     if (!comment.trim()) return;
 
-    const target = el || this.commentTargetElement;
+    const targetsList =
+      this.commentTargetElements.length > 1
+        ? this.commentTargetElements
+        : el
+        ? [el]
+        : this.commentTargetElements.length > 0
+        ? this.commentTargetElements
+        : this.commentTargetElement
+        ? [this.commentTargetElement]
+        : [];
+
+    const isMulti = targetsList.length > 1;
+    const primaryTarget = targetsList[0];
     const selectedText = options?.selectedText || this.commentTargetSelectedText;
     const customBounds = options?.bounds || this.commentTargetBounds;
 
-    const sourceLocation = target ? resolveSourceLocation(target) : undefined;
-    const elBounds = target ? target.getBoundingClientRect() : undefined;
-    const bounds = customBounds || (elBounds ? { x: elBounds.left, y: elBounds.top, width: elBounds.width, height: elBounds.height } : undefined);
+    const primaryLoc = primaryTarget ? resolveSourceLocation(primaryTarget) : undefined;
+    const primaryElBounds = primaryTarget ? primaryTarget.getBoundingClientRect() : undefined;
+    const primaryBounds =
+      customBounds ||
+      (primaryElBounds
+        ? { x: primaryElBounds.left, y: primaryElBounds.top, width: primaryElBounds.width, height: primaryElBounds.height }
+        : undefined);
+
+    const annotationTargets: AnnotationTarget[] | undefined = isMulti
+      ? targetsList.map((targetEl) => {
+          const loc = resolveSourceLocation(targetEl);
+          const b = targetEl.getBoundingClientRect();
+          return {
+            targetSelector: loc.selector,
+            sourceLocation: loc,
+            bounds: { x: b.left, y: b.top, width: b.width, height: b.height },
+            htmlSnippet: loc.htmlSnippet || targetEl.outerHTML.slice(0, 300),
+          };
+        })
+      : undefined;
 
     const annotation: CommentAnnotation = {
       id: `ann_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
-      type: selectedText ? 'text' : 'element',
-      targetSelector: sourceLocation?.selector,
-      sourceLocation,
+      type: isMulti ? 'multi' : selectedText ? 'text' : 'element',
+      targets: annotationTargets,
+      targetSelector: primaryLoc?.selector,
+      sourceLocation: primaryLoc,
+      htmlSnippet: primaryLoc?.htmlSnippet || (primaryTarget ? primaryTarget.outerHTML.slice(0, 300) : undefined),
       url: window.location.href,
       pathname: window.location.pathname,
       pageTitle: document.title,
-      bounds,
+      bounds: primaryBounds,
       selectedText,
       comment: comment.trim(),
     };
 
     this.annotations.push(annotation);
     this.commentTargetElement = null;
+    this.commentTargetElements = [];
     this.commentTargetSelectedText = undefined;
     this.commentTargetBounds = undefined;
     this.activeTool = 'none';
@@ -576,6 +649,7 @@ export class OverlayStateManager {
     this.sessionStatus = 'draft';
     this.activeElement = null;
     this.commentTargetElement = null;
+    this.commentTargetElements = [];
     this.notify();
   }
 

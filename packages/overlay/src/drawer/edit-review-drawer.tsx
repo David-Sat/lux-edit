@@ -226,7 +226,9 @@ export function EditReviewDrawer() {
                     <div key={ann.id} class="ve-mutation-card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                         <span class="ve-mut-target">
-                          Pin #{idx + 1} {ann.targetSelector ? `• ${ann.targetSelector}` : ''}
+                          {ann.targets && ann.targets.length > 1
+                            ? `Pin #${idx + 1} • Linked (${ann.targets.length} elements)`
+                            : `Pin #${idx + 1} ${ann.targetSelector ? `• ${ann.targetSelector}` : ''}`}
                           {ann.selectedText ? ' • [Text Selection]' : ''}
                         </span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -252,6 +254,32 @@ export function EditReviewDrawer() {
                           </button>
                         </div>
                       </div>
+
+                      {ann.targets && ann.targets.length > 1 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                          {ann.targets.map((t, tIdx) => {
+                            const label = t.sourceLocation?.componentName
+                              ? `<${t.sourceLocation.componentName}>`
+                              : t.targetSelector || `Target ${tIdx + 1}`;
+                            return (
+                              <span
+                                key={tIdx}
+                                style={{
+                                  fontSize: '10px',
+                                  fontFamily: 'ui-monospace, monospace',
+                                  background: 'rgba(56, 189, 248, 0.12)',
+                                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                                  color: 'var(--ve-accent-text, #38bdf8)',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                }}
+                              >
+                                {String.fromCharCode(65 + tIdx)}: {label}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {ann.selectedText && (
                         <div

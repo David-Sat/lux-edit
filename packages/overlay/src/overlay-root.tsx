@@ -111,9 +111,13 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         state.setActiveElement(target);
       } else if (state.activeTool === 'comment') {
         // If a text selection occurred (handled by handleMouseUp), keep the text selection target.
-        // Otherwise, if it was a plain click without selection, target the entire element.
+        // Otherwise, if it was a plain click without selection, target the entire element or toggle with Shift.
         if (!hasSelection && !state.commentTargetSelectedText) {
-          state.setCommentTarget(target);
+          if (e.shiftKey) {
+            state.toggleCommentTarget(target);
+          } else {
+            state.setCommentTarget(target);
+          }
         }
       }
     };
