@@ -5,6 +5,8 @@ import { startMcpStdio } from '@visual-edit/mcp';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { exec } from 'node:child_process';
+import { DEMO_HTML_TEMPLATE } from './demo-template.js';
 
 declare const __PACKAGE_VERSION__: string;
 
@@ -55,6 +57,72 @@ program
       console.log('\nPress Ctrl+C to stop.\n');
     } catch (err: any) {
       console.error('Failed to start lux server:', err.message);
+      process.exit(1);
+    }
+  });
+
+function openBrowser(url: string) {
+  const plat = process.platform;
+  const cmd = plat === 'darwin' ? `open "${url}"` : plat === 'win32' ? `start "" "${url}"` : `xdg-open "${url}"`;
+  exec(cmd, () => {});
+}
+
+// Command: Run Interactive Demo Playground
+program
+  .command('demo')
+  .description('Start interactive Lux demo playground to explore visual editing, comments, and agent handoff')
+  .option('-p, --port <number>', 'Review server port', '4320')
+  .option('-h, --host <address>', 'Bind address', '127.0.0.1')
+  .option('-r, --root <path>', 'Project root directory for demo sandbox', process.cwd())
+  .option('--no-open', 'Do not open browser automatically')
+  .action(async (options) => {
+    const rootDir = path.resolve(options.root);
+    const demoDir = path.join(rootDir, 'lux-demo');
+    const demoFile = path.join(demoDir, 'index.html');
+
+    if (!fs.existsSync(demoDir)) {
+      fs.mkdirSync(demoDir, { recursive: true });
+    }
+
+    if (!fs.existsSync(demoFile)) {
+      fs.writeFileSync(demoFile, DEMO_HTML_TEMPLATE, 'utf-8');
+      console.log(`[lux] Created interactive demo playground at: ${demoFile}`);
+    }
+
+    // Ensure /lux-demo/ is in .gitignore
+    const gitignorePath = path.join(rootDir, '.gitignore');
+    try {
+      let gitignore = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf-8') : '';
+      if (!gitignore.includes('/lux-demo')) {
+        gitignore += (gitignore.endsWith('\n') || gitignore.length === 0 ? '' : '\n') + '/lux-demo/\n';
+        fs.writeFileSync(gitignorePath, gitignore, 'utf-8');
+      }
+    } catch {}
+
+    const port = parseInt(options.port, 10);
+    const server = new VisualEditServer({
+      target: demoFile,
+      port,
+      host: options.host,
+      rootDir,
+    });
+
+    try {
+      const reviewUrl = await server.listen();
+      console.log('\n✦ Lux: Spot the Difference (Playground)');
+      console.log(`Review URL:  ${reviewUrl}`);
+      console.log(`Demo File:   ${demoFile}`);
+      console.log(`\nSpot the visual flaws in the live build on the right:`);
+      console.log(`  • Edit (Press 'E') or Comment (Press 'C') to flag the discrepancies`);
+      console.log(`  • Link multiple elements with Shift+Click`);
+      console.log(`\nWhen finished, run /lux in your AI coding assistant to sync the code!`);
+      console.log('\nPress Ctrl+C to stop.\n');
+
+      if (options.open !== false) {
+        openBrowser(reviewUrl);
+      }
+    } catch (err: any) {
+      console.error('Failed to start lux demo server:', err.message);
       process.exit(1);
     }
   });
