@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.8.1...lux-edit-v0.9.0) (2026-09-27)
+
+
+### Features
+
+* introduce lux-web skill for external website teardown and discussion ([#34](https://github.com/David-Sat/lux-edit/issues/34)) ([15a602f](https://github.com/David-Sat/lux-edit/commit/15a602fe49dbf9921fc5730781a2bed5553257eb))
+* **overlay:** support multi-element comment pins with shift-click ([#33](https://github.com/David-Sat/lux-edit/issues/33)) ([95fd504](https://github.com/David-Sat/lux-edit/commit/95fd50461c2f038e7b98866b87d183706959222b))
+
 ## [0.8.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.8.0...lux-edit-v0.8.1) (2026-09-24)
 
 
