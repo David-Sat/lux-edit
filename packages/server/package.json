@@ -19,7 +19,7 @@
     "@visual-edit/overlay": "workspace:*",
     "http-proxy": "^1.18.1",
     "sirv": "^3.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/http-proxy": "^1.17.15",
