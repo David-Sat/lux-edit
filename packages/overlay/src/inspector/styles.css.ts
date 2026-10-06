@@ -190,6 +190,17 @@ export const OVERLAY_STYLES = `
   }
 }
 
+@keyframes vePulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.5;
+  }
+}
+
 /* ==========================================================================
    Canvas Highlight Overlays & Target Badges
    ========================================================================== */

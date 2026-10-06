@@ -139,6 +139,140 @@ describe('MCP Server Tools & Prompts', () => {
     expect(parsed[0].userPrompt).toBe('Make the Pro tier card highlighted in violet');
   });
 
+  it('retrieves voice review walkthroughs with inline targets via lux_get_pending_review', async () => {
+    const voiceDir = path.resolve(process.cwd(), '.test-mcp-store-voice');
+    if (fs.existsSync(voiceDir)) {
+      fs.rmSync(voiceDir, { recursive: true, force: true });
+    }
+    const voiceStore = EventStore.getInstance(voiceDir);
+    voiceStore.saveBatch({
+      id: 'voice_session_42',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [],
+      voiceReviews: [
+        {
+          id: 'v_rec_1',
+          timestamp: Date.now(),
+          durationMs: 8500,
+          transcript: 'Here the font is too big and this button should be red.',
+          annotatedTranscript:
+            'Here the font is too big [Target 1] and this button [Target 2] should be red.',
+          pins: [
+            {
+              id: 'p1',
+              order: 1,
+              targetSelector: 'h1.heading',
+              sourceLocation: {
+                fileName: 'src/Hero.tsx',
+                lineNumber: 10,
+                componentName: 'Title',
+                selector: 'h1.heading',
+                tag: 'h1',
+              },
+              htmlSnippet: '<h1 class="heading">Hello</h1>',
+              timestampMs: 1200,
+            },
+            {
+              id: 'p2',
+              order: 2,
+              targetSelector: 'button.btn',
+              sourceLocation: {
+                fileName: 'src/Hero.tsx',
+                lineNumber: 25,
+                componentName: 'Button',
+                selector: 'button.btn',
+                tag: 'button',
+              },
+              htmlSnippet: '<button class="btn">Click</button>',
+              timestampMs: 4500,
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: { workspaceDir: voiceDir },
+    });
+
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('voice_session_42');
+    expect(textContent).toContain('Voice Walkthrough (1 recording)');
+    expect(textContent).toContain(
+      '> "Here the font is too big [Target 1] and this button [Target 2] should be red."'
+    );
+    expect(textContent).toContain('- **[Target 1]**: `src/Hero.tsx:10` (`<Title>`)');
+    expect(textContent).toContain('- **[Target 2]**: `src/Hero.tsx:25` (`<Button>`)');
+
+    fs.rmSync(voiceDir, { recursive: true, force: true });
+  });
+
+  it('retrieves voice review walkthroughs stored as annotations via lux_get_pending_review', async () => {
+    const voiceDir = path.resolve(process.cwd(), '.test-mcp-store-voice-anno');
+    if (fs.existsSync(voiceDir)) {
+      fs.rmSync(voiceDir, { recursive: true, force: true });
+    }
+    const voiceStore = EventStore.getInstance(voiceDir);
+    voiceStore.saveBatch({
+      id: 'voice_anno_session_1',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [],
+      annotations: [
+        {
+          id: 'v_ann_1',
+          timestamp: Date.now(),
+          type: 'voice',
+          comment: 'Here the font is too big [Target 1] and this button [Target 2] should be red.',
+          targets: [
+            {
+              targetSelector: 'h1.heading',
+              sourceLocation: {
+                fileName: 'src/Hero.tsx',
+                lineNumber: 10,
+                componentName: 'Title',
+                selector: 'h1.heading',
+                tag: 'h1',
+              },
+              htmlSnippet: '<h1 class="heading">Hello</h1>',
+            },
+            {
+              targetSelector: 'button.btn',
+              sourceLocation: {
+                fileName: 'src/Hero.tsx',
+                lineNumber: 25,
+                componentName: 'Button',
+                selector: 'button.btn',
+                tag: 'button',
+              },
+              htmlSnippet: '<button class="btn">Click</button>',
+            },
+          ],
+        },
+      ],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: { workspaceDir: voiceDir },
+    });
+
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('voice_anno_session_1');
+    expect(textContent).toContain('Voice Walkthrough on 2 targets');
+    expect(textContent).toContain('"Here the font is too big [Target 1] and this button [Target 2] should be red."');
+    expect(textContent).toContain('- **[Target 1]**: `src/Hero.tsx:10` (`<Title>`)');
+    expect(textContent).toContain('- **[Target 2]**: `src/Hero.tsx:25` (`<Button>`)');
+
+    fs.rmSync(voiceDir, { recursive: true, force: true });
+  });
+
   it('retrieves detailed batch via lux_get_session tool', async () => {
     const res = await client.callTool({
       name: 'lux_get_session',

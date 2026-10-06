@@ -49,7 +49,7 @@ export interface AnnotationTarget {
 export interface CommentAnnotation {
   id: string;
   timestamp: number;
-  type: 'element' | 'area' | 'text' | 'multi';
+  type: 'element' | 'area' | 'text' | 'multi' | 'voice';
   targets?: AnnotationTarget[];
   targetSelector?: string;
   sourceLocation?: SourceLocation;
@@ -84,6 +84,28 @@ export interface AgentClaim {
   expiresAt: number;
 }
 
+export interface VoiceTargetPin {
+  id: string;
+  order: number;
+  targetSelector: string;
+  sourceLocation?: SourceLocation;
+  htmlSnippet?: string;
+  bounds?: { x: number; y: number; width: number; height: number };
+  timestampMs?: number;
+}
+
+export interface VoiceReviewWalkthrough {
+  id: string;
+  timestamp: number;
+  durationMs?: number;
+  transcript: string;
+  annotatedTranscript: string;
+  pins: VoiceTargetPin[];
+  url?: string;
+  pathname?: string;
+  pageTitle?: string;
+}
+
 export interface VisualEditBatch {
   id: string;
   timestamp: number;
@@ -97,6 +119,7 @@ export interface VisualEditBatch {
   primarySource?: SourceLocation;
   mutations: MutationRecord[];
   annotations?: CommentAnnotation[];
+  voiceReviews?: VoiceReviewWalkthrough[];
   beforeSnippet?: string;
   afterSnippet?: string;
   claim?: AgentClaim;
@@ -110,6 +133,7 @@ export interface SessionSummary {
   status: SessionStatus;
   mutationCount: number;
   annotationCount?: number;
+  voiceReviewCount?: number;
   userPrompt?: string;
   primaryTarget?: string;
   hasClaim: boolean;

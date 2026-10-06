@@ -6,9 +6,12 @@ import {
   SessionStatus,
   SourceLocation,
   VisualEditBatch,
+  VoiceReviewWalkthrough,
+  VoiceTargetPin,
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
+import { VoiceRecorder } from './voice-recorder.js';
 
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
@@ -19,7 +22,7 @@ const BASE_PATH_PREFIX = (() => {
   }
 })();
 
-export type ActiveTool = 'none' | 'edit' | 'comment' | 'area';
+export type ActiveTool = 'none' | 'edit' | 'comment' | 'area' | 'voice';
 
 export interface ElementSnapshot {
   text: string;
@@ -48,6 +51,8 @@ export class OverlayStateManager {
   public sessionStatus: SessionStatus = 'draft';
   public mutations: MutationRecord[] = [];
   public annotations: CommentAnnotation[] = [];
+  public voiceReviews: VoiceReviewWalkthrough[] = [];
+  public activeVoicePins: VoiceTargetPin[] = [];
   public agentReplies: AgentReply[] = [];
   public themeTokens: Record<string, string> = {
     primary: '#6366f1',
@@ -84,9 +89,15 @@ export class OverlayStateManager {
     } catch (e) {}
   }
 
+  private getStorageKey(): string {
+    const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
+    return appId ? `visual_edit_draft_${appId}` : 'visual_edit_active_draft';
+  }
+
   private loadFromStorage(): void {
     try {
-      const saved = localStorage.getItem('visual_edit_active_draft');
+      const key = this.getStorageKey();
+      const saved = localStorage.getItem(key);
       if (saved) {
         const data = JSON.parse(saved);
         if (data.status !== 'implemented' && data.status !== 'resolved') {
@@ -94,6 +105,7 @@ export class OverlayStateManager {
           this.sessionStatus = data.status || 'draft';
           this.mutations = data.mutations || [];
           this.annotations = data.annotations || [];
+          this.voiceReviews = data.voiceReviews || [];
           this.userPrompt = data.userPrompt || '';
         }
       }
@@ -102,9 +114,11 @@ export class OverlayStateManager {
 
   private saveToStorage(): void {
     try {
+      const key = this.getStorageKey();
       const hasContent =
         this.mutations.length > 0 ||
         this.annotations.length > 0 ||
+        this.voiceReviews.length > 0 ||
         this.userPrompt.trim().length > 0;
 
       if (
@@ -112,9 +126,9 @@ export class OverlayStateManager {
         this.sessionStatus === 'resolved' ||
         (!hasContent && this.sessionStatus === 'draft')
       ) {
-        localStorage.removeItem('visual_edit_active_draft');
+        localStorage.removeItem(key);
       } else {
-        localStorage.setItem('visual_edit_active_draft', JSON.stringify(this.getBatch()));
+        localStorage.setItem(key, JSON.stringify(this.getBatch()));
       }
     } catch (e) {}
   }
@@ -137,6 +151,7 @@ export class OverlayStateManager {
     const hasContent =
       this.mutations.length > 0 ||
       this.annotations.length > 0 ||
+      this.voiceReviews.length > 0 ||
       this.userPrompt.trim().length > 0;
     if (hasContent || this.sessionStatus !== 'draft') {
       this.scheduleAutoSync();
@@ -156,6 +171,7 @@ export class OverlayStateManager {
     const hasContent =
       (batch.mutations && batch.mutations.length > 0) ||
       (batch.annotations && batch.annotations.length > 0) ||
+      (batch.voiceReviews && batch.voiceReviews.length > 0) ||
       (batch.userPrompt && batch.userPrompt.trim().length > 0);
 
     if (!hasContent && batch.status === 'draft') {
@@ -177,9 +193,20 @@ export class OverlayStateManager {
 
   public setTool(tool: ActiveTool): void {
     if (this.activeTool === tool) {
+      if (this.activeTool === 'voice') {
+        this.stopVoiceRecording();
+        return;
+      }
       this.activeTool = 'none';
     } else {
+      if (this.activeTool === 'voice') {
+        this.stopVoiceRecording();
+      }
       this.activeTool = tool;
+      if (tool === 'voice') {
+        this.startVoiceRecording();
+        return;
+      }
     }
 
     if (this.activeTool !== 'edit') {
@@ -192,6 +219,113 @@ export class OverlayStateManager {
       this.commentTargetBounds = undefined;
     }
     this.hoveredElement = null;
+    this.notify();
+  }
+
+  public startVoiceRecording(): void {
+    this.activeTool = 'voice';
+    this.activeVoicePins = [];
+    this.hoveredElement = null;
+    this.setActiveElement(null);
+    this.commentTargetElement = null;
+    this.commentTargetElements = [];
+    VoiceRecorder.getInstance().start();
+    this.notify();
+  }
+
+  public isStoppingVoice = false;
+
+  public async stopVoiceRecording(): Promise<void> {
+    if (this.isStoppingVoice) return;
+    this.isStoppingVoice = true;
+    this.notify();
+    try {
+      const review = await VoiceRecorder.getInstance().stop();
+      if (review) {
+        const primaryPin = review.pins[0];
+        const annotation: CommentAnnotation = {
+          id: review.id,
+          timestamp: review.timestamp,
+          type: 'voice',
+          comment: review.annotatedTranscript || review.transcript,
+          targetSelector: primaryPin?.targetSelector,
+          sourceLocation: primaryPin?.sourceLocation,
+          htmlSnippet: primaryPin?.htmlSnippet,
+          bounds: primaryPin?.bounds,
+          url: review.url,
+          pathname: review.pathname,
+          pageTitle: review.pageTitle,
+          targets: review.pins.map((p) => ({
+            targetSelector: p.targetSelector,
+            sourceLocation: p.sourceLocation,
+            htmlSnippet: p.htmlSnippet,
+            bounds: p.bounds,
+          })),
+        };
+        this.annotations.push(annotation);
+        this.scheduleAutoSync();
+        this.isDrawerOpen = true;
+      }
+      this.activeTool = 'none';
+      this.activeVoicePins = [];
+    } finally {
+      this.isStoppingVoice = false;
+      this.notify();
+    }
+  }
+
+  public cancelVoiceRecording(): void {
+    VoiceRecorder.getInstance().cancel();
+    this.activeVoicePins = [];
+    this.activeTool = 'none';
+    this.notify();
+  }
+
+  public recordVoicePin(targetEl: HTMLElement): void {
+    const recorder = VoiceRecorder.getInstance();
+    const sourceLocation = resolveSourceLocation(targetEl);
+    const rect = targetEl.getBoundingClientRect();
+    const bounds = {
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height,
+    };
+    const selector =
+      targetEl.tagName.toLowerCase() +
+      (targetEl.id ? `#${targetEl.id}` : '') +
+      (targetEl.className && typeof targetEl.className === 'string'
+        ? `.${targetEl.className.trim().split(/\s+/).slice(0, 2).join('.')}`
+        : '');
+
+    const snippet = targetEl.outerHTML.slice(0, 200);
+
+    const pin = recorder.addPin({
+      selector,
+      sourceLocation,
+      htmlSnippet: snippet,
+      bounds,
+    });
+
+    this.activeVoicePins = [...this.activeVoicePins, pin];
+
+    // Visual ripple effect on clicked element
+    try {
+      const origTransition = targetEl.style.transition;
+      const origBoxShadow = targetEl.style.boxShadow;
+      targetEl.style.transition = 'box-shadow 0.2s ease, transform 0.2s ease';
+      targetEl.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)';
+      setTimeout(() => {
+        targetEl.style.boxShadow = origBoxShadow;
+        targetEl.style.transition = origTransition;
+      }, 400);
+    } catch (e) {}
+
+    this.notify();
+  }
+
+  public deleteVoiceReview(id: string): void {
+    this.voiceReviews = this.voiceReviews.filter((v) => v.id !== id);
     this.notify();
   }
 
@@ -645,6 +779,8 @@ export class OverlayStateManager {
 
     this.mutations = [];
     this.annotations = [];
+    this.voiceReviews = [];
+    this.activeVoicePins = [];
     this.sessionStatus = 'draft';
     this.activeElement = null;
     this.commentTargetElement = null;
@@ -756,6 +892,9 @@ export class OverlayStateManager {
     this.annotations.forEach((a) => {
       if (a.pathname) visitedSet.add(a.pathname);
     });
+    this.voiceReviews.forEach((v) => {
+      if (v.pathname) visitedSet.add(v.pathname);
+    });
 
     return {
       id: this.sessionId,
@@ -764,11 +903,13 @@ export class OverlayStateManager {
       url: window.location.href,
       pageTitle: document.title,
       pagesVisited: Array.from(visitedSet),
+      appId: typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined,
       status: this.sessionStatus,
       userPrompt: this.userPrompt,
       primarySource,
       mutations: this.mutations,
       annotations: this.annotations,
+      voiceReviews: this.voiceReviews,
       replies: this.agentReplies,
     };
   }
@@ -805,10 +946,13 @@ export class OverlayStateManager {
             if (data.payload.status === 'implemented' || data.payload.status === 'resolved') {
               this.mutations = [];
               this.annotations = [];
+              this.voiceReviews = [];
+              this.activeVoicePins = [];
               this.userPrompt = '';
               this.sessionId = `session_${Date.now().toString(36)}`;
               this.sessionStatus = 'draft';
               try {
+                localStorage.removeItem(this.getStorageKey());
                 localStorage.removeItem('visual_edit_active_draft');
               } catch (e) {}
             }
@@ -821,6 +965,7 @@ export class OverlayStateManager {
             this.notify();
           } else if (data.type === 'RELOAD_PAGE') {
             try {
+              localStorage.removeItem(this.getStorageKey());
               localStorage.removeItem('visual_edit_active_draft');
             } catch (e) {}
             window.location.reload();

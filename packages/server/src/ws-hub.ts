@@ -7,12 +7,14 @@ export class WebSocketHub {
   private wss: WebSocketServer;
   private eventStore: EventStore;
   private basePath: string;
+  private appId?: string;
   private clients = new Set<WebSocket>();
   private clientSessionMap = new Map<WebSocket, string>();
 
-  constructor(server: Server, eventStore: EventStore, basePath: string = '') {
+  constructor(server: Server, eventStore: EventStore, basePath: string = '', appId?: string) {
     this.eventStore = eventStore;
     this.basePath = basePath;
+    this.appId = appId;
     this.wss = new WebSocketServer({ noServer: true });
 
     this.eventStore.subscribe((event) => {
@@ -45,16 +47,18 @@ export class WebSocketHub {
         if (latestSessions.length > 0) {
           const latest = latestSessions[latestSessions.length - 1];
           const fullSession = this.eventStore.getSession(latest.id);
-          ws.send(
-            JSON.stringify({
-              type: 'STATUS_CHANGE',
-              sessionId: latest.id,
-              payload: {
-                status: latest.status,
-                replies: fullSession?.replies || [],
-              },
-            })
-          );
+          if (!this.appId || !fullSession?.appId || fullSession.appId === this.appId) {
+            ws.send(
+              JSON.stringify({
+                type: 'STATUS_CHANGE',
+                sessionId: latest.id,
+                payload: {
+                  status: latest.status,
+                  replies: fullSession?.replies || [],
+                },
+              })
+            );
+          }
         }
       } catch (err) {}
 
@@ -62,6 +66,13 @@ export class WebSocketHub {
         try {
           const msg: WebSocketMessage = JSON.parse(data.toString());
           if (msg.type === 'SUBMIT_BATCH') {
+            if (this.appId && msg.payload?.appId && msg.payload.appId !== this.appId) {
+              console.warn(`[lux] WS dropping SUBMIT_BATCH from mismatched appId: ${msg.payload.appId} (server: ${this.appId})`);
+              return;
+            }
+            if (this.appId && msg.payload && !msg.payload.appId) {
+              msg.payload.appId = this.appId;
+            }
             if (msg.payload?.id) {
               this.clientSessionMap.set(ws, msg.payload.id);
             }
@@ -72,6 +83,13 @@ export class WebSocketHub {
               payload: { status: 'submitted' },
             });
           } else if (msg.type === 'SYNC_SESSION') {
+            if (this.appId && msg.payload?.appId && msg.payload.appId !== this.appId) {
+              console.warn(`[lux] WS dropping SYNC_SESSION from mismatched appId: ${msg.payload.appId} (server: ${this.appId})`);
+              return;
+            }
+            if (this.appId && msg.payload && !msg.payload.appId) {
+              msg.payload.appId = this.appId;
+            }
             if (msg.payload?.id) {
               this.clientSessionMap.set(ws, msg.payload.id);
             }

@@ -182,6 +182,12 @@ npm uninstall -g lux-edit
 
 ---
 
+## Architecture & Principles
+
+Read our [Design Principles](./docs/PRINCIPLES.md) to understand how Lux is engineered for agent efficiency, single-command simplicity, and context economy.
+
+---
+
 ## License
 
-[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review). • [Privacy Policy](./PRIVACY.md)
+[MIT](./LICENSE) © 2026 David Satomi. Inspired by [ui-review](https://github.com/flucas96/ui-review). • [Design Principles](./docs/PRINCIPLES.md) • [Privacy Policy](./PRIVACY.md)
