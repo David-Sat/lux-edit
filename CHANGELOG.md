@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.9.0...lux-edit-v0.10.0) (2026-10-06)
+
+
+### Features
+
+* **overlay:** add voice walkthroughs, multi-target pins, and design principles ([#39](https://github.com/David-Sat/lux-edit/issues/39)) ([ec98332](https://github.com/David-Sat/lux-edit/commit/ec983322ab8bcc2ef8a125e1d5ec99437394fe64))
+
+
+### Bug Fixes
+
+* **overlay:** guard global navigator access for Node 20 test environment ([#42](https://github.com/David-Sat/lux-edit/issues/42)) ([2025e68](https://github.com/David-Sat/lux-edit/commit/2025e68b43fc0ff3aa495f43fee4d6733374b147))
+
 ## [0.9.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.8.1...lux-edit-v0.9.0) (2026-09-27)
 
 
