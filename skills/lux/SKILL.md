@@ -50,4 +50,4 @@ Check whether a review server is already running on port 4320:
      lux <url-or-file> --port 4320
      ```
   3. Tell the user:
-     "Open `http://127.0.0.1:4320` in your browser. Press C to drop comment pins or V to adjust styles. When finished, run `/lux` again and I will apply your changes to the code."
+     "Open `http://127.0.0.1:4320` in your browser. Press C to drop comment pins, R to record a voice walkthrough, or V to adjust styles. When finished, run `/lux` again and I will apply your changes to the code."

@@ -1,4 +1,4 @@
-import { MutationRecord, SourceLocation, VisualEditBatch } from './types.js';
+import { MutationRecord, SourceLocation, VisualEditBatch, VoiceTargetPin } from './types.js';
 import { mapStyleToTailwind } from './tailwind-mapper.js';
 
 let mutationCounter = 0;
@@ -179,7 +179,31 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
 
       const snippet = a.htmlSnippet || a.sourceLocation?.htmlSnippet;
 
-      if (a.targets && a.targets.length > 1) {
+      if (a.type === 'voice') {
+        const targetCount = a.targets ? a.targets.length : 0;
+        lines.push(`- **Voice Walkthrough${targetCount > 0 ? ` on ${targetCount} target${targetCount > 1 ? 's' : ''}` : ''}**: "${a.comment}"`);
+        if (a.targets && a.targets.length > 0) {
+          lines.push(`  **Referenced Targets:**`);
+          a.targets.forEach((t, i) => {
+            const tLoc = t.sourceLocation?.fileName
+              ? `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``
+              : '';
+            const comp = t.sourceLocation?.componentName
+              ? `(\`<${t.sourceLocation.componentName}>\`)`
+              : t.targetSelector
+              ? `(\`${t.targetSelector}\`)`
+              : '';
+            const targetHeading = [tLoc, comp].filter(Boolean).join(' ');
+            lines.push(`  - **[Target ${i + 1}]**${targetHeading ? `: ${targetHeading}` : ''}`);
+            const tSnippet = t.htmlSnippet || t.sourceLocation?.htmlSnippet;
+            if (tSnippet) {
+              const clean = tSnippet.replace(/\s+/g, ' ').trim();
+              const snippetClean = clean.length > 80 ? clean.slice(0, 77) + '...' : clean;
+              lines.push(`    - Element: \`${snippetClean}\``);
+            }
+          });
+        }
+      } else if (a.targets && a.targets.length > 1) {
         const targetLabels = a.targets.map((t) => {
           if (t.sourceLocation?.fileName) {
             return `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``;
@@ -218,5 +242,43 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
     }
   }
 
+  if (batch.voiceReviews && batch.voiceReviews.length > 0) {
+    lines.push(`\n**Voice Walkthrough (${batch.voiceReviews.length} recording${batch.voiceReviews.length > 1 ? 's' : ''})**:`);
+    for (const v of batch.voiceReviews) {
+      const durationSec = v.durationMs ? `${Math.round(v.durationMs / 1000)}s` : undefined;
+      const meta = [v.pathname || v.url, durationSec].filter(Boolean).join(' • ');
+      if (meta) {
+        lines.push(`- *(${meta})*`);
+      }
+      lines.push(`> "${v.annotatedTranscript || v.transcript}"`);
+
+      if (v.pins && v.pins.length > 0) {
+        lines.push(`\n**Referenced Targets:**`);
+        for (const pin of v.pins) {
+          const loc = pin.sourceLocation?.fileName
+            ? `\`${pin.sourceLocation.fileName}:${pin.sourceLocation.lineNumber || 1}\``
+            : '';
+          const comp = pin.sourceLocation?.componentName
+            ? `(\`<${pin.sourceLocation.componentName}>\`)`
+            : pin.targetSelector
+            ? `(\`${pin.targetSelector}\`)`
+            : '';
+          const targetHeading = [loc, comp].filter(Boolean).join(' ');
+          lines.push(`- **[Target ${pin.order}]**${targetHeading ? `: ${targetHeading}` : ''}`);
+          if (pin.htmlSnippet) {
+            const clean = pin.htmlSnippet.replace(/\s+/g, ' ').trim();
+            const snippet = clean.length > 80 ? clean.slice(0, 77) + '...' : clean;
+            lines.push(`  - Element: \`${snippet}\``);
+          }
+        }
+      }
+    }
+  }
+
   return lines.join('\n');
 }
+
+export function formatVoiceTargetTag(pin: VoiceTargetPin): string {
+  return `[Target ${pin.order}]`;
+}
+

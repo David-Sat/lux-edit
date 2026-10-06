@@ -1,6 +1,7 @@
 import http, { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import httpProxy from 'http-proxy';
@@ -15,9 +16,11 @@ export interface VisualEditServerOptions {
   rootDir?: string;
   basePath?: string;
   strictPort?: boolean;
+  appId?: string;
 }
 
 export class VisualEditServer {
+  public readonly appId: string;
   private server: http.Server;
   private proxy: httpProxy | null = null;
   private isStatic = false;
@@ -35,6 +38,7 @@ export class VisualEditServer {
   constructor(options: VisualEditServerOptions) {
     this.options = options;
     this.rootDir = path.resolve(options.rootDir || process.cwd());
+    this.appId = options.appId || this.computeAppId(options.target, this.rootDir);
     this.eventStore = EventStore.getInstance(this.rootDir);
 
     // Normalize base path prefix (e.g., '/codeeditor/default/ports/4401')
@@ -78,7 +82,7 @@ export class VisualEditServer {
     }
 
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
-    this.wsHub = new WebSocketHub(this.server, this.eventStore, this.basePath);
+    this.wsHub = new WebSocketHub(this.server, this.eventStore, this.basePath, this.appId);
 
     // Forward WebSocket upgrades to upstream proxy if not our ws endpoint
     if (this.proxy) {
@@ -93,6 +97,16 @@ export class VisualEditServer {
         }
       });
     }
+  }
+
+  private computeAppId(target: string, rootDir: string): string {
+    const isUrl = target.startsWith('http://') || target.startsWith('https://');
+    const resolvedTarget = isUrl ? target : path.resolve(rootDir, target);
+    const hash = crypto.createHash('sha256').update(resolvedTarget).digest('hex').slice(0, 8);
+    const name = isUrl
+      ? target.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9_-]/g, '_')
+      : path.basename(resolvedTarget).replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `${name || 'app'}_${hash}`.toLowerCase();
   }
 
   private setupFileWatcher(watchTarget: string): void {
@@ -116,7 +130,7 @@ export class VisualEditServer {
         if (reloadDebounce) clearTimeout(reloadDebounce);
         reloadDebounce = setTimeout(() => {
           console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
-          this.eventStore.markPendingSessionsImplemented({ port: this.options.port });
+          this.eventStore.markPendingSessionsImplemented({ port: this.options.port, appId: this.appId });
           this.wsHub.broadcast({
             type: 'RELOAD_PAGE',
             payload: { file: filename || watchTarget },
@@ -207,7 +221,8 @@ export class VisualEditServer {
 
   private injectOverlayScript(html: string): string {
     const scriptSrc = `${this.basePath}/__visual_edit__/overlay.js`;
-    const scriptTag = `<script type="module" src="${scriptSrc}"></script>`;
+    const configScript = `<script>window.__LUX_APP_ID__ = ${JSON.stringify(this.appId)};</script>`;
+    const scriptTag = `${configScript}\n<script type="module" src="${scriptSrc}"></script>`;
     if (html.includes('</head>')) {
       return html.replace('</head>', `${scriptTag}\n</head>`);
     }
@@ -257,6 +272,15 @@ export class VisualEditServer {
       req.on('end', () => {
         try {
           const batch = JSON.parse(body);
+          if (this.appId && batch.appId && batch.appId !== this.appId) {
+            console.warn(`[lux] Dropping REST batch from mismatched appId: ${batch.appId} (expected: ${this.appId})`);
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'App ID mismatch' }));
+            return;
+          }
+          if (!batch.appId) {
+            batch.appId = this.appId;
+          }
           this.eventStore.saveBatch(batch);
           this.wsHub.broadcast({
             type: 'STATUS_CHANGE',
@@ -285,8 +309,24 @@ export class VisualEditServer {
       const activeSessionIds = this.wsHub.getActiveSessionIds();
       const pending = this.eventStore.getPendingReview({
         port: this.options.port,
+        appId: this.appId,
         activeSessionIds,
       });
+
+      const shouldResolve = url.searchParams.get('resolve') === 'true' || url.searchParams.get('resolve') === '1';
+      if (pending && shouldResolve) {
+        this.eventStore.markPendingSessionsImplemented({
+          port: this.options.port,
+          appId: this.appId,
+          sessionId: pending.id,
+        });
+        this.wsHub.broadcast({
+          type: 'STATUS_CHANGE',
+          sessionId: pending.id,
+          payload: { status: 'implemented', replies: [] },
+        });
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(pending || null));
       return;

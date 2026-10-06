@@ -6,6 +6,7 @@ import { SelectionBox } from './inspector/selection-box.js';
 import { FloatingToolbar } from './inspector/floating-toolbar.js';
 import { CommentComposer } from './inspector/comment-composer.js';
 import { CommentPins } from './inspector/comment-pins.js';
+import { VoicePins } from './inspector/voice-pins.js';
 import { DockMenu } from './inspector/dock-menu.js';
 import { EditReviewDrawer } from './drawer/edit-review-drawer.js';
 import { ThemePanel } from './inspector/theme-panel.js';
@@ -119,6 +120,8 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
             state.setCommentTarget(target);
           }
         }
+      } else if (state.activeTool === 'voice') {
+        state.recordVoicePin(target);
       }
     };
 
@@ -255,6 +258,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         e.preventDefault();
         state.setDockMenuOpen(true);
         state.setTool(state.activeTool === 'comment' ? 'none' : 'comment');
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        state.setDockMenuOpen(true);
+        state.setTool(state.activeTool === 'voice' ? 'none' : 'voice');
       }
     };
 
@@ -283,6 +290,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       <FloatingToolbar />
       <CommentComposer />
       <CommentPins />
+      <VoicePins />
       <DockMenu />
       <EditReviewDrawer />
       <ThemePanel />

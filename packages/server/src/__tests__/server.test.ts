@@ -844,4 +844,113 @@ describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
       fs.rmSync(liveDir, { recursive: true, force: true });
     }
   });
+
+  it('strictly discards empty sessions without mutations, annotations, or voice walkthroughs', async () => {
+    const emptyDir = path.join(os.tmpdir(), `lux-empty-guard-${Date.now()}`);
+    fs.mkdirSync(emptyDir, { recursive: true });
+    const emptyStore = new EventStore(emptyDir);
+
+    // Save an empty batch with status: submitted
+    emptyStore.saveBatch({
+      id: 'session_empty_1',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [],
+      annotations: [],
+      voiceReviews: [],
+      userPrompt: '',
+    });
+
+    // Should NOT be saved or returned as pending
+    expect(emptyStore.getSession('session_empty_1')).toBeUndefined();
+    expect(emptyStore.getPendingReview()).toBeNull();
+
+    // Now save a batch with voice review content
+    emptyStore.saveBatch({
+      id: 'session_voice_real',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'draft',
+      mutations: [],
+      annotations: [],
+      voiceReviews: [
+        {
+          id: 'vr_1',
+          timestamp: Date.now(),
+          transcript: 'Fix this',
+          annotatedTranscript: 'Fix this [Target 1]',
+          pins: [],
+        },
+      ],
+      userPrompt: '',
+    });
+
+    const pending = emptyStore.getPendingReview();
+    expect(pending).not.toBeNull();
+    expect(pending?.id).toBe('session_voice_real');
+
+    fs.rmSync(emptyDir, { recursive: true, force: true });
+  });
+
+  it('enforces session isolation across different appIds and injects __LUX_APP_ID__', async () => {
+    const isoDir = path.join(os.tmpdir(), `lux-iso-test-${Date.now()}`);
+    fs.mkdirSync(isoDir, { recursive: true });
+    const htmlFile = path.join(isoDir, 'app.html');
+    fs.writeFileSync(htmlFile, '<!DOCTYPE html><html><head><title>App</title></head><body><h1>Iso</h1></body></html>');
+
+    const serverA = new VisualEditServer({
+      target: htmlFile,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: isoDir,
+      appId: 'app_project_a',
+    });
+    const urlA = await serverA.listen();
+
+    // Check injected HTML has window.__LUX_APP_ID__ = "app_project_a"
+    const htmlRes = await fetch(urlA);
+    const htmlContent = await htmlRes.text();
+    expect(htmlContent).toContain('window.__LUX_APP_ID__ = "app_project_a"');
+
+    // Attempt to submit batch with mismatched appId to server A via REST
+    const badRes = await fetch(`${urlA}/__visual_edit__/api/edits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'session_from_project_b',
+        appId: 'app_project_b',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        mutations: [],
+        annotations: [{ id: 'ann_b', timestamp: Date.now(), type: 'element', comment: 'From B' }],
+      }),
+    });
+    expect(badRes.status).toBe(400);
+
+    // Submit valid batch with matching appId
+    const goodRes = await fetch(`${urlA}/__visual_edit__/api/edits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'session_from_project_a',
+        appId: 'app_project_a',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        mutations: [],
+        annotations: [{ id: 'ann_a', timestamp: Date.now(), type: 'element', comment: 'From A' }],
+      }),
+    });
+    expect(goodRes.status).toBe(200);
+
+    // GET pending on server A returns session A
+    const pendingRes = await fetch(`${urlA}/__visual_edit__/api/pending`);
+    const pendingData = await pendingRes.json();
+    expect(pendingData?.id).toBe('session_from_project_a');
+
+    await serverA.close();
+    fs.rmSync(isoDir, { recursive: true, force: true });
+  });
 });

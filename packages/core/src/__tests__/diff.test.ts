@@ -139,5 +139,120 @@ describe('Diff Utilities', () => {
     expect(summary).toContain('Target 1 (`src/Diagram.tsx:15`): `<div id="box-a">Box A</div>`');
     expect(summary).toContain('Target 2 (`src/Diagram.tsx:35`): `<div id="box-b">Box B</div>`');
   });
+
+  it('formats voice walkthrough reviews with inline targets properly', () => {
+    const batch: VisualEditBatch = {
+      id: 'batch_voice_test',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [],
+      voiceReviews: [
+        {
+          id: 'voice_1',
+          timestamp: Date.now(),
+          durationMs: 14200,
+          pathname: '/pricing',
+          transcript:
+            'Okay here I think the font is too big and this paragraph is too long and uses too many buzzwords, remove the last sentence.',
+          annotatedTranscript:
+            'Okay here I think the font is too big [Target 1], and this paragraph [Target 2] is too long and uses too many buzzwords, remove the last sentence.',
+          pins: [
+            {
+              id: 'pin_1',
+              order: 1,
+              targetSelector: 'h1.text-4xl',
+              sourceLocation: {
+                fileName: 'src/Pricing.tsx',
+                lineNumber: 12,
+                componentName: 'PricingTitle',
+                selector: 'h1.text-4xl',
+                tag: 'h1',
+              },
+              htmlSnippet: '<h1 class="text-4xl">Pricing</h1>',
+              timestampMs: 2100,
+            },
+            {
+              id: 'pin_2',
+              order: 2,
+              targetSelector: 'p.lead',
+              sourceLocation: {
+                fileName: 'src/Pricing.tsx',
+                lineNumber: 28,
+                componentName: 'PricingDesc',
+                selector: 'p.lead',
+                tag: 'p',
+              },
+              htmlSnippet: '<p class="lead">Affordable plans...</p>',
+              timestampMs: 6400,
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatBatchSummary(batch);
+    expect(summary).toContain('Voice Walkthrough (1 recording)');
+    expect(summary).toContain('/pricing • 14s');
+    expect(summary).toContain(
+      '> "Okay here I think the font is too big [Target 1], and this paragraph [Target 2] is too long and uses too many buzzwords, remove the last sentence."'
+    );
+    expect(summary).toContain('**Referenced Targets:**');
+    expect(summary).toContain('- **[Target 1]**: `src/Pricing.tsx:12` (`<PricingTitle>`)');
+    expect(summary).toContain('  - Element: `<h1 class="text-4xl">Pricing</h1>`');
+    expect(summary).toContain('- **[Target 2]**: `src/Pricing.tsx:28` (`<PricingDesc>`)');
+    expect(summary).toContain('  - Element: `<p class="lead">Affordable plans...</p>`');
+  });
+
+  it('formats voice walkthrough stored directly as an annotation', () => {
+    const batch: VisualEditBatch = {
+      id: 'batch_voice_anno',
+      timestamp: Date.now(),
+      route: '/pricing',
+      status: 'submitted',
+      mutations: [],
+      annotations: [
+        {
+          id: 'v_ann_1',
+          timestamp: Date.now(),
+          type: 'voice',
+          comment: 'The pricing title [Target 1] is too high and this card [Target 2] should be highlighted.',
+          targets: [
+            {
+              targetSelector: 'h1.pricing-title',
+              sourceLocation: {
+                fileName: 'src/Pricing.tsx',
+                lineNumber: 12,
+                componentName: 'PricingTitle',
+                selector: 'h1.pricing-title',
+                tag: 'h1',
+              },
+              htmlSnippet: '<h1 class="pricing-title">Plans</h1>',
+            },
+            {
+              targetSelector: 'div.card',
+              sourceLocation: {
+                fileName: 'src/Pricing.tsx',
+                lineNumber: 45,
+                componentName: 'Card',
+                selector: 'div.card',
+                tag: 'div',
+              },
+              htmlSnippet: '<div class="card">Pro</div>',
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatBatchSummary(batch);
+    expect(summary).toContain('Voice Walkthrough on 2 targets');
+    expect(summary).toContain('"The pricing title [Target 1] is too high and this card [Target 2] should be highlighted."');
+    expect(summary).toContain('- **[Target 1]**: `src/Pricing.tsx:12` (`<PricingTitle>`)');
+    expect(summary).toContain('  - Element: `<h1 class="pricing-title">Plans</h1>`');
+    expect(summary).toContain('- **[Target 2]**: `src/Pricing.tsx:45` (`<Card>`)');
+    expect(summary).toContain('  - Element: `<div class="card">Pro</div>`');
+  });
 });
+
 

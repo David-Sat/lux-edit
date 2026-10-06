@@ -7,7 +7,6 @@ export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [copiedToast, setCopiedToast] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
   const [editingAnnotationText, setEditingAnnotationText] = useState<string>('');
 
@@ -32,16 +31,6 @@ export function EditReviewDrawer() {
       setTimeout(() => setCopiedToast(false), 2500);
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
-    }
-  };
-
-  const handleSendToAgent = async () => {
-    if (totalItems === 0 && !state.userPrompt.trim()) return;
-    setIsSubmitting(true);
-    try {
-      await state.submitBatch();
-    } finally {
-      setTimeout(() => setIsSubmitting(false), 1000);
     }
   };
 
@@ -213,14 +202,29 @@ export function EditReviewDrawer() {
                 </span>
                 {state.annotations.map((ann, idx) => {
                   const isEditing = editingAnnotationId === ann.id;
+                  const isVoice = ann.type === 'voice';
                   return (
-                    <div key={ann.id} class="ve-mutation-card">
+                    <div
+                      key={ann.id}
+                      class="ve-mutation-card"
+                      style={isVoice ? { background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)' } : undefined}
+                    >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span class="ve-mut-target">
-                          {ann.targets && ann.targets.length > 1
-                            ? `Pin #${idx + 1} • Linked (${ann.targets.length} elements)`
-                            : `Pin #${idx + 1} ${ann.targetSelector ? `• ${ann.targetSelector}` : ''}`}
-                          {ann.selectedText ? ' • [Text Selection]' : ''}
+                        <span class="ve-mut-target" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {isVoice ? (
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                              </svg>
+                              Voice Walkthrough {ann.targets && ann.targets.length > 0 ? `(${ann.targets.length} target${ann.targets.length > 1 ? 's' : ''})` : ''}
+                            </span>
+                          ) : (
+                            ann.targets && ann.targets.length > 1
+                              ? `Pin #${idx + 1} • Linked (${ann.targets.length} elements)`
+                              : `Pin #${idx + 1} ${ann.targetSelector ? `• ${ann.targetSelector}` : ''}`
+                          )}
+                          {!isVoice && ann.selectedText ? ' • [Text Selection]' : ''}
                         </span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {!isEditing && (
@@ -246,7 +250,7 @@ export function EditReviewDrawer() {
                         </div>
                       </div>
 
-                      {ann.targets && ann.targets.length > 1 && (
+                      {ann.targets && ann.targets.length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
                           {ann.targets.map((t, tIdx) => {
                             const label = t.sourceLocation?.componentName
@@ -258,14 +262,14 @@ export function EditReviewDrawer() {
                                 style={{
                                   fontSize: '10px',
                                   fontFamily: 'ui-monospace, monospace',
-                                  background: 'rgba(56, 189, 248, 0.12)',
-                                  border: '1px solid rgba(56, 189, 248, 0.3)',
-                                  color: 'var(--ve-accent-text, #38bdf8)',
+                                  background: isVoice ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.12)',
+                                  border: isVoice ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(56, 189, 248, 0.3)',
+                                  color: isVoice ? '#fca5a5' : 'var(--ve-accent-text, #38bdf8)',
                                   padding: '1px 5px',
                                   borderRadius: '4px',
                                 }}
                               >
-                                {String.fromCharCode(65 + tIdx)}: {label}
+                                {isVoice ? `Target ${tIdx + 1}: ${label}` : `${String.fromCharCode(65 + tIdx)}: ${label}`}
                               </span>
                             );
                           })}
@@ -394,9 +398,58 @@ export function EditReviewDrawer() {
         )}
       </div>
 
-      <div class="ve-drawer-footer">
+      <div
+        style={{
+          padding: '8px 16px',
+          background: 'rgba(0, 0, 0, 0.2)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '7px',
+          fontSize: '11px',
+          color: 'var(--ve-text-muted, #94a3b8)',
+          fontWeight: 500,
+          userSelect: 'none',
+        }}
+      >
+        <span
+          style={{
+            width: '6px',
+            height: '6px',
+            borderRadius: '50%',
+            backgroundColor: '#22c55e',
+            boxShadow: '0 0 6px rgba(34, 197, 94, 0.6)',
+            flexShrink: 0,
+          }}
+        />
+        <span>
+          Changes auto-saved &bull; Run{' '}
+          <strong
+            style={{
+              color: 'var(--ve-accent-text, #0284c7)',
+              fontWeight: 700,
+              fontFamily: 'monospace',
+            }}
+          >
+            /lux
+          </strong>{' '}
+          in chat
+        </span>
+      </div>
+
+      <div class="ve-drawer-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px' }}>
         <button
           class="ve-btn"
+          style={{
+            flex: 1,
+            height: '34px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            fontSize: '12px',
+          }}
           onClick={() => state.revertAll()}
           title="Revert all visual edits and delete all comments"
         >
@@ -404,8 +457,16 @@ export function EditReviewDrawer() {
         </button>
 
         <button
-          class="ve-btn"
-          style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          class="ve-btn primary"
+          style={{
+            flex: 1.4,
+            height: '34px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            fontSize: '12px',
+          }}
           onClick={handleCopyPrompt}
           disabled={totalItems === 0 && !state.userPrompt.trim()}
           title="Copy formatted prompt to clipboard"
@@ -414,29 +475,7 @@ export function EditReviewDrawer() {
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          {copiedToast ? 'Copied' : 'Copy Prompt'}
-        </button>
-
-        <button
-          class="ve-btn primary"
-          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-          onClick={handleSendToAgent}
-          disabled={totalItems === 0 && !state.userPrompt.trim()}
-          title="Flush sync and mark review ready for /lux"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
-          {isSubmitting
-            ? 'Syncing...'
-            : state.sessionStatus === 'submitted'
-            ? 'Ready for /lux'
-            : state.sessionStatus === 'in_progress'
-            ? 'Agent Working...'
-            : state.sessionStatus === 'implemented'
-            ? 'Implemented'
-            : 'Submit Review'}
+          <span>{copiedToast ? 'Copied!' : 'Copy Prompt'}</span>
         </button>
       </div>
     </div>

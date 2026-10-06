@@ -5,6 +5,7 @@ import { VisualEditBatch, SessionStatus, SessionSummary, AgentReply } from '@vis
 export interface GetPendingReviewOptions {
   port?: number;
   serverUrl?: string;
+  appId?: string;
   activeSessionIds?: string[];
   maxAgeMs?: number; // Defaults to 7 days (168h)
 }
@@ -72,13 +73,12 @@ export class EventStore {
     return EventStore.instance;
   }
 
-  private hasSessionContent(batch: VisualEditBatch): boolean {
-    return (
+  public hasSessionContent(batch: VisualEditBatch): boolean {
+    return Boolean(
       (batch.mutations && batch.mutations.length > 0) ||
       (batch.annotations && batch.annotations.length > 0) ||
-      (batch.userPrompt && batch.userPrompt.trim().length > 0) ||
-      batch.status === 'submitted' ||
-      batch.status === 'in_progress'
+      (batch.voiceReviews && batch.voiceReviews.length > 0) ||
+      (batch.userPrompt && batch.userPrompt.trim().length > 0)
     );
   }
 
@@ -125,8 +125,8 @@ export class EventStore {
       let prunedAny = false;
       for (const line of lines) {
         const batch: VisualEditBatch = JSON.parse(line);
-        // Filter out empty draft sessions with no mutations, annotations, or prompts
-        if (!this.hasSessionContent(batch) && batch.status === 'draft') {
+        // Filter out empty sessions with no mutations, annotations, voice reviews, or prompts
+        if (!this.hasSessionContent(batch)) {
           prunedAny = true;
           continue;
         }
@@ -167,9 +167,9 @@ export class EventStore {
   public saveBatch(batch: VisualEditBatch): void {
     const hasContent = this.hasSessionContent(batch);
 
-    // If an empty draft session is sent, do not store it on disk.
-    // If it was previously stored and now has no content and is in draft state, clean it up.
-    if (!hasContent && batch.status === 'draft') {
+    // If an empty session is sent, do not store it on disk.
+    // If it was previously stored, clean it up.
+    if (!hasContent) {
       if (this.sessions.has(batch.id)) {
         this.sessions.delete(batch.id);
         this.saveToDisk();
@@ -203,6 +203,7 @@ export class EventStore {
         status: b.status,
         mutationCount: b.mutations.length,
         annotationCount: b.annotations?.length || 0,
+        voiceReviewCount: b.voiceReviews?.length || 0,
         userPrompt: b.userPrompt,
         primaryTarget,
         hasClaim: false,
@@ -246,9 +247,9 @@ export class EventStore {
     const isCandidate = (s: VisualEditBatch): boolean => {
       if (s.status === 'implemented' || s.status === 'resolved') return false;
       if (now - s.timestamp > maxAge) return false;
+      if (options?.appId && s.appId && s.appId !== options.appId) return false;
       if (!sessionMatchesTarget(s.url, options?.port, options?.serverUrl)) return false;
-      const hasContent = (s.annotations && s.annotations.length > 0) || (s.mutations && s.mutations.length > 0);
-      return hasContent || s.status === 'submitted';
+      return this.hasSessionContent(s);
     };
 
     // 1. If activeSessionIds are provided (live connected WebSocket tabs on this server), prioritize them
@@ -271,19 +272,21 @@ export class EventStore {
     return null;
   }
 
-  public markPendingSessionsImplemented(options?: { port?: number; serverUrl?: string; sessionId?: string }): void {
+  public markPendingSessionsImplemented(options?: { port?: number; serverUrl?: string; sessionId?: string; appId?: string }): void {
     this.loadFromDisk();
     let changed = false;
     for (const session of this.sessions.values()) {
       if (options?.sessionId && session.id !== options.sessionId) {
         continue;
       }
+      if (options?.appId && session.appId && session.appId !== options.appId) {
+        continue;
+      }
       if (!sessionMatchesTarget(session.url, options?.port, options?.serverUrl)) {
         continue;
       }
       if (session.status !== 'implemented' && session.status !== 'resolved') {
-        const hasContent = (session.annotations && session.annotations.length > 0) || (session.mutations && session.mutations.length > 0);
-        if (hasContent || session.status === 'submitted' || session.status === 'in_progress') {
+        if (this.hasSessionContent(session)) {
           session.status = 'implemented';
           changed = true;
           this.notify('STATUS_CHANGE', session.id, { status: 'implemented', replies: session.replies || [] });

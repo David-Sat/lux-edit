@@ -324,7 +324,7 @@ export function CommentPins() {
                       ? `Pin #${subLabel} • Linked (${multiTotal} elements)`
                       : `Pin #${annIdx + 1} ${ann.selectedText ? '• Text' : ''}`}
                   </strong>
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
                     {!isEditing && (
                       <button
                         style={{
@@ -332,11 +332,16 @@ export function CommentPins() {
                           border: '1px solid rgba(255, 255, 255, 0.25)',
                           color: '#ffffff',
                           borderRadius: '4px',
-                          padding: '2px 6px',
+                          padding: '0 6px',
+                          height: '20px',
+                          boxSizing: 'border-box',
                           fontSize: '10px',
                           cursor: 'pointer',
                           fontWeight: '600',
                           backdropFilter: 'blur(8px)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          whiteSpace: 'nowrap',
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -354,10 +359,16 @@ export function CommentPins() {
                         border: '1px solid rgba(34, 197, 94, 0.4)',
                         color: '#4ade80',
                         borderRadius: '4px',
-                        padding: '2px 6px',
+                        padding: '0 6px',
+                        height: '20px',
+                        boxSizing: 'border-box',
                         fontSize: '10px',
                         cursor: 'pointer',
                         fontWeight: '600',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        whiteSpace: 'nowrap',
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -366,7 +377,8 @@ export function CommentPins() {
                       }}
                       title="Dismiss and resolve this comment"
                     >
-                      ✓ Resolve
+                      <span>✓</span>
+                      <span>Resolve</span>
                     </button>
                   </div>
                 </div>

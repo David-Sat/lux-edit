@@ -4,13 +4,22 @@ import { EventStore } from '@visual-edit/server';
 import { formatBatchSummary, VisualEditBatch } from '@visual-edit/core';
 import path from 'node:path';
 
-async function fetchFromRunningServer(serverUrl: string): Promise<VisualEditBatch | null> {
+function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBatch {
+  if (!batch) return false;
+  return Boolean(
+    (batch.mutations && batch.mutations.length > 0) ||
+    (batch.annotations && batch.annotations.length > 0) ||
+    (batch.voiceReviews && batch.voiceReviews.length > 0)
+  );
+}
+
+async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Promise<VisualEditBatch | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + '/__visual_edit__/api/pending';
+    const url = serverUrl.replace(/\/+$/, '') + `/__visual_edit__/api/pending${autoResolve ? '?resolve=true' : ''}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       const data = (await res.json()) as VisualEditBatch | null;
-      if (data && ((data.mutations && data.mutations.length > 0) || (data.annotations && data.annotations.length > 0))) {
+      if (hasPendingContent(data)) {
         return data;
       }
     }
@@ -47,9 +56,9 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   };
 
   const resolvePendingBatch = async (args?: { workspaceDir?: string; serverUrl?: string }): Promise<VisualEditBatch | null> => {
-    // 1. If explicit serverUrl provided, probe that specific server URL first
+    // 1. If explicit serverUrl provided, probe that specific server URL first (peek without resolving)
     if (args?.serverUrl && args.serverUrl.trim()) {
-      const live = await fetchFromRunningServer(args.serverUrl.trim());
+      const live = await fetchFromRunningServer(args.serverUrl.trim(), false);
       if (live) return live;
     }
 
@@ -57,14 +66,14 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     if (args?.workspaceDir && args.workspaceDir.trim()) {
       const store = resolveEventStore(args.workspaceDir);
       const batch = store.getPendingReview({ serverUrl: args?.serverUrl });
-      if (batch && ((batch.mutations && batch.mutations.length > 0) || (batch.annotations && batch.annotations.length > 0))) {
+      if (hasPendingContent(batch)) {
         return batch;
       }
     }
 
     // 3. Check default eventStore on disk
     const localBatch = defaultEventStore.getPendingReview({ serverUrl: args?.serverUrl });
-    if (localBatch && ((localBatch.mutations && localBatch.mutations.length > 0) || (localBatch.annotations && localBatch.annotations.length > 0))) {
+    if (hasPendingContent(localBatch)) {
       return localBatch;
     }
 
@@ -72,7 +81,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     if (!args?.workspaceDir) {
       const candidateUrls = ['http://127.0.0.1:4320', 'http://127.0.0.1:4321', 'http://127.0.0.1:4322', 'http://127.0.0.1:4330'];
       for (const url of candidateUrls) {
-        const live = await fetchFromRunningServer(url);
+        const live = await fetchFromRunningServer(url, false);
         if (live) return live;
       }
     }
@@ -90,7 +99,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     },
     async (uri) => {
       const batch = await resolvePendingBatch();
-      if (!batch || ((!batch.mutations || batch.mutations.length === 0) && (!batch.annotations || batch.annotations.length === 0))) {
+      if (!hasPendingContent(batch)) {
         return {
           contents: [
             {
@@ -102,13 +111,13 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
         };
       }
 
-      const summary = formatBatchSummary(batch);
+      const summary = formatBatchSummary(batch!);
       return {
         contents: [
           {
             uri: uri.href,
             mimeType: 'text/markdown',
-            text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
+            text: `### Visual review and comments (Session: ${batch!.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
           },
         ],
       };
@@ -125,9 +134,9 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     async () => {
       const batch = await resolvePendingBatch();
       let contextText = 'No pending visual edits or comments found.';
-      if (batch && ((batch.mutations && batch.mutations.length > 0) || (batch.annotations && batch.annotations.length > 0))) {
-        const summary = formatBatchSummary(batch);
-        contextText = `Feedback from session ${batch.id}:\n\n${summary}\n\nRaw batch:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``;
+      if (hasPendingContent(batch)) {
+        const summary = formatBatchSummary(batch!);
+        contextText = `Feedback from session ${batch!.id}:\n\n${summary}\n\nRaw batch:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``;
       }
 
       return {
@@ -159,7 +168,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   // Primary Tool: Get Active / Pending Visual Review and Comments
   const getPendingReviewHandler = async (args?: { workspaceDir?: string; serverUrl?: string }) => {
     const batch = await resolvePendingBatch(args);
-    if (!batch || ((!batch.mutations || batch.mutations.length === 0) && (!batch.annotations || batch.annotations.length === 0))) {
+    if (!hasPendingContent(batch)) {
       return {
         content: [
           {
