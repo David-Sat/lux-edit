@@ -953,4 +953,36 @@ describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
     await serverA.close();
     fs.rmSync(isoDir, { recursive: true, force: true });
   });
+
+  it('writes .visual-edit/server.json on listen() and removes it on close()', async () => {
+    const metaDir = path.resolve(testDir, 'meta-test');
+    fs.mkdirSync(metaDir, { recursive: true });
+    const htmlFile = path.resolve(metaDir, 'index.html');
+    fs.writeFileSync(htmlFile, '<html><body>Meta Test</body></html>');
+
+    const metaServer = new VisualEditServer({
+      target: htmlFile,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: metaDir,
+      appId: 'test_meta_app',
+    });
+
+    const metaFile = path.resolve(metaDir, '.visual-edit', 'server.json');
+    expect(fs.existsSync(metaFile)).toBe(false);
+
+    const sUrl = await metaServer.listen();
+    expect(fs.existsSync(metaFile)).toBe(true);
+
+    const content = JSON.parse(fs.readFileSync(metaFile, 'utf-8'));
+    expect(content.pid).toBe(process.pid);
+    expect(content.url).toBe(sUrl);
+    expect(content.appId).toBe('test_meta_app');
+    expect(content.port).toBeGreaterThan(0);
+
+    await metaServer.close();
+    expect(fs.existsSync(metaFile)).toBe(false);
+
+    fs.rmSync(metaDir, { recursive: true, force: true });
+  });
 });

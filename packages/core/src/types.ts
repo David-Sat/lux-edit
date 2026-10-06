@@ -152,3 +152,13 @@ export interface WebSocketMessage {
   payload: any;
   sessionId?: string;
 }
+
+export interface LuxServerMetadata {
+  pid: number;
+  port: number;
+  url: string;
+  target: string;
+  appId: string;
+  startTime: number;
+  rootDir: string;
+}

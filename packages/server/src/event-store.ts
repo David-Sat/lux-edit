@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { VisualEditBatch, SessionStatus, SessionSummary, AgentReply } from '@visual-edit/core';
+import {
+  VisualEditBatch,
+  SessionStatus,
+  SessionSummary,
+  AgentReply,
+  SERVER_METADATA_DIR,
+} from '@visual-edit/core';
 
 export interface GetPendingReviewOptions {
   port?: number;
@@ -41,7 +47,7 @@ export class EventStore {
 
   constructor(rootDir: string = process.cwd()) {
     this.rootDir = path.resolve(rootDir);
-    const dataDir = path.join(this.rootDir, '.visual-edit');
+    const dataDir = path.join(this.rootDir, SERVER_METADATA_DIR);
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
@@ -149,7 +155,10 @@ export class EventStore {
         fs.mkdirSync(dataDir, { recursive: true });
       }
       const lines = Array.from(this.sessions.values()).map((b) => JSON.stringify(b));
-      fs.writeFileSync(this.filePath, lines.join('\n') + '\n', 'utf-8');
+      const content = lines.join('\n') + (lines.length > 0 ? '\n' : '');
+      const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+      fs.writeFileSync(tempPath, content, 'utf-8');
+      fs.renameSync(tempPath, this.filePath);
     } catch (err) {
       console.error('[visual-edit] Failed to save sessions to disk:', err);
     }

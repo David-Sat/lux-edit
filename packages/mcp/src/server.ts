@@ -1,8 +1,17 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EventStore } from '@visual-edit/server';
-import { formatBatchSummary, VisualEditBatch } from '@visual-edit/core';
+import {
+  formatBatchSummary,
+  VisualEditBatch,
+  LuxServerMetadata,
+  SERVER_METADATA_DIR,
+  SERVER_METADATA_FILE,
+  DEFAULT_SERVER_URL,
+  API_ROUTES,
+} from '@visual-edit/core';
 import path from 'node:path';
+import fs from 'node:fs';
 
 function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBatch {
   if (!batch) return false;
@@ -13,9 +22,33 @@ function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBa
   );
 }
 
+function readServerMetadata(rootDir: string): LuxServerMetadata | null {
+  try {
+    const metaPath = path.join(rootDir, SERVER_METADATA_DIR, SERVER_METADATA_FILE);
+    if (!fs.existsSync(metaPath)) return null;
+    const raw = fs.readFileSync(metaPath, 'utf-8');
+    const data = JSON.parse(raw) as LuxServerMetadata;
+    // Check if process is still alive if PID is provided
+    if (data.pid && typeof data.pid === 'number') {
+      try {
+        process.kill(data.pid, 0);
+      } catch (e: any) {
+        if (e.code === 'ESRCH') {
+          // Process no longer exists - clean up stale lock file
+          try { fs.unlinkSync(metaPath); } catch {}
+          return null;
+        }
+      }
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Promise<VisualEditBatch | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + `/__visual_edit__/api/pending${autoResolve ? '?resolve=true' : ''}`;
+    const url = serverUrl.replace(/\/+$/, '') + `${API_ROUTES.PENDING}${autoResolve ? '?resolve=true' : ''}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       const data = (await res.json()) as VisualEditBatch | null;
@@ -29,7 +62,7 @@ async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Pr
 
 async function fetchSessionsFromRunningServer(serverUrl: string): Promise<VisualEditBatch[] | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + '/__visual_edit__/api/sessions';
+    const url = serverUrl.replace(/\/+$/, '') + API_ROUTES.SESSIONS;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       return (await res.json()) as VisualEditBatch[];
@@ -56,13 +89,22 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   };
 
   const resolvePendingBatch = async (args?: { workspaceDir?: string; serverUrl?: string }): Promise<VisualEditBatch | null> => {
+    const targetRootDir = args?.workspaceDir ? path.resolve(args.workspaceDir.trim()) : resolvedRoot;
+
     // 1. If explicit serverUrl provided, probe that specific server URL first (peek without resolving)
     if (args?.serverUrl && args.serverUrl.trim()) {
       const live = await fetchFromRunningServer(args.serverUrl.trim(), false);
       if (live) return live;
     }
 
-    // 2. If explicit workspaceDir provided, check that store on disk
+    // 2. Deterministic Discovery: Check active server lockfile in target workspace or root
+    const serverMeta = readServerMetadata(targetRootDir) || (targetRootDir !== resolvedRoot ? readServerMetadata(resolvedRoot) : null);
+    if (serverMeta && serverMeta.url) {
+      const live = await fetchFromRunningServer(serverMeta.url, false);
+      if (live) return live;
+    }
+
+    // 3. If explicit workspaceDir provided, check that store on disk
     if (args?.workspaceDir && args.workspaceDir.trim()) {
       const store = resolveEventStore(args.workspaceDir);
       const batch = store.getPendingReview({ serverUrl: args?.serverUrl });
@@ -71,19 +113,17 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       }
     }
 
-    // 3. Check default eventStore on disk
+    // 4. Check default eventStore on disk
     const localBatch = defaultEventStore.getPendingReview({ serverUrl: args?.serverUrl });
     if (hasPendingContent(localBatch)) {
       return localBatch;
     }
 
-    // 4. Fall back to probing live running review servers if no reviews on disk
+    // 5. Fall back to probing default review server URL if no reviews on disk
     if (!args?.workspaceDir) {
-      const candidateUrls = ['http://127.0.0.1:4320', 'http://127.0.0.1:4321', 'http://127.0.0.1:4322', 'http://127.0.0.1:4330'];
-      for (const url of candidateUrls) {
-        const live = await fetchFromRunningServer(url, false);
-        if (live) return live;
-      }
+      const fallbackUrl = DEFAULT_SERVER_URL;
+      const live = await fetchFromRunningServer(fallbackUrl, false);
+      if (live) return live;
     }
 
     return localBatch || null;
@@ -218,7 +258,9 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     let session = store.getSession(sessionId);
 
     if (!session && (serverUrl || !workspaceDir)) {
-      const targetUrl = serverUrl || 'http://127.0.0.1:4320';
+      const targetRootDir = workspaceDir ? path.resolve(workspaceDir.trim()) : resolvedRoot;
+      const meta = readServerMetadata(targetRootDir) || readServerMetadata(resolvedRoot);
+      const targetUrl = serverUrl || meta?.url || DEFAULT_SERVER_URL;
       const liveSessions = await fetchSessionsFromRunningServer(targetUrl);
       if (liveSessions) {
         session = liveSessions.find((s) => s.id === sessionId);
@@ -268,7 +310,9 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     let allSessions: any[] = store.listSessions();
 
     if (allSessions.length === 0 && (serverUrl || !workspaceDir)) {
-      const targetUrl = serverUrl || 'http://127.0.0.1:4320';
+      const targetRootDir = workspaceDir ? path.resolve(workspaceDir.trim()) : resolvedRoot;
+      const meta = readServerMetadata(targetRootDir) || readServerMetadata(resolvedRoot);
+      const targetUrl = serverUrl || meta?.url || DEFAULT_SERVER_URL;
       const liveSessions = await fetchSessionsFromRunningServer(targetUrl);
       if (liveSessions && liveSessions.length > 0) {
         allSessions = liveSessions;

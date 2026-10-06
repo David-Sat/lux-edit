@@ -312,5 +312,59 @@ describe('MCP Server Tools & Prompts', () => {
     expect((message.content as any).text).toContain('mcp_test_batch_1');
     expect((message.content as any).text).toContain('src/components/PricingCard.tsx:22');
   });
+
+  it('deterministically discovers active review server via .visual-edit/server.json lockfile', async () => {
+    const liveDir = path.resolve(process.cwd(), '.test-mcp-store-lockfile');
+    if (fs.existsSync(liveDir)) {
+      fs.rmSync(liveDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.join(liveDir, '.visual-edit'), { recursive: true });
+
+    // Mock an active running server on custom port 9999
+    const mockMeta = {
+      pid: process.pid,
+      port: 9999,
+      url: 'http://127.0.0.1:9999',
+      target: './index.html',
+      appId: 'test_app_9999',
+      startTime: Date.now(),
+      rootDir: liveDir,
+    };
+    fs.writeFileSync(
+      path.join(liveDir, '.visual-edit', 'server.json'),
+      JSON.stringify(mockMeta, null, 2)
+    );
+
+    // Save batch to disk as well
+    const store = EventStore.getInstance(liveDir);
+    store.saveBatch({
+      id: 'lockfile_test_batch',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      userPrompt: 'Lockfile discovered',
+      mutations: [
+        {
+          id: 'mut_lf',
+          type: 'STYLE_CHANGE',
+          targetSelector: 'body',
+          property: 'color',
+          before: '#000',
+          after: '#111',
+        },
+      ],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: { workspaceDir: liveDir },
+    });
+
+    expect(res.content).toBeDefined();
+    const textContent = (res.content as any)[0].text;
+    expect(textContent).toContain('lockfile_test_batch');
+
+    fs.rmSync(liveDir, { recursive: true, force: true });
+  });
 });
 

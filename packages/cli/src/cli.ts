@@ -8,6 +8,8 @@ import os from 'node:os';
 
 declare const __PACKAGE_VERSION__: string;
 
+import { DEFAULT_PORT } from '@visual-edit/core';
+
 let cliVersion = '0.5.0';
 try {
   cliVersion = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
@@ -24,7 +26,7 @@ program
 // Command: Run Server / Proxy (default)
 program
   .argument('[target]', 'Upstream dev server URL (e.g. http://localhost:5173) or static file/directory path', '.')
-  .option('-p, --port <number>', 'Review server port', '4320')
+  .option('-p, --port <number>', 'Review server port', String(DEFAULT_PORT))
   .option('-h, --host <address>', 'Bind address', '127.0.0.1')
   .option('-r, --root <path>', 'Project root directory for .visual-edit data', process.cwd())
   .option('-b, --base-path <prefix>', 'Path prefix if running behind a reverse proxy (e.g. /codeeditor/default/ports/4401)', process.env.LUX_BASE_PATH || '')
@@ -42,6 +44,16 @@ program
       rootDir: options.root,
       basePath: options.basePath,
     });
+
+    // Graceful process cleanup
+    const cleanup = async () => {
+      try {
+        await server.close();
+      } catch {}
+      process.exit(0);
+    };
+    process.once('SIGINT', cleanup);
+    process.once('SIGTERM', cleanup);
 
     try {
       const reviewUrl = await server.listen();
