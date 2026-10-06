@@ -53,7 +53,13 @@ export class VoiceRecorder {
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
-      recognition.lang = navigator.language || 'en-US';
+      let defaultLang = 'en-US';
+      if (typeof navigator !== 'undefined' && navigator?.language) {
+        defaultLang = navigator.language;
+      } else if (typeof window !== 'undefined' && (window as any).navigator?.language) {
+        defaultLang = (window as any).navigator.language;
+      }
+      recognition.lang = defaultLang;
 
       recognition.onstart = () => {
         this.isReady = true;

@@ -124,4 +124,25 @@ describe('VoiceRecorder', () => {
     expect(review?.annotatedTranscript).toContain('[Target 2]');
     expect(review?.annotatedTranscript).toContain('make it bigger.');
   });
+
+  it('initializes speech recognition gracefully when navigator is undefined (e.g. Node 20)', async () => {
+    const origNav = (globalThis as any).navigator;
+    try {
+      // Force navigator to be undefined to simulate Node 20
+      delete (globalThis as any).navigator;
+
+      (VoiceRecorder as any).instance = undefined;
+      const recorder = VoiceRecorder.getInstance();
+      recorder.start();
+
+      mockRecognition.simulateSpeech('Testing without navigator');
+      const review = await recorder.stop();
+
+      expect(review?.transcript).toBe('Testing without navigator');
+    } finally {
+      if (origNav !== undefined) {
+        (globalThis as any).navigator = origNav;
+      }
+    }
+  });
 });
