@@ -12,7 +12,7 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@visual-edit/core": "workspace:*",
     "@visual-edit/server": "workspace:*",
     "zod": "^3.25.76"
