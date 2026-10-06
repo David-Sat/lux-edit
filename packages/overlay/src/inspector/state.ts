@@ -8,6 +8,8 @@ import {
   VisualEditBatch,
   VoiceReviewWalkthrough,
   VoiceTargetPin,
+  STORAGE_KEYS,
+  API_ROUTES,
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
@@ -16,7 +18,7 @@ import { VoiceRecorder } from './voice-recorder.js';
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
   try {
-    return new URL(import.meta.url).pathname.replace(/\/__visual_edit__\/overlay\.js$/, '');
+    return new URL(import.meta.url).pathname.replace(new RegExp(`${API_ROUTES.OVERLAY_JS.replace(/\./g, '\\.')}$`), '');
   } catch {
     return '';
   }
@@ -91,13 +93,31 @@ export class OverlayStateManager {
 
   private getStorageKey(): string {
     const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
-    return appId ? `visual_edit_draft_${appId}` : 'visual_edit_active_draft';
+    return `${STORAGE_KEYS.DRAFT_PREFIX}${appId || 'default'}`;
   }
 
   private loadFromStorage(): void {
     try {
       const key = this.getStorageKey();
-      const saved = localStorage.getItem(key);
+      // Load current scoped key, falling back to legacy keys for migration
+      let saved = localStorage.getItem(key);
+      if (!saved) {
+        const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
+        if (appId) {
+          saved = localStorage.getItem(`${STORAGE_KEYS.LEGACY_APP_DRAFT_PREFIX}${appId}`);
+        }
+        if (!saved) {
+          saved = localStorage.getItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
+        }
+        // If recovered from legacy key, clean it up
+        if (saved) {
+          try {
+            if (appId) localStorage.removeItem(`${STORAGE_KEYS.LEGACY_APP_DRAFT_PREFIX}${appId}`);
+            localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
+          } catch {}
+        }
+      }
+
       if (saved) {
         const data = JSON.parse(saved);
         if (data.status !== 'implemented' && data.status !== 'resolved') {
@@ -935,7 +955,7 @@ export class OverlayStateManager {
   private initWebSocket(): void {
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}${BASE_PATH_PREFIX}/__visual_edit__/ws`;
+      const wsUrl = `${protocol}//${window.location.host}${BASE_PATH_PREFIX}${API_ROUTES.WS}`;
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onmessage = (event) => {
@@ -953,7 +973,7 @@ export class OverlayStateManager {
               this.sessionStatus = 'draft';
               try {
                 localStorage.removeItem(this.getStorageKey());
-                localStorage.removeItem('visual_edit_active_draft');
+                localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
               } catch (e) {}
             }
             if (data.payload.replies) {
@@ -966,7 +986,7 @@ export class OverlayStateManager {
           } else if (data.type === 'RELOAD_PAGE') {
             try {
               localStorage.removeItem(this.getStorageKey());
-              localStorage.removeItem('visual_edit_active_draft');
+              localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
             } catch (e) {}
             window.location.reload();
           }

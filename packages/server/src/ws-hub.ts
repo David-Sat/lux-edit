@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'node:http';
 import { EventStore } from './event-store.js';
-import { WebSocketMessage } from '@visual-edit/core';
+import { WebSocketMessage, API_ROUTES } from '@visual-edit/core';
 
 export class WebSocketHub {
   private wss: WebSocketServer;
@@ -28,8 +28,8 @@ export class WebSocketHub {
     server.on('upgrade', (request, socket, head) => {
       const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : '';
       const isVisualEditWs =
-        pathname === '/__visual_edit__/ws' ||
-        (this.basePath && pathname === `${this.basePath}/__visual_edit__/ws`);
+        pathname === API_ROUTES.WS ||
+        (this.basePath && pathname === `${this.basePath}${API_ROUTES.WS}`);
 
       if (isVisualEditWs) {
         this.wss.handleUpgrade(request, socket, head, (ws) => {

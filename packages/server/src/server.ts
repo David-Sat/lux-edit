@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import httpProxy from 'http-proxy';
 import sirv from 'sirv';
+import {
+  API_ROUTES,
+  SERVER_METADATA_DIR,
+  SERVER_METADATA_FILE,
+  LuxServerMetadata,
+} from '@visual-edit/core';
 import { EventStore } from './event-store.js';
 import { WebSocketHub } from './ws-hub.js';
 
@@ -89,8 +95,8 @@ export class VisualEditServer {
       this.server.on('upgrade', (req, socket, head) => {
         const pathname = req.url ? new URL(req.url, `http://${req.headers.host}`).pathname : '';
         const isVisualEditWs =
-          pathname === '/__visual_edit__/ws' ||
-          (this.basePath && pathname === `${this.basePath}/__visual_edit__/ws`);
+          pathname === API_ROUTES.WS ||
+          (this.basePath && pathname === `${this.basePath}${API_ROUTES.WS}`);
 
         if (!isVisualEditWs) {
           this.proxy?.ws(req, socket, head);
@@ -220,7 +226,7 @@ export class VisualEditServer {
   }
 
   private injectOverlayScript(html: string): string {
-    const scriptSrc = `${this.basePath}/__visual_edit__/overlay.js`;
+    const scriptSrc = `${this.basePath}${API_ROUTES.OVERLAY_JS}`;
     const configScript = `<script>window.__LUX_APP_ID__ = ${JSON.stringify(this.appId)};</script>`;
     const scriptTag = `${configScript}\n<script type="module" src="${scriptSrc}"></script>`;
     if (html.includes('</head>')) {
@@ -249,7 +255,7 @@ export class VisualEditServer {
     }
 
     // Serve Overlay JS Bundle
-    if (pathname === '/__visual_edit__/overlay.js') {
+    if (pathname === API_ROUTES.OVERLAY_JS) {
       if (fs.existsSync(this.overlayScriptPath)) {
         res.writeHead(200, {
           'Content-Type': 'application/javascript; charset=utf-8',
@@ -266,7 +272,7 @@ export class VisualEditServer {
     }
 
     // REST API - Submit Edit Batch
-    if (pathname === '/__visual_edit__/api/edits' && req.method === 'POST') {
+    if (pathname === API_ROUTES.EDITS && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk) => (body += chunk.toString()));
       req.on('end', () => {
@@ -298,14 +304,14 @@ export class VisualEditServer {
     }
 
     // REST API - List Sessions
-    if ((pathname === '/__visual_edit__/api/sessions' || pathname === '/__lux/api/sessions') && req.method === 'GET') {
+    if ((pathname === API_ROUTES.SESSIONS || pathname === '/__lux/api/sessions') && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(this.eventStore.listSessions()));
       return;
     }
 
     // REST API - Pending Review Batch
-    if ((pathname === '/__visual_edit__/api/pending' || pathname === '/__lux/api/pending') && req.method === 'GET') {
+    if ((pathname === API_ROUTES.PENDING || pathname === '/__lux/api/pending') && req.method === 'GET') {
       const activeSessionIds = this.wsHub.getActiveSessionIds();
       const pending = this.eventStore.getPendingReview({
         port: this.options.port,
@@ -431,6 +437,7 @@ export class VisualEditServer {
           const actualPort = typeof addr === 'object' && addr ? addr.port : port;
           this.options.port = actualPort;
           const reviewUrl = `http://${host}:${actualPort}${this.basePath || ''}`;
+          this.writeServerMetadata(reviewUrl);
           resolve(reviewUrl);
         });
       };
@@ -439,7 +446,50 @@ export class VisualEditServer {
     });
   }
 
+  private writeServerMetadata(url: string): void {
+    try {
+      const dataDir = path.join(this.rootDir, SERVER_METADATA_DIR);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      const metaPath = path.join(dataDir, SERVER_METADATA_FILE);
+      const metadata: LuxServerMetadata = {
+        pid: process.pid,
+        port: this.options.port,
+        url,
+        target: this.options.target,
+        appId: this.appId,
+        startTime: Date.now(),
+        rootDir: this.rootDir,
+      };
+      fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2) + '\n', 'utf-8');
+    } catch (err: any) {
+      console.debug('[lux] Failed to write server metadata lockfile:', err?.message);
+    }
+  }
+
+  private removeServerMetadata(): void {
+    try {
+      const metaPath = path.join(this.rootDir, SERVER_METADATA_DIR, SERVER_METADATA_FILE);
+      if (fs.existsSync(metaPath)) {
+        try {
+          const raw = fs.readFileSync(metaPath, 'utf-8');
+          const data = JSON.parse(raw);
+          // Only remove if this process owns the metadata file
+          if (data.pid === process.pid) {
+            fs.unlinkSync(metaPath);
+          }
+        } catch {
+          fs.unlinkSync(metaPath);
+        }
+      }
+    } catch (err: any) {
+      console.debug('[lux] Failed to remove server metadata lockfile:', err?.message);
+    }
+  }
+
   public close(): Promise<void> {
+    this.removeServerMetadata();
     if (this.fileWatcher) {
       try {
         this.fileWatcher.close();
