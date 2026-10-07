@@ -183,9 +183,8 @@ export class VisualEditServer {
         delete headers['content-security-policy-report-only'];
       }
 
-      res.writeHead(proxyRes.statusCode || 200, headers);
-
       if (!isHtml) {
+        res.writeHead(proxyRes.statusCode || 200, headers);
         proxyRes.pipe(res);
         return;
       }
@@ -212,12 +211,15 @@ export class VisualEditServer {
 
         const body = buffer.toString('utf-8');
         const injected = this.injectOverlayScript(body);
+        if (!res.headersSent) {
+          res.writeHead(proxyRes.statusCode || 200, headers);
+        }
         res.end(injected);
       });
     });
 
     this.proxy.on('error', (err, req, res) => {
-      console.error('[visual-edit] Proxy error:', err.message);
+      console.error('[lux] Proxy error:', err.message);
       if (res && 'writeHead' in res && !res.headersSent) {
         (res as ServerResponse).writeHead(502, { 'Content-Type': 'text/plain' });
         (res as ServerResponse).end(`Proxy error: Cannot reach upstream target at ${this.options.target}`);

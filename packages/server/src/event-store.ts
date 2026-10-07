@@ -39,7 +39,7 @@ export function sessionMatchesTarget(sessionUrl: string | undefined, port?: numb
 }
 
 export class EventStore {
-  private static instance: EventStore;
+  private static instances = new Map<string, EventStore>();
   private rootDir: string;
   private filePath: string;
   private sessions = new Map<string, VisualEditBatch>();
@@ -72,11 +72,13 @@ export class EventStore {
   }
 
   public static getInstance(rootDir?: string): EventStore {
-    const resolvedRoot = rootDir ? path.resolve(rootDir) : process.cwd();
-    if (!EventStore.instance || (rootDir && EventStore.instance.rootDir !== resolvedRoot)) {
-      EventStore.instance = new EventStore(resolvedRoot);
+    const resolvedRoot = path.resolve(rootDir || process.cwd());
+    let store = EventStore.instances.get(resolvedRoot);
+    if (!store) {
+      store = new EventStore(resolvedRoot);
+      EventStore.instances.set(resolvedRoot, store);
     }
-    return EventStore.instance;
+    return store;
   }
 
   public hasSessionContent(batch: VisualEditBatch): boolean {
@@ -144,7 +146,7 @@ export class EventStore {
         this.saveToDisk();
       }
     } catch (err) {
-      console.error('[visual-edit] Failed to load sessions from disk:', err);
+      console.error('[lux] Failed to load sessions from disk:', err);
     }
   }
 
@@ -160,7 +162,7 @@ export class EventStore {
       fs.writeFileSync(tempPath, content, 'utf-8');
       fs.renameSync(tempPath, this.filePath);
     } catch (err) {
-      console.error('[visual-edit] Failed to save sessions to disk:', err);
+      console.error('[lux] Failed to save sessions to disk:', err);
     }
   }
 

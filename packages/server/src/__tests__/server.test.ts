@@ -985,4 +985,18 @@ describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
 
     fs.rmSync(metaDir, { recursive: true, force: true });
   });
+
+  it('isolates EventStore instances across different directories without clobbering', () => {
+    const dirA = path.resolve(process.cwd(), '.test-store-a');
+    const dirB = path.resolve(process.cwd(), '.test-store-b');
+    const storeA1 = EventStore.getInstance(dirA);
+    const storeB = EventStore.getInstance(dirB);
+    const storeA2 = EventStore.getInstance(dirA);
+
+    expect(storeA1).toBe(storeA2);
+    expect(storeA1).not.toBe(storeB);
+
+    fs.rmSync(dirA, { recursive: true, force: true });
+    fs.rmSync(dirB, { recursive: true, force: true });
+  });
 });

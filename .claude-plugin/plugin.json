@@ -1,10 +1,20 @@
 {
-  "name": "lux",
+  "name": "lux-edit",
   "description": "Live in-browser visual editing, design token tweaking, and multi-agent review overlay for web apps.",
+  "version": "0.10.0",
   "author": {
-    "name": "David Satomi"
+    "name": "David Satomi",
+    "url": "https://github.com/David-Sat"
   },
   "homepage": "https://github.com/David-Sat/lux-edit",
   "repository": "https://github.com/David-Sat/lux-edit",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "visual-editing",
+    "mcp",
+    "overlay",
+    "ui-review",
+    "tailwind",
+    "design-tokens"
+  ]
 }

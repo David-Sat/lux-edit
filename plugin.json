@@ -3,7 +3,20 @@
   "name": "lux-edit",
   "description": "Live User eXperience overlay for visual UI editing, design token tweaking, and multi-agent feedback",
   "version": "0.10.0",
+  "author": {
+    "name": "David Satomi",
+    "url": "https://github.com/David-Sat"
+  },
   "homepage": "https://github.com/David-Sat/lux-edit",
   "repository": "https://github.com/David-Sat/lux-edit",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "visual-editing",
+    "mcp",
+    "overlay",
+    "ui-review",
+    "agent-plugin",
+    "tailwind",
+    "design-tokens"
+  ]
 }

@@ -341,6 +341,52 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(false);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux-web', 'SKILL.md'))).toBe(false);
     });
+
+    it('non-destructively preserves existing custom servers in workspace mcp.json and syncs .agents', async () => {
+      // 1. Create pre-existing mcp.json with a custom server
+      const mcpPath = path.join(fakeWorkspace, 'mcp.json');
+      fs.writeFileSync(
+        mcpPath,
+        JSON.stringify({
+          mcpServers: {
+            supabase: { command: 'npx', args: ['-y', 'supabase-mcp'] },
+          },
+        })
+      );
+
+      // 2. Create .agents directory to verify universal agent standard sync
+      const agentsDir = path.join(fakeWorkspace, '.agents');
+      fs.mkdirSync(agentsDir, { recursive: true });
+
+      await runInit({
+        global: false,
+        home: fakeHome,
+        cwd: fakeWorkspace,
+        logger: () => {},
+      });
+
+      // Verify custom server was preserved alongside lux
+      const parsed = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+      expect(parsed.mcpServers.supabase).toEqual({ command: 'npx', args: ['-y', 'supabase-mcp'] });
+      expect(parsed.mcpServers.lux).toBeDefined();
+
+      // Verify .agents skills were created
+      expect(fs.existsSync(path.join(agentsDir, 'skills', 'lux', 'SKILL.md'))).toBe(true);
+      expect(fs.existsSync(path.join(agentsDir, 'skills', 'lux-web', 'SKILL.md'))).toBe(true);
+
+      // 3. Uninstall and verify custom server is still intact
+      await runUninstall({
+        global: false,
+        home: fakeHome,
+        cwd: fakeWorkspace,
+        logger: () => {},
+      });
+
+      const parsedAfter = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+      expect(parsedAfter.mcpServers.supabase).toEqual({ command: 'npx', args: ['-y', 'supabase-mcp'] });
+      expect(parsedAfter.mcpServers.lux).toBeUndefined();
+      expect(fs.existsSync(path.join(agentsDir, 'skills', 'lux', 'SKILL.md'))).toBe(false);
+    });
   });
 });
 
