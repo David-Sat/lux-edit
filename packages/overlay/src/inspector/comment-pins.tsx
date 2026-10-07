@@ -65,11 +65,15 @@ export function CommentPins() {
   const [editingPinId, setEditingPinId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
 
+  const editingRef = useRef({ editingPinId, editText });
+  editingRef.current = { editingPinId, editText };
+
   useEffect(() => {
     const handleUpdate = () => setTick((t) => t + 1);
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (editingPinId) {
-        state.updateAnnotation(editingPinId, editText);
+    const handleOutsideClick = () => {
+      const { editingPinId: currentId, editText: currentText } = editingRef.current;
+      if (currentId) {
+        state.updateAnnotation(currentId, currentText);
         setEditingPinId(null);
       }
       setHoveredPinId(null);
@@ -77,8 +81,9 @@ export function CommentPins() {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && editingPinId) {
-        state.updateAnnotation(editingPinId, editText);
+      const { editingPinId: currentId, editText: currentText } = editingRef.current;
+      if (e.key === 'Escape' && currentId) {
+        state.updateAnnotation(currentId, currentText);
         setEditingPinId(null);
         setHoveredPinId(null);
         setHoveredPinKey(null);
@@ -98,7 +103,7 @@ export function CommentPins() {
       window.removeEventListener('keydown', handleKeyDown);
       unsub();
     };
-  }, [editingPinId, editText]);
+  }, []);
 
   if (state.annotations.length === 0) return null;
 
@@ -253,7 +258,6 @@ export function CommentPins() {
         const isEditing = editingPinId === ann.id;
         const showTooltip = isHovered && (hoveredPinKey === pinKey || (!hoveredPinKey && isEditing));
 
-        // Smart placement logic: if pin is in the upper viewport (y < 220), flip tooltip below the pin
         const isNearTop = y < 220;
         const isNearLeft = x < 190;
         const isNearRight = x > (window.innerWidth || 1000) - 200;

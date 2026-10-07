@@ -251,16 +251,14 @@ export function mergeMcpConfig(filePath: string, dryRun: boolean = false): boole
       try {
         config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         if (!config.mcpServers) config.mcpServers = {};
-      } catch (e) {
-        config = { mcpServers: {} };
+      } catch {
+        return false;
       }
     }
 
-    // Clean legacy server names if present
     delete config.mcpServers['lux-review'];
     delete config.mcpServers['visual-edit'];
 
-    // Update with current standard configuration
     config.mcpServers.lux = {
       command: 'npx',
       args: ['-y', 'lux-edit', 'mcp'],
@@ -271,19 +269,18 @@ export function mergeMcpConfig(filePath: string, dryRun: boolean = false): boole
       fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
     }
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
 
-// Helper to safely remove lux from existing MCP JSON config
 export function removeMcpConfig(filePath: string, dryRun: boolean = false): boolean {
   try {
     if (!fs.existsSync(filePath)) return false;
     let config: any;
     try {
       config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    } catch (e) {
+    } catch {
       return false;
     }
 
@@ -301,7 +298,7 @@ export function removeMcpConfig(filePath: string, dryRun: boolean = false): bool
       fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
     }
     return modified;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -798,10 +795,10 @@ export async function runUninstall(options: UninstallOptions = {}) {
     const skillWebFile = path.join(cwd, 'skills', 'lux-web', 'SKILL.md');
     const legacySkillFile = path.join(cwd, 'skills', 'lux-review', 'SKILL.md');
 
-    if (removeMcpConfig(mcpConfigPath, dryRun) || (fs.existsSync(mcpConfigPath) && removeSkillFile(mcpConfigPath, dryRun))) {
+    if (removeMcpConfig(mcpConfigPath, dryRun)) {
       log(`✓ Cleaned MCP config:         ${mcpConfigPath}`);
     }
-    if (removeMcpConfig(dotMcpConfigPath, dryRun) || (fs.existsSync(dotMcpConfigPath) && removeSkillFile(dotMcpConfigPath, dryRun))) {
+    if (removeMcpConfig(dotMcpConfigPath, dryRun)) {
       log(`✓ Cleaned MCP config:         ${dotMcpConfigPath}`);
     }
     if (fs.existsSync(pluginManifestPath)) {

@@ -40,6 +40,7 @@ export class VisualEditServer {
   private basePath: string;
   private rootDir: string;
   private fileWatcher: fs.FSWatcher | null = null;
+  private reloadDebounce: NodeJS.Timeout | null = null;
 
   constructor(options: VisualEditServerOptions) {
     this.options = options;
@@ -47,15 +48,12 @@ export class VisualEditServer {
     this.appId = options.appId || this.computeAppId(options.target, this.rootDir);
     this.eventStore = EventStore.getInstance(this.rootDir);
 
-    // Normalize base path prefix (e.g., '/codeeditor/default/ports/4401')
     let basePath = (options.basePath || process.env.LUX_BASE_PATH || '').trim();
     if (basePath) {
       if (!basePath.startsWith('/')) basePath = '/' + basePath;
       basePath = basePath.replace(/\/+$/, '');
     }
     this.basePath = basePath;
-
-    // Locate overlay bundle
     this.overlayScriptPath = this.resolveOverlayPath();
 
     if (options.target.startsWith('http://') || options.target.startsWith('https://')) {
@@ -118,7 +116,6 @@ export class VisualEditServer {
   private setupFileWatcher(watchTarget: string): void {
     if (!fs.existsSync(watchTarget)) return;
     const isFile = fs.statSync(watchTarget).isFile();
-    let reloadDebounce: any = null;
 
     try {
       this.fileWatcher = fs.watch(watchTarget, { recursive: !isFile }, (eventType, filename) => {
@@ -133,8 +130,8 @@ export class VisualEditServer {
             return;
           }
         }
-        if (reloadDebounce) clearTimeout(reloadDebounce);
-        reloadDebounce = setTimeout(() => {
+        if (this.reloadDebounce) clearTimeout(this.reloadDebounce);
+        this.reloadDebounce = setTimeout(() => {
           console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
           this.eventStore.markPendingSessionsImplemented({ port: this.options.port, appId: this.appId });
           this.wsHub.broadcast({
@@ -143,7 +140,10 @@ export class VisualEditServer {
           });
         }, 150);
       });
-    } catch (e) {
+      this.fileWatcher.on('error', (err) => {
+        console.debug('[lux] File watcher error:', err);
+      });
+    } catch {
       console.debug('[lux] File watch not active for target:', watchTarget);
     }
   }
@@ -220,9 +220,11 @@ export class VisualEditServer {
 
     this.proxy.on('error', (err, req, res) => {
       console.error('[lux] Proxy error:', err.message);
-      if (res && 'writeHead' in res && !res.headersSent) {
+      if (res && 'writeHead' in res && !(res as ServerResponse).headersSent) {
         (res as ServerResponse).writeHead(502, { 'Content-Type': 'text/plain' });
         (res as ServerResponse).end(`Proxy error: Cannot reach upstream target at ${this.options.target}`);
+      } else if (res && 'destroy' in res && typeof (res as any).destroy === 'function') {
+        (res as any).destroy();
       }
     });
   }
@@ -241,22 +243,26 @@ export class VisualEditServer {
   }
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
-    const url = new URL(req.url || '/', `http://${req.headers.host}`);
-    let pathname = url.pathname;
+    let pathname = '/';
+    let url: URL;
+    try {
+      url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+      pathname = url.pathname;
+    } catch {
+      url = new URL('/', 'http://localhost');
+      pathname = (req.url || '/').split('?')[0];
+    }
 
-    // Normalize pathname by stripping basePath prefix if present
     if (this.basePath && pathname.startsWith(this.basePath)) {
       pathname = pathname.slice(this.basePath.length) || '/';
     }
 
-    // Handle favicon.ico cleanly
     if (pathname === '/favicon.ico') {
       res.writeHead(204);
       res.end();
       return;
     }
 
-    // Serve Overlay JS Bundle
     if (pathname === API_ROUTES.OVERLAY_JS) {
       if (fs.existsSync(this.overlayScriptPath)) {
         res.writeHead(200, {
@@ -273,7 +279,6 @@ export class VisualEditServer {
       return;
     }
 
-    // REST API - Submit Edit Batch
     if (pathname === API_ROUTES.EDITS && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk) => (body += chunk.toString()));
@@ -305,14 +310,12 @@ export class VisualEditServer {
       return;
     }
 
-    // REST API - List Sessions
     if ((pathname === API_ROUTES.SESSIONS || pathname === '/__lux/api/sessions') && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(this.eventStore.listSessions()));
       return;
     }
 
-    // REST API - Pending Review Batch
     if ((pathname === API_ROUTES.PENDING || pathname === '/__lux/api/pending') && req.method === 'GET') {
       const activeSessionIds = this.wsHub.getActiveSessionIds();
       const pending = this.eventStore.getPendingReview({
@@ -340,7 +343,6 @@ export class VisualEditServer {
       return;
     }
 
-    // Static Single HTML File Mode
     if (this.isStatic && this.singleHtmlFile) {
       if (pathname === '/' || pathname === `/${path.basename(this.singleHtmlFile)}` || pathname === '/index.html') {
         const rawHtml = fs.readFileSync(this.singleHtmlFile, 'utf-8');
@@ -354,14 +356,12 @@ export class VisualEditServer {
       }
     }
 
-    // Static Directory Mode
     if (this.isStatic && this.staticDir) {
       let cleanPath = pathname;
       if (cleanPath.endsWith('/')) {
         cleanPath += 'index.html';
       }
 
-      // Check if resolving to an HTML file (direct, index.html, or SPA fallback)
       let candidateHtml: string | null = null;
       const directPath = path.join(this.staticDir, cleanPath);
 
@@ -395,7 +395,6 @@ export class VisualEditServer {
         return;
       }
 
-      // For non-HTML static assets (.css, .js, .png, etc.), delegate to sirv
       if (this.staticHandler) {
         const originalUrl = req.url;
         req.url = pathname + (url.search || '');
@@ -405,7 +404,6 @@ export class VisualEditServer {
       }
     }
 
-    // Reverse Proxy Mode: Pass the original unmodified request to upstream dev server
     if (this.proxy) {
       this.proxy.web(req, res);
       return;
@@ -424,7 +422,6 @@ export class VisualEditServer {
       const tryListen = (port: number) => {
         const onError = (err: any) => {
           this.server.removeListener('error', onError);
-          // If port is in use and strictPort is false and not using random port 0, try next port
           if (err.code === 'EADDRINUSE' && !strictPort && initialPort > 0 && port < initialPort + 50) {
             tryListen(port + 1);
           } else {
@@ -477,7 +474,6 @@ export class VisualEditServer {
         try {
           const raw = fs.readFileSync(metaPath, 'utf-8');
           const data = JSON.parse(raw);
-          // Only remove if this process owns the metadata file
           if (data.pid === process.pid) {
             fs.unlinkSync(metaPath);
           }
@@ -492,11 +488,19 @@ export class VisualEditServer {
 
   public close(): Promise<void> {
     this.removeServerMetadata();
+    if (this.reloadDebounce) {
+      clearTimeout(this.reloadDebounce);
+      this.reloadDebounce = null;
+    }
     if (this.fileWatcher) {
       try {
         this.fileWatcher.close();
-      } catch (e) {}
+      } catch {}
     }
+    this.wsHub.close();
+    try {
+      this.proxy?.close();
+    } catch {}
     return new Promise((resolve) => {
       this.server.close(() => resolve());
     });

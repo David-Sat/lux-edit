@@ -113,7 +113,6 @@ export function EditReviewDrawer() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Visual Mutations Section */}
             {totalMutations > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -194,7 +193,6 @@ export function EditReviewDrawer() {
               </div>
             )}
 
-            {/* Comments & Pins Section */}
             {totalAnnotations > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-text-primary, #f8fafc)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>

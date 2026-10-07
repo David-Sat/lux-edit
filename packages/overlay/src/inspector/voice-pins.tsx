@@ -21,7 +21,6 @@ export function VoicePins() {
     };
   }, []);
 
-  // Collect all pins to display: active recording pins OR saved voice review pins
   const allPins: VoiceTargetPin[] = [];
   if (state.activeTool === 'voice' && state.activeVoicePins.length > 0) {
     allPins.push(...state.activeVoicePins);
@@ -37,7 +36,6 @@ export function VoicePins() {
     let x = pin.bounds?.x || 0;
     let y = pin.bounds?.y || 0;
 
-    // Try finding the live element to track smooth scrolling and reflows
     try {
       const el = document.querySelector(pin.targetSelector) as HTMLElement | null;
       if (el) {

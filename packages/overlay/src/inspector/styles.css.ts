@@ -1,7 +1,5 @@
 export const OVERLAY_STYLES = `
-/* ==========================================================================
-   Design Tokens & CSS Variables
-   ========================================================================== */
+/* Design Tokens & CSS Variables */
 :host, .ve-root {
   /* Color Palette */
   --ve-accent: #38bdf8;
@@ -49,12 +47,10 @@ export const OVERLAY_STYLES = `
   --ve-z-toolbar: 2147483645;
   --ve-z-launcher: 2147483646;
   --ve-z-panel: 2147483647;
-  --ve-z-tooltip: 2147483648;
+  --ve-z-tooltip: 2147483647;
 }
 
-/* ==========================================================================
-   Host & Root Isolation
-   ========================================================================== */
+/* Host & Root Isolation */
 :host {
   all: initial;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -92,9 +88,7 @@ export const OVERLAY_STYLES = `
   pointer-events: auto !important;
 }
 
-/* ==========================================================================
-   Shared Component Primitives
-   ========================================================================== */
+/* Shared Component Primitives */
 
 /* Universal Glass Panels */
 .ve-dock-menu,
@@ -165,9 +159,7 @@ export const OVERLAY_STYLES = `
   }
 }
 
-/* ==========================================================================
-   Animations
-   ========================================================================== */
+/* Animations */
 @keyframes veSlideUp {
   from {
     opacity: 0;
@@ -201,9 +193,7 @@ export const OVERLAY_STYLES = `
   }
 }
 
-/* ==========================================================================
-   Canvas Highlight Overlays & Target Badges
-   ========================================================================== */
+/* Canvas Highlight Overlays & Target Badges */
 .ve-highlight-box {
   position: fixed;
   pointer-events: none;
@@ -256,9 +246,7 @@ export const OVERLAY_STYLES = `
   margin-inline-start: 4px;
 }
 
-/* ==========================================================================
-   Floating Launcher Button & Dock Menu
-   ========================================================================== */
+/* Floating Launcher Button & Dock Menu */
 .ve-launcher-btn {
   position: fixed;
   inset-block-end: 24px;
@@ -420,9 +408,7 @@ export const OVERLAY_STYLES = `
   }
 }
 
-/* ==========================================================================
-   Comment Composer Popover
-   ========================================================================== */
+/* Comment Composer Popover */
 .ve-comment-popover {
   position: fixed;
   border-radius: 20px;
@@ -535,9 +521,7 @@ export const OVERLAY_STYLES = `
   }
 }
 
-/* ==========================================================================
-   Comment Pins on Canvas
-   ========================================================================== */
+/* Comment Pins on Canvas */
 .ve-pin {
   position: fixed;
   inline-size: 26px;
@@ -664,9 +648,7 @@ export const OVERLAY_STYLES = `
   }
 }
 
-/* ==========================================================================
-   Floating Toolbar
-   ========================================================================== */
+/* Floating Toolbar */
 .ve-toolbar {
   position: fixed;
   border-radius: 20px;
@@ -978,9 +960,7 @@ export const OVERLAY_STYLES = `
   opacity: 0.85;
 }
 
-/* ==========================================================================
-   Theme Drawer & Settings Panel
-   ========================================================================== */
+/* Theme Drawer & Settings Panel */
 .ve-theme-panel {
   position: fixed;
   inset-block-end: 78px;
@@ -995,9 +975,7 @@ export const OVERLAY_STYLES = `
   animation: veSlideUp 0.16s ease-out;
 }
 
-/* ==========================================================================
-   Edit Review Drawer
-   ========================================================================== */
+/* Edit Review Drawer */
 .ve-drawer {
   position: fixed;
   inset-block-end: 78px;
