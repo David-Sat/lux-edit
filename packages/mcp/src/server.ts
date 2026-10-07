@@ -28,13 +28,11 @@ function readServerMetadata(rootDir: string): LuxServerMetadata | null {
     if (!fs.existsSync(metaPath)) return null;
     const raw = fs.readFileSync(metaPath, 'utf-8');
     const data = JSON.parse(raw) as LuxServerMetadata;
-    // Check if process is still alive if PID is provided
     if (data.pid && typeof data.pid === 'number') {
       try {
         process.kill(data.pid, 0);
       } catch (e: any) {
         if (e.code === 'ESRCH') {
-          // Process no longer exists - clean up stale lock file
           try { fs.unlinkSync(metaPath); } catch {}
           return null;
         }
@@ -91,20 +89,17 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   const resolvePendingBatch = async (args?: { workspaceDir?: string; serverUrl?: string }): Promise<VisualEditBatch | null> => {
     const targetRootDir = args?.workspaceDir ? path.resolve(args.workspaceDir.trim()) : resolvedRoot;
 
-    // 1. If explicit serverUrl provided, probe that specific server URL first (peek without resolving)
     if (args?.serverUrl && args.serverUrl.trim()) {
       const live = await fetchFromRunningServer(args.serverUrl.trim(), false);
       if (live) return live;
     }
 
-    // 2. Deterministic Discovery: Check active server lockfile in target workspace or root
     const serverMeta = readServerMetadata(targetRootDir) || (targetRootDir !== resolvedRoot ? readServerMetadata(resolvedRoot) : null);
     if (serverMeta && serverMeta.url) {
       const live = await fetchFromRunningServer(serverMeta.url, false);
       if (live) return live;
     }
 
-    // 3. If explicit workspaceDir provided, check that store on disk
     if (args?.workspaceDir && args.workspaceDir.trim()) {
       const store = resolveEventStore(args.workspaceDir);
       const batch = store.getPendingReview({ serverUrl: args?.serverUrl });
@@ -113,13 +108,11 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       }
     }
 
-    // 4. Check default eventStore on disk
     const localBatch = defaultEventStore.getPendingReview({ serverUrl: args?.serverUrl });
     if (hasPendingContent(localBatch)) {
       return localBatch;
     }
 
-    // 5. Fall back to probing default review server URL if no reviews on disk
     if (!args?.workspaceDir) {
       const fallbackUrl = DEFAULT_SERVER_URL;
       const live = await fetchFromRunningServer(fallbackUrl, false);
@@ -129,7 +122,6 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     return localBatch || null;
   };
 
-  // Standard MCP Resource: lux://pending-review
   server.registerResource(
     'pending-review',
     'lux://pending-review',
@@ -151,20 +143,19 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
         };
       }
 
-      const summary = formatBatchSummary(batch!);
+      const summary = formatBatchSummary(batch);
       return {
         contents: [
           {
             uri: uri.href,
             mimeType: 'text/markdown',
-            text: `### Visual review and comments (Session: ${batch!.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
+            text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
           },
         ],
       };
     }
   );
 
-  // Standard MCP Prompt: lux_apply_review
   server.registerPrompt(
     'lux_apply_review',
     {
@@ -175,8 +166,8 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       const batch = await resolvePendingBatch();
       let contextText = 'No pending visual edits or comments found.';
       if (hasPendingContent(batch)) {
-        const summary = formatBatchSummary(batch!);
-        contextText = `Feedback from session ${batch!.id}:\n\n${summary}\n\nRaw batch:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``;
+        const summary = formatBatchSummary(batch);
+        contextText = `Feedback from session ${batch.id}:\n\n${summary}\n\nRaw batch:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``;
       }
 
       return {
@@ -205,7 +196,6 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       .describe('URL of the running lux review server, for example http://127.0.0.1:4320.'),
   };
 
-  // Primary Tool: Get Active / Pending Visual Review and Comments
   const getPendingReviewHandler = async (args?: { workspaceDir?: string; serverUrl?: string }) => {
     const batch = await resolvePendingBatch(args);
     if (!hasPendingContent(batch)) {
@@ -244,7 +234,6 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     getPendingReviewHandler
   );
 
-  // Query Tool: Get Specific Session Details
   const getSessionHandler = async ({
     sessionId,
     workspaceDir,
@@ -296,7 +285,6 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     getSessionHandler
   );
 
-  // Query Tool: List All Sessions
   const listSessionsHandler = async ({
     status,
     workspaceDir,

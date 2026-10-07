@@ -5,7 +5,6 @@ import { generateCssSelector, generateXPath } from './html-locator.js';
 export function getElementHtmlSnippet(element: HTMLElement): string {
   try {
     const clone = element.cloneNode(true) as HTMLElement;
-    // If children are huge, trim innerHTML
     if (clone.children.length > 3) {
       return `<${element.tagName.toLowerCase()}${element.id ? ` id="${element.id}"` : ''}${element.className ? ` class="${element.className}"` : ''}>...</${element.tagName.toLowerCase()}>`;
     }
@@ -34,7 +33,7 @@ export function resolveSourceLocation(element: HTMLElement): SourceLocation {
     lineNumber: reactLoc?.lineNumber,
     columnNumber: reactLoc?.columnNumber,
     componentName: reactLoc?.componentName,
-    framework: reactLoc?.framework || (window as any).React ? 'react' : 'html',
+    framework: reactLoc?.framework ?? ((window as any).React ? 'react' : 'html'),
     selector,
     xpath,
     tag: element.tagName.toLowerCase(),

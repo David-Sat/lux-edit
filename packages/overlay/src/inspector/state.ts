@@ -31,6 +31,7 @@ export interface ElementSnapshot {
   styles: Record<string, string>;
   classes: string[];
   sourceLocation: SourceLocation;
+  originalStyleAttr?: string | null;
 }
 
 export class OverlayStateManager {
@@ -69,6 +70,7 @@ export class OverlayStateManager {
   private snapshots = new Map<HTMLElement, ElementSnapshot>();
   private listeners = new Set<() => void>();
   private ws: WebSocket | null = null;
+  private reconnectAttempts = 0;
 
   private constructor() {
     this.captureInitialTheme();
@@ -615,6 +617,7 @@ export class OverlayStateManager {
       styles,
       classes,
       sourceLocation,
+      originalStyleAttr: el.getAttribute('style'),
     });
   }
 
@@ -672,6 +675,12 @@ export class OverlayStateManager {
   public duplicateElement(): void {
     if (!this.activeElement || !this.activeElement.parentElement) return;
     const clone = this.activeElement.cloneNode(true) as HTMLElement;
+    if (clone.id) {
+      clone.id = `${clone.id}-copy`;
+    }
+    clone.querySelectorAll('[id]').forEach((child) => {
+      if (child.id) child.id = `${child.id}-copy`;
+    });
     this.activeElement.parentElement.insertBefore(clone, this.activeElement.nextSibling);
 
     const sourceLocation = resolveSourceLocation(clone);
@@ -783,7 +792,11 @@ export class OverlayStateManager {
       if (document.body.contains(el)) {
         el.innerText = snapshot.text;
         el.className = snapshot.classes.join(' ');
-        el.removeAttribute('style');
+        if (snapshot.originalStyleAttr !== null && snapshot.originalStyleAttr !== undefined) {
+          el.setAttribute('style', snapshot.originalStyleAttr);
+        } else {
+          el.removeAttribute('style');
+        }
       }
     }
 
@@ -995,11 +1008,21 @@ export class OverlayStateManager {
         }
       };
 
-      this.ws.onclose = () => {
-        setTimeout(() => this.initWebSocket(), 3000);
+      this.ws.onerror = () => {};
+
+      this.ws.onopen = () => {
+        this.reconnectAttempts = 0;
       };
-    } catch (e) {
-      console.debug('[visual-edit] WebSocket connection not available');
+
+      this.ws.onclose = () => {
+        if (this.reconnectAttempts < 10) {
+          this.reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 15000);
+          setTimeout(() => this.initWebSocket(), delay);
+        }
+      };
+    } catch {
+      console.debug('[lux] WebSocket connection not available');
     }
   }
 }

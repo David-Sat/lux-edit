@@ -45,7 +45,6 @@ export function ThemePanel() {
       </div>
 
       <div class="ve-drawer-body" style={{ padding: '16px', gap: '14px' }}>
-        {/* Brand Colors */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-accent-text, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Brand Colors
@@ -97,7 +96,6 @@ export function ThemePanel() {
           </div>
         </div>
 
-        {/* Global Corner Radius */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-text-primary, #f8fafc)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Corner Radius Scale
@@ -124,7 +122,6 @@ export function ThemePanel() {
           </div>
         </div>
 
-        {/* Typography Theme */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-green-text, #16a34a)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Base Typography

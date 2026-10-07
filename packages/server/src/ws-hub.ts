@@ -10,6 +10,7 @@ export class WebSocketHub {
   private appId?: string;
   private clients = new Set<WebSocket>();
   private clientSessionMap = new Map<WebSocket, string>();
+  private unsubscribeStore?: () => void;
 
   constructor(server: Server, eventStore: EventStore, basePath: string = '', appId?: string) {
     this.eventStore = eventStore;
@@ -17,7 +18,11 @@ export class WebSocketHub {
     this.appId = appId;
     this.wss = new WebSocketServer({ noServer: true });
 
-    this.eventStore.subscribe((event) => {
+    this.wss.on('error', (err) => {
+      console.debug('[lux] WebSocketServer error:', err);
+    });
+
+    this.unsubscribeStore = this.eventStore.subscribe((event) => {
       this.broadcast({
         type: event.type as any,
         sessionId: event.sessionId,
@@ -41,7 +46,10 @@ export class WebSocketHub {
     this.wss.on('connection', (ws) => {
       this.clients.add(ws);
 
-      // Immediately sync latest session status to newly connected client
+      ws.on('error', (err) => {
+        console.debug('[lux] WebSocket client error:', err.message);
+      });
+
       try {
         const latestSessions = this.eventStore.listSessions();
         if (latestSessions.length > 0) {
@@ -60,40 +68,15 @@ export class WebSocketHub {
             );
           }
         }
-      } catch (err) {}
+      } catch {}
 
       ws.on('message', (data) => {
         try {
           const msg: WebSocketMessage = JSON.parse(data.toString());
           if (msg.type === 'SUBMIT_BATCH') {
-            if (this.appId && msg.payload?.appId && msg.payload.appId !== this.appId) {
-              console.warn(`[lux] WS dropping SUBMIT_BATCH from mismatched appId: ${msg.payload.appId} (server: ${this.appId})`);
-              return;
-            }
-            if (this.appId && msg.payload && !msg.payload.appId) {
-              msg.payload.appId = this.appId;
-            }
-            if (msg.payload?.id) {
-              this.clientSessionMap.set(ws, msg.payload.id);
-            }
-            this.eventStore.saveBatch(msg.payload);
-            this.broadcast({
-              type: 'STATUS_CHANGE',
-              sessionId: msg.payload.id,
-              payload: { status: 'submitted' },
-            });
+            this.handleIncomingBatch(ws, msg.payload, true);
           } else if (msg.type === 'SYNC_SESSION') {
-            if (this.appId && msg.payload?.appId && msg.payload.appId !== this.appId) {
-              console.warn(`[lux] WS dropping SYNC_SESSION from mismatched appId: ${msg.payload.appId} (server: ${this.appId})`);
-              return;
-            }
-            if (this.appId && msg.payload && !msg.payload.appId) {
-              msg.payload.appId = this.appId;
-            }
-            if (msg.payload?.id) {
-              this.clientSessionMap.set(ws, msg.payload.id);
-            }
-            this.eventStore.saveBatch(msg.payload);
+            this.handleIncomingBatch(ws, msg.payload, false);
           }
         } catch (err) {
           console.error('[lux] Failed to handle WS message:', err);
@@ -105,6 +88,27 @@ export class WebSocketHub {
         this.clientSessionMap.delete(ws);
       });
     });
+  }
+
+  private handleIncomingBatch(ws: WebSocket, payload: any, markSubmitted: boolean): void {
+    if (this.appId && payload?.appId && payload.appId !== this.appId) {
+      console.warn(`[lux] WS dropping ${markSubmitted ? 'SUBMIT_BATCH' : 'SYNC_SESSION'} from mismatched appId: ${payload.appId} (server: ${this.appId})`);
+      return;
+    }
+    if (this.appId && payload && !payload.appId) {
+      payload.appId = this.appId;
+    }
+    if (payload?.id) {
+      this.clientSessionMap.set(ws, payload.id);
+    }
+    this.eventStore.saveBatch(payload);
+    if (markSubmitted && payload?.id) {
+      this.broadcast({
+        type: 'STATUS_CHANGE',
+        sessionId: payload.id,
+        payload: { status: 'submitted' },
+      });
+    }
   }
 
   public getActiveSessionIds(): string[] {
@@ -122,5 +126,22 @@ export class WebSocketHub {
         client.send(payload);
       }
     }
+  }
+
+  public close(): void {
+    if (this.unsubscribeStore) {
+      this.unsubscribeStore();
+      this.unsubscribeStore = undefined;
+    }
+    for (const client of this.clients) {
+      try {
+        client.close();
+      } catch {}
+    }
+    this.clients.clear();
+    this.clientSessionMap.clear();
+    try {
+      this.wss.close();
+    } catch {}
   }
 }

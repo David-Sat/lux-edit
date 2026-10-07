@@ -23,7 +23,6 @@ program
   .description('In-browser visual editing overlay for web apps and AI coding agents')
   .version(cliVersion);
 
-// Command: Run Server / Proxy (default)
 program
   .argument('[target]', 'Upstream dev server URL (e.g. http://localhost:5173) or static file/directory path', '.')
   .option('-p, --port <number>', 'Review server port', String(DEFAULT_PORT))
@@ -45,8 +44,9 @@ program
       basePath: options.basePath,
     });
 
-    // Graceful process cleanup
     const cleanup = async () => {
+      const forceTimer = setTimeout(() => process.exit(0), 1000);
+      forceTimer.unref();
       try {
         await server.close();
       } catch {}
@@ -71,7 +71,6 @@ program
     }
   });
 
-// Command: Run MCP stdio server
 program
   .command('mcp')
   .description('Start Model Context Protocol (MCP) server over stdio for coding agents')
@@ -82,7 +81,6 @@ program
 
 import { runInit, runUninstall } from './init.js';
 
-// Command: Initialize Agent Plugins manifest, MCP config, and skills
 program
   .command('init')
   .alias('install')
@@ -104,7 +102,6 @@ program
     });
   });
 
-// Command: Remove Agent MCP config, plugin manifest, and skills
 program
   .command('uninstall')
   .alias('remove')

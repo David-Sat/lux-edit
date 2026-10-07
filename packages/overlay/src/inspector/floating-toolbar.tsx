@@ -127,7 +127,6 @@ export function FloatingToolbar() {
 
   const el = state.activeElement;
 
-  // Detect element type category for Smart Start ribbon
   const tag = el ? (el.tagName || '').toUpperCase() : '';
   const isButton = el ? tag === 'BUTTON' || (tag === 'A' && el.children.length > 0) || (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type)) : false;
   const isText = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'SPAN', 'BLOCKQUOTE', 'STRONG', 'EM', 'LABEL', 'B', 'I', 'TEXT', 'TSPAN', 'A', 'LI', 'TD', 'TH', 'CODE', 'PRE'].includes(tag) || (!isButton && el.children.length === 0 && (el.textContent || el.innerText || '').trim().length > 0) : false;
@@ -139,7 +138,6 @@ export function FloatingToolbar() {
   const isList = el ? ['UL', 'OL', 'LI'].includes(tag) : false;
   const isContainer = el ? !isText && !isButton && !isImage && !isList : true;
 
-  // Extract App's Main Colors from CSS variables & DOM
   const appColors = useMemo(() => {
     const colors = new Set<string>();
     try {
@@ -202,9 +200,8 @@ export function FloatingToolbar() {
   const computed = window.getComputedStyle(el);
   const snapshot = state.getSnapshotForElement(el);
 
-  // Helper to toggle style: if already set to val, resets back to snapshot origin!
   const toggleStyle = (prop: string, val: string) => {
-    const currentVal = el.style.getPropertyValue(prop) || (computed as any)[prop.replace(/-([a-z])/g, (_, l) => l.toUpperCase())];
+    const currentVal = el.style.getPropertyValue(prop) || computed.getPropertyValue(prop);
     if (currentVal === val || el.style.getPropertyValue(prop) === val) {
       state.resetElementProperty(el, prop);
     } else {
@@ -218,7 +215,6 @@ export function FloatingToolbar() {
 
   const hasDraftedEdits = state.mutations.some((m) => m.targetSelector === sourceLoc.selector);
 
-  // Parse numeric values for sliders
   const parseNum = (str?: string) => {
     if (!str) return 0;
     const num = parseFloat(str);
@@ -324,7 +320,6 @@ export function FloatingToolbar() {
 
       {/* Tab Content */}
       <div class="ve-toolbar-content">
-        {/* ================= SMART CONTEXT-AWARE START TAB ================= */}
         {activeTab === 'quick' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {/* Quick Text / Heading Options */}
@@ -771,8 +766,6 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-
-        {/* ================= SPACING TAB ================= */}
         {activeTab === 'spacing' && (
           <div>
             <div class="ve-box-model">
@@ -846,8 +839,6 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-
-        {/* ================= TYPOGRAPHY TAB ================= */}
         {activeTab === 'type' && (
           <div>
             <div class="ve-row">
@@ -902,8 +893,6 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-
-        {/* ================= LAYOUT TAB ================= */}
         {activeTab === 'layout' && (
           <div>
             <div class="ve-row">
@@ -958,8 +947,6 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-
-        {/* ================= STYLES TAB ================= */}
         {activeTab === 'style' && (
           <div>
             <div class="ve-row">
@@ -994,8 +981,6 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-
-        {/* ================= CLASSES TAB ================= */}
         {activeTab === 'class' && (
           <div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
@@ -1052,8 +1037,6 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-
-        {/* ================= DOM ACTIONS TAB ================= */}
         {activeTab === 'actions' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', gap: '6px' }}>

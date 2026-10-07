@@ -19,8 +19,6 @@ export function DockMenu() {
   }, []);
 
   const totalCount = state.mutations.length + state.annotations.length + state.voiceReviews.length;
-
-  // Active Voice Recording Mode Dock Pill
   if (state.activeTool === 'voice') {
     const minutes = Math.floor(voiceState.durationMs / 60000);
     const seconds = Math.floor((voiceState.durationMs % 60000) / 1000);
@@ -48,7 +46,6 @@ export function DockMenu() {
           animation: 'veSlideUp 0.15s ease-out',
         }}
       >
-        {/* Pulsing indicator (Amber = connecting, Red = live listening) */}
         <span
           style={{
             width: '10px',
@@ -60,13 +57,9 @@ export function DockMenu() {
             transition: 'background-color 0.2s ease',
           }}
         />
-
-        {/* Timer */}
         <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>
           {voiceState.isReady ? timeStr : '00:00'}
         </span>
-
-        {/* Live speech preview or guidance */}
         <span
           style={{
             fontSize: '11px',
@@ -85,8 +78,6 @@ export function DockMenu() {
             ? `"${liveText}"`
             : 'Listening... speak & click elements'}
         </span>
-
-        {/* Pins badge */}
         {voiceState.pins.length > 0 && (
           <span
             style={{
@@ -103,8 +94,6 @@ export function DockMenu() {
             {voiceState.pins.length} target{voiceState.pins.length > 1 ? 's' : ''}
           </span>
         )}
-
-        {/* Finish button */}
         <button
           class="ve-dock-item"
           style={{
@@ -131,8 +120,6 @@ export function DockMenu() {
           </svg>
           <span>{state.isStoppingVoice ? 'Finishing...' : 'Done'}</span>
         </button>
-
-        {/* Cancel button */}
         <button
           class="ve-dock-item"
           style={{
@@ -181,7 +168,6 @@ export function DockMenu() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Visual Edit Mode Button - Clear Pencil / Edit Tool Icon */}
       <button
         class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'edit' ? 'none' : 'edit')}
@@ -192,8 +178,6 @@ export function DockMenu() {
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
       </button>
-
-      {/* Comment Pin Mode Button */}
       <button
         class={`ve-dock-item ${state.activeTool === 'comment' ? 've-active' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'comment' ? 'none' : 'comment')}
@@ -203,8 +187,6 @@ export function DockMenu() {
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
       </button>
-
-      {/* Voice Walkthrough Mode Button */}
       <button
         class="ve-dock-item"
         onClick={() => state.setTool('voice')}
@@ -216,8 +198,6 @@ export function DockMenu() {
           <line x1="12" y1="19" x2="12" y2="22" />
         </svg>
       </button>
-
-      {/* Global App Theme & Design Tokens Button */}
       <button
         class={`ve-dock-item ${state.isThemePanelOpen ? 've-active' : ''}`}
         onClick={() => state.setThemePanelOpen(!state.isThemePanelOpen)}
@@ -231,8 +211,6 @@ export function DockMenu() {
           <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
         </svg>
       </button>
-
-      {/* Review Changes Drawer Toggle */}
       <button
         class={`ve-dock-item ${state.isDrawerOpen ? 've-active' : ''}`}
         style={{ position: 'relative' }}
@@ -249,8 +227,6 @@ export function DockMenu() {
         </svg>
         {totalCount > 0 && <span class="ve-dock-badge">{totalCount}</span>}
       </button>
-
-      {/* Close / Collapse Button */}
       <button
         class="ve-dock-item ve-dock-close"
         onClick={() => {

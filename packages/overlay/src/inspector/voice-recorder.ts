@@ -18,6 +18,7 @@ export class VoiceRecorder {
   private isReady = false;
   private startTime = 0;
   private timerInterval: any = null;
+  private readyTimeout: any = null;
 
   private transcript = '';
   private interimTranscript = '';
@@ -106,7 +107,6 @@ export class VoiceRecorder {
 
       recognition.onerror = (event: any) => {
         if (event.error === 'no-speech') {
-          // Normal silence, ignore
           return;
         }
         if (event.error === 'not-allowed') {
@@ -187,8 +187,8 @@ export class VoiceRecorder {
       this.notify();
     }
 
-    // Safety timeout: If browser does not fire onaudiostart within 700ms, mark as ready
-    setTimeout(() => {
+    if (this.readyTimeout) clearTimeout(this.readyTimeout);
+    this.readyTimeout = setTimeout(() => {
       if (this.isRecording && !this.isReady) {
         this.isReady = true;
         if (this.startTime === 0) {
@@ -228,7 +228,6 @@ export class VoiceRecorder {
 
     this.pins.push(pin);
 
-    // Commit any spoken text up to this moment, then embed the target tag
     const currentSpoken = this.getCurrentFullText();
     const newSpoken = currentSpoken.slice(this.lastProcessedLength).trim();
 
@@ -276,6 +275,11 @@ export class VoiceRecorder {
     this.isRecording = false;
     this.isReady = false;
 
+    if (this.readyTimeout) {
+      clearTimeout(this.readyTimeout);
+      this.readyTimeout = null;
+    }
+
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
       this.timerInterval = null;
@@ -287,14 +291,11 @@ export class VoiceRecorder {
       }
     } catch (e) {}
 
-    // Flush window: Allow the speech recognition engine to decode the final speech buffer
     const flushDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 500;
     if (flushDelay > 0) {
       await new Promise((r) => setTimeout(r, flushDelay));
     }
 
-    // In case there is still interim text that has not been converted to final,
-    // append it to the transcript so no spoken words are lost
     if (this.interimTranscript.trim()) {
       if (this.transcript.length > 0 && !this.transcript.endsWith(' ')) {
         this.transcript += ' ';
@@ -307,7 +308,6 @@ export class VoiceRecorder {
     const finalAnnotated = this.buildCurrentAnnotatedTranscript().trim();
     const finalRawTranscript = this.getCurrentFullText().trim();
 
-    // If there is no transcript and no pins, return null
     if (!finalRawTranscript && this.pins.length === 0) {
       this.notify();
       return null;
@@ -332,6 +332,10 @@ export class VoiceRecorder {
   public cancel(): void {
     this.isRecording = false;
     this.isReady = false;
+    if (this.readyTimeout) {
+      clearTimeout(this.readyTimeout);
+      this.readyTimeout = null;
+    }
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
       this.timerInterval = null;

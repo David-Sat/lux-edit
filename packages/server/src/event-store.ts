@@ -13,7 +13,7 @@ export interface GetPendingReviewOptions {
   serverUrl?: string;
   appId?: string;
   activeSessionIds?: string[];
-  maxAgeMs?: number; // Defaults to 7 days (168h)
+  maxAgeMs?: number;
 }
 
 export function sessionMatchesTarget(sessionUrl: string | undefined, port?: number, serverUrl?: string): boolean {
@@ -66,8 +66,8 @@ export class EventStore {
           fs.appendFileSync(gitignorePath, `${separator}.visual-edit/\n`, 'utf-8');
         }
       }
-    } catch (e) {
-      // Ignore write errors to .gitignore
+    } catch {
+      // Intentionally silent
     }
   }
 
@@ -91,10 +91,9 @@ export class EventStore {
   }
 
   private pruneOldSessions(): void {
-    const STALE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const STALE_TTL = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    // 1. Purge any stale sessions older than 7 days from disk
     for (const [id, s] of this.sessions.entries()) {
       if (now - s.timestamp > STALE_TTL) {
         this.sessions.delete(id);
@@ -104,7 +103,6 @@ export class EventStore {
     const MAX_SESSIONS = 50;
     if (this.sessions.size <= MAX_SESSIONS) return;
 
-    // First prune oldest implemented or resolved sessions
     const sorted = Array.from(this.sessions.values()).sort((a, b) => a.timestamp - b.timestamp);
     for (const s of sorted) {
       if (this.sessions.size <= MAX_SESSIONS) break;
@@ -113,7 +111,6 @@ export class EventStore {
       }
     }
 
-    // If still over MAX_SESSIONS, prune oldest non-active sessions
     if (this.sessions.size > MAX_SESSIONS) {
       const remaining = Array.from(this.sessions.values()).sort((a, b) => a.timestamp - b.timestamp);
       for (const s of remaining) {
@@ -131,15 +128,20 @@ export class EventStore {
       const content = fs.readFileSync(this.filePath, 'utf-8');
       const lines = content.split('\n').filter((l) => l.trim().length > 0);
       let prunedAny = false;
+      const loadedSessions = new Map<string, VisualEditBatch>();
       for (const line of lines) {
-        const batch: VisualEditBatch = JSON.parse(line);
-        // Filter out empty sessions with no mutations, annotations, voice reviews, or prompts
-        if (!this.hasSessionContent(batch)) {
+        try {
+          const batch: VisualEditBatch = JSON.parse(line);
+          if (!this.hasSessionContent(batch)) {
+            prunedAny = true;
+            continue;
+          }
+          loadedSessions.set(batch.id, batch);
+        } catch {
           prunedAny = true;
-          continue;
         }
-        this.sessions.set(batch.id, batch);
       }
+      this.sessions = loadedSessions;
       const initialSize = this.sessions.size;
       this.pruneOldSessions();
       if (prunedAny || this.sessions.size < initialSize) {
@@ -176,10 +178,9 @@ export class EventStore {
   }
 
   public saveBatch(batch: VisualEditBatch): void {
+    this.loadFromDisk();
     const hasContent = this.hasSessionContent(batch);
 
-    // If an empty session is sent, do not store it on disk.
-    // If it was previously stored, clean it up.
     if (!hasContent) {
       if (this.sessions.has(batch.id)) {
         this.sessions.delete(batch.id);
@@ -217,7 +218,7 @@ export class EventStore {
         voiceReviewCount: b.voiceReviews?.length || 0,
         userPrompt: b.userPrompt,
         primaryTarget,
-        hasClaim: false,
+        hasClaim: Boolean(b.claim && b.claim.expiresAt > Date.now()),
       };
     });
   }
@@ -250,7 +251,6 @@ export class EventStore {
 
   public getPendingReview(options?: GetPendingReviewOptions): VisualEditBatch | null {
     this.loadFromDisk();
-    // 7 days default TTL
     const maxAge = options?.maxAgeMs ?? 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
     const sessions = Array.from(this.sessions.values()).sort((a, b) => b.timestamp - a.timestamp);
@@ -263,7 +263,6 @@ export class EventStore {
       return this.hasSessionContent(s);
     };
 
-    // 1. If activeSessionIds are provided (live connected WebSocket tabs on this server), prioritize them
     if (options?.activeSessionIds && options.activeSessionIds.length > 0) {
       const activeSet = new Set(options.activeSessionIds);
       for (const s of sessions) {
@@ -273,7 +272,6 @@ export class EventStore {
       }
     }
 
-    // 2. Return latest matching candidate session
     for (const s of sessions) {
       if (isCandidate(s)) {
         return s;

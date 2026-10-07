@@ -17,7 +17,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
 
   useEffect(() => {
-    // Check if event occurred inside our shadow DOM
     const isInsideShadow = (e: Event): boolean => {
       try {
         const path = e.composedPath ? e.composedPath() : [];
@@ -32,7 +31,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
     let currentInlineEl: HTMLElement | null = null;
 
-    // Global mouse hover handler
     const handleMouseMove = (e: MouseEvent) => {
       if (state.activeTool === 'none') return;
       if (isInsideShadow(e)) {
@@ -49,7 +47,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       state.setHoveredElement(target);
     };
 
-    // Global mouseup handler to detect text selection in Comment mode
     const handleMouseUp = (e: MouseEvent) => {
       if (state.activeTool !== 'comment') return;
       if (isInsideShadow(e)) return;
@@ -81,7 +78,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       }
     };
 
-    // Global click handler
     const handleClick = (e: MouseEvent) => {
       if (state.activeTool === 'none') return;
       if (isInsideShadow(e)) {
@@ -139,7 +135,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       state.setActiveElement(target);
       currentInlineEl = target;
 
-      // Enable inline content editing directly on the DOM element
       try {
         target.contentEditable = 'plaintext-only';
       } catch (err) {
@@ -148,7 +143,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       target.spellcheck = false;
       target.focus();
 
-      // Select all text on double click so user can type over or click to place cursor
       try {
         const range = document.createRange();
         range.selectNodeContents(target);
@@ -157,7 +151,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         sel?.addRange(range);
       } catch (err) {}
 
-      // Visual indicator for active inline DOM editing
       const prevOutline = target.style.outline;
       const prevOutlineOffset = target.style.outlineOffset;
       target.style.outline = '2px dashed #38bdf8';
@@ -202,7 +195,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       target.addEventListener('blur', handleBlur);
     };
 
-    // Global keyboard shortcuts with stepped Escape handling
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (currentInlineEl) {
@@ -236,7 +228,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         return;
       }
 
-      // Ignore modified keys (Cmd, Ctrl, Alt) to prevent blocking browser actions (e.g. Cmd+Shift+R, Cmd+R, Cmd+C, Cmd+V, etc.)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       const activeEl = document.activeElement as HTMLElement | null;
@@ -275,10 +266,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       if (currentInlineEl) {
         currentInlineEl.blur();
       }
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('click', handleClick);
-      document.removeEventListener('dblclick', handleDblClick);
+      document.removeEventListener('mousemove', handleMouseMove, { capture: true });
+      document.removeEventListener('mouseup', handleMouseUp, { capture: true });
+      document.removeEventListener('click', handleClick, { capture: true });
+      document.removeEventListener('dblclick', handleDblClick, { capture: true });
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [shadowRoot]);

@@ -81,7 +81,6 @@ export function mapStyleToTailwind(property: string, value: string): string | un
   const normPx = normalizePixel(val);
 
   switch (prop) {
-    // Spacing - Padding
     case 'padding':
       return SPACING_MAP[normPx] ? `p-${SPACING_MAP[normPx]}` : `p-[${val}]`;
     case 'padding-top':
@@ -93,7 +92,6 @@ export function mapStyleToTailwind(property: string, value: string): string | un
     case 'padding-right':
       return SPACING_MAP[normPx] ? `pr-${SPACING_MAP[normPx]}` : `pr-[${val}]`;
 
-    // Spacing - Margin
     case 'margin':
       return SPACING_MAP[normPx] ? `m-${SPACING_MAP[normPx]}` : `m-[${val}]`;
     case 'margin-top':
@@ -105,7 +103,6 @@ export function mapStyleToTailwind(property: string, value: string): string | un
     case 'margin-right':
       return SPACING_MAP[normPx] ? `mr-${SPACING_MAP[normPx]}` : `mr-[${val}]`;
 
-    // Layout - Gap
     case 'gap':
       return SPACING_MAP[normPx] ? `gap-${SPACING_MAP[normPx]}` : `gap-[${val}]`;
     case 'row-gap':
@@ -113,7 +110,6 @@ export function mapStyleToTailwind(property: string, value: string): string | un
     case 'column-gap':
       return SPACING_MAP[normPx] ? `gap-x-${SPACING_MAP[normPx]}` : `gap-x-[${val}]`;
 
-    // Typography
     case 'font-size':
       return FONT_SIZE_MAP[normPx] || `text-[${val}]`;
     case 'font-weight':
@@ -124,7 +120,6 @@ export function mapStyleToTailwind(property: string, value: string): string | un
       }
       break;
 
-    // Display & Flex
     case 'display':
       if (['flex', 'inline-flex', 'grid', 'inline-grid', 'block', 'inline-block', 'inline', 'hidden', 'none'].includes(val)) {
         return val === 'none' ? 'hidden' : val;
@@ -152,11 +147,9 @@ export function mapStyleToTailwind(property: string, value: string): string | un
       if (val === 'space-evenly') return 'justify-evenly';
       break;
 
-    // Border Radius
     case 'border-radius':
       return RADIUS_MAP[normPx] || `rounded-[${val}]`;
 
-    // Opacity
     case 'opacity': {
       const op = parseFloat(val);
       if (!isNaN(op)) {
