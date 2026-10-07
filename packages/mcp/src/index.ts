@@ -7,5 +7,5 @@ export async function startMcpStdio(rootDir: string = process.cwd()): Promise<vo
   const server = createVisualEditMcpServer(rootDir);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[visual-edit-mcp] Server running via stdio');
+  console.error('[lux-mcp] Server running via stdio');
 }

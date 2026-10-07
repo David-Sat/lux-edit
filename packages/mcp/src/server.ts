@@ -78,7 +78,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
 
   const server = new McpServer({
     name: 'lux-edit',
-    version: '0.7.0',
+    version: '0.10.0',
   });
 
   const resolveEventStore = (workspaceDir?: string) => {
@@ -346,6 +346,94 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       serverUrl: z.string().optional().describe('URL of running lux server'),
     },
     listSessionsHandler
+  );
+
+  // Resolution Tool: Mark a review session implemented or resolved
+  const resolveReviewHandler = async ({
+    sessionId,
+    status = 'implemented',
+    reply,
+    workspaceDir,
+    serverUrl,
+  }: {
+    sessionId?: string;
+    status?: 'implemented' | 'resolved';
+    reply?: string;
+    workspaceDir?: string;
+    serverUrl?: string;
+  }) => {
+    const store = resolveEventStore(workspaceDir);
+    let targetId = sessionId;
+
+    if (!targetId) {
+      const pending = await resolvePendingBatch({ workspaceDir, serverUrl });
+      if (pending) {
+        targetId = pending.id;
+      }
+    }
+
+    if (!targetId) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'No active review session found to resolve. Pass a specific sessionId or start a review session first.',
+          },
+        ],
+      };
+    }
+
+    const updated = store.updateStatus(
+      targetId,
+      status,
+      reply ? { agentId: 'agent', message: reply } : undefined
+    );
+
+    // Notify live running review server if available
+    const targetRootDir = workspaceDir ? path.resolve(workspaceDir.trim()) : resolvedRoot;
+    const meta = readServerMetadata(targetRootDir) || readServerMetadata(resolvedRoot);
+    const targetUrl = serverUrl || meta?.url || DEFAULT_SERVER_URL;
+    try {
+      const url = targetUrl.replace(/\/+$/, '') + `${API_ROUTES.PENDING}?resolve=true`;
+      await fetch(url, { signal: AbortSignal.timeout(600) }).catch(() => {});
+    } catch {}
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: updated
+            ? `✓ Review session "${targetId}" marked as ${status}.${reply ? ` Reply recorded: "${reply}"` : ''}`
+            : `Session "${targetId}" not found on disk, but live review server was notified.`,
+        },
+      ],
+    };
+  };
+
+  server.tool(
+    'lux_resolve_review',
+    'Mark a visual review session as implemented or resolved with optional agent feedback.',
+    {
+      sessionId: z.string().optional().describe('Session ID to resolve. Defaults to the latest active review session if omitted.'),
+      status: z.enum(['implemented', 'resolved']).default('implemented').describe('Status to mark the session with (default: implemented)'),
+      reply: z.string().optional().describe('Optional closing message or summary of applied code changes to record in the session'),
+      workspaceDir: z.string().optional().describe('Absolute path to project workspace directory'),
+      serverUrl: z.string().optional().describe('URL of running lux server'),
+    },
+    resolveReviewHandler
+  );
+
+  server.tool(
+    'lux_mark_resolved',
+    'Alias for lux_resolve_review: Mark a visual review session as implemented or resolved.',
+    {
+      sessionId: z.string().optional().describe('Session ID to resolve. Defaults to the latest active review session if omitted.'),
+      status: z.enum(['implemented', 'resolved']).default('implemented').describe('Status to mark the session with (default: implemented)'),
+      reply: z.string().optional().describe('Optional closing message or summary of applied code changes to record in the session'),
+      workspaceDir: z.string().optional().describe('Absolute path to project workspace directory'),
+      serverUrl: z.string().optional().describe('URL of running lux server'),
+    },
+    resolveReviewHandler
   );
 
   return server;

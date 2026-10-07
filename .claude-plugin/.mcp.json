@@ -1,0 +1,10 @@
+{
+  "lux": {
+    "command": "npx",
+    "args": [
+      "-y",
+      "lux-edit",
+      "mcp"
+    ]
+  }
+}

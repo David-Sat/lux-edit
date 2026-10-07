@@ -366,5 +366,63 @@ describe('MCP Server Tools & Prompts', () => {
 
     fs.rmSync(liveDir, { recursive: true, force: true });
   });
+
+  it('marks a review session resolved with agent reply via lux_resolve_review', async () => {
+    // 1. Resolve mcp_test_batch_1
+    const res = await client.callTool({
+      name: 'lux_resolve_review',
+      arguments: {
+        sessionId: 'mcp_test_batch_1',
+        status: 'implemented',
+        reply: 'Updated Tailwind styles for PricingCard to violet/indigo',
+      },
+    });
+
+    expect(res.content).toBeDefined();
+    const text = (res.content as any)[0].text;
+    expect(text).toContain('marked as implemented');
+    expect(text).toContain('Updated Tailwind styles');
+
+    // 2. Verify status and reply in session
+    const sessionRes = await client.callTool({
+      name: 'lux_get_session',
+      arguments: { sessionId: 'mcp_test_batch_1' },
+    });
+    const sessionText = (sessionRes.content as any)[0].text;
+    expect(sessionText).toContain('"status": "implemented"');
+    expect(sessionText).toContain('Updated Tailwind styles for PricingCard to violet/indigo');
+  });
+
+  it('resolves active review via alias lux_mark_resolved', async () => {
+    // Save another batch
+    eventStore.saveBatch({
+      id: 'mcp_test_batch_alias',
+      timestamp: Date.now(),
+      route: '/home',
+      status: 'submitted',
+      userPrompt: 'Alias resolve test',
+      mutations: [
+        {
+          id: 'mut_alias',
+          type: 'TEXT_EDIT',
+          targetSelector: 'h1',
+          before: 'Old',
+          after: 'New',
+        },
+      ],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_mark_resolved',
+      arguments: {
+        sessionId: 'mcp_test_batch_alias',
+        status: 'resolved',
+      },
+    });
+
+    expect(res.content).toBeDefined();
+    const text = (res.content as any)[0].text;
+    expect(text).toContain('marked as resolved');
+  });
 });
 

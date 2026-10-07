@@ -96,7 +96,7 @@ export class WebSocketHub {
             this.eventStore.saveBatch(msg.payload);
           }
         } catch (err) {
-          console.error('[visual-edit] Failed to handle WS message:', err);
+          console.error('[lux] Failed to handle WS message:', err);
         }
       });
 

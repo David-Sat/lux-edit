@@ -55,7 +55,7 @@ Check whether a review server is already running on port 4320:
      lux <url-or-file> --port 4320
      \`\`\`
   3. Tell the user:
-     "Open \`http://127.0.0.1:4320\` in your browser. Press C to drop comment pins or V to adjust styles. When finished, run \`/lux\` again and I will apply your changes to the code."
+     "Open \`http://127.0.0.1:4320\` in your browser. Press C to drop comment pins, R to record a voice walkthrough, or V to adjust styles. When finished, run \`/lux\` again and I will apply your changes to the code."
 `;
 
 export const SKILL_WEB_CONTENT = `---
@@ -86,6 +86,7 @@ When the user runs \`/lux-web\` or asks to inspect/discuss an external URL:
 4. Tell the user:
    "The lux web review server is running at \`http://127.0.0.1:<port>\` targeting \`<url>\`.
    - Press **C** to drop comment pins on specific elements (headers, cards, buttons) or highlight text to comment on exact passages.
+   - Press **R** to record a voice walkthrough explaining the design or architecture.
    - Press **V** to inspect computed styles, layout rules, and DOM elements.
    - When finished, click **Submit Review** in the bottom drawer, then run \`/lux-web\` (or ask me to review)!"
 
@@ -106,7 +107,23 @@ export const PLUGIN_MANIFEST = {
   $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
   name: 'lux-edit',
   description: 'Live User eXperience overlay for visual UI editing, design token tweaking, and multi-agent feedback',
-  version: '0.6.0',
+  version: '0.10.0',
+  author: {
+    name: 'David Satomi',
+    url: 'https://github.com/David-Sat',
+  },
+  homepage: 'https://github.com/David-Sat/lux-edit',
+  repository: 'https://github.com/David-Sat/lux-edit',
+  license: 'MIT',
+  keywords: [
+    'visual-editing',
+    'mcp',
+    'overlay',
+    'ui-review',
+    'agent-plugin',
+    'tailwind',
+    'design-tokens',
+  ],
 };
 
 export const MCP_CONFIG_CONTENT = {
@@ -613,19 +630,19 @@ export async function runInit(options: InitOptions = {}) {
 
     // 2. Write standard mcp_config.json
     const pluginMcpPath = path.join(cwd, 'mcp_config.json');
-    if (!dryRun) {
-      fs.writeFileSync(pluginMcpPath, JSON.stringify(MCP_CONFIG_CONTENT, null, 2) + '\n');
+    if (mergeMcpConfig(pluginMcpPath, dryRun)) {
+      log(`✓ Configured plugin MCP:  ${pluginMcpPath}`);
     }
-    log(`✓ Created plugin MCP:     ${pluginMcpPath}`);
 
     // 3. Write standard mcp.json and .mcp.json (universal across Cursor, Claude Code, Windsurf, Zed)
     const mcpConfigPath = path.join(cwd, 'mcp.json');
     const dotMcpConfigPath = path.join(cwd, '.mcp.json');
-    if (!dryRun) {
-      fs.writeFileSync(mcpConfigPath, JSON.stringify(MCP_CONFIG_CONTENT, null, 2) + '\n');
-      fs.writeFileSync(dotMcpConfigPath, JSON.stringify(MCP_CONFIG_CONTENT, null, 2) + '\n');
+    if (mergeMcpConfig(mcpConfigPath, dryRun)) {
+      log(`✓ Configured MCP config:  ${mcpConfigPath}`);
     }
-    log(`✓ Created MCP configs:    ${mcpConfigPath} & .mcp.json`);
+    if (mergeMcpConfig(dotMcpConfigPath, dryRun)) {
+      log(`✓ Configured MCP config:  ${dotMcpConfigPath}`);
+    }
 
     // 4. Write standard skills/lux/SKILL.md and skills/lux-web/SKILL.md
     const skillFile = path.join(cwd, 'skills', 'lux', 'SKILL.md');
@@ -662,6 +679,19 @@ export async function runInit(options: InitOptions = {}) {
       const geminiPluginDir = path.join(geminiDir, 'config', 'plugins', 'lux-edit');
       if (writePluginBundle(geminiPluginDir, dryRun)) {
         log(`✓ Synced Antigravity:     ${geminiPluginDir}`);
+      }
+    }
+
+    // 7. Auto-detect and sync .agents/skills if .agents directory exists
+    const agentsDir = path.join(cwd, '.agents');
+    if (fs.existsSync(agentsDir)) {
+      const agentsSkill = path.join(agentsDir, 'skills', 'lux', 'SKILL.md');
+      const agentsWebSkill = path.join(agentsDir, 'skills', 'lux-web', 'SKILL.md');
+      if (writeSkillFile(agentsSkill, dryRun)) {
+        log(`✓ Synced .agents skill:   ${agentsSkill}`);
+      }
+      if (writeSkillFile(agentsWebSkill, dryRun, SKILL_WEB_CONTENT)) {
+        log(`✓ Synced .agents skill:   ${agentsWebSkill}`);
       }
     }
 
@@ -779,8 +809,19 @@ export async function runUninstall(options: UninstallOptions = {}) {
       log(`✓ Removed plugin manifest:    ${pluginManifestPath}`);
     }
     if (fs.existsSync(pluginMcpPath)) {
-      if (!dryRun) fs.rmSync(pluginMcpPath, { force: true });
-      log(`✓ Removed plugin MCP:         ${pluginMcpPath}`);
+      let isOnlyLux = false;
+      try {
+        const parsed = JSON.parse(fs.readFileSync(pluginMcpPath, 'utf-8'));
+        const keys = Object.keys(parsed.mcpServers || {});
+        isOnlyLux = keys.length === 0 || (keys.length === 1 && keys[0] === 'lux');
+      } catch {}
+      if (isOnlyLux) {
+        if (!dryRun) fs.rmSync(pluginMcpPath, { force: true });
+        log(`✓ Removed plugin MCP:         ${pluginMcpPath}`);
+      } else {
+        removeMcpConfig(pluginMcpPath, dryRun);
+        log(`✓ Cleaned plugin MCP:         ${pluginMcpPath}`);
+      }
     }
     if (removeSkillFile(skillFile, dryRun)) {
       log(`✓ Removed workspace skill:    ${skillFile}`);
@@ -790,6 +831,14 @@ export async function runUninstall(options: UninstallOptions = {}) {
     }
     if (removeSkillFile(legacySkillFile, dryRun)) {
       log(`✓ Removed legacy skill:       ${legacySkillFile}`);
+    }
+
+    const agentsDir = path.join(cwd, '.agents');
+    if (fs.existsSync(agentsDir)) {
+      const agentsSkill = path.join(agentsDir, 'skills', 'lux', 'SKILL.md');
+      const agentsWebSkill = path.join(agentsDir, 'skills', 'lux-web', 'SKILL.md');
+      removeSkillFile(agentsSkill, dryRun);
+      removeSkillFile(agentsWebSkill, dryRun);
     }
 
     log('\nWorkspace cleanup complete.\n');
