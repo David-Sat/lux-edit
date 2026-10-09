@@ -30,9 +30,31 @@
     "tsup": "^8.5.1",
     "typescript": "^5.7.3"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "ai-coding-agent",
+    "claude-code",
+    "antigravity",
+    "cursor",
+    "windsurf",
+    "visual-editing",
+    "tailwind",
+    "design-tokens",
+    "ui-review",
+    "developer-tools"
+  ],
+  "author": "David Satomi",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/David-Sat/lux-edit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/David-Sat/lux-edit/issues"
   },
   "homepage": "https://github.com/David-Sat/lux-edit",
   "license": "MIT"
