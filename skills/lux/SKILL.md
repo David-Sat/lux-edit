@@ -12,9 +12,6 @@ lux runs an in-browser visual editing overlay on running web apps, dev servers, 
 
 ## Workflow for `/lux`
 
-> [!TIP]
-> **Trying out Lux?** If the user runs `/lux demo` (or asks for a demo/tutorial), refer to the `/lux-demo` workflow: explain the required rights, launch `lux demo` in the background, and direct the user to `http://127.0.0.1:4320` to test editing, inline text selection, and multi-pins.
-
 When the user runs `/lux`, or asks to review visual edits and comments:
 
 ### 1. Check for pending review

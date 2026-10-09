@@ -17,9 +17,6 @@ lux runs an in-browser visual editing overlay on running web apps, dev servers, 
 
 ## Workflow for \`/lux\`
 
-> [!TIP]
-> **Trying out Lux?** If the user runs \`/lux demo\` (or asks for a demo/tutorial), refer to the \`/lux-demo\` workflow: explain the required rights, launch \`lux demo\` in the background, and direct the user to \`http://127.0.0.1:4320\` to test editing, inline text selection, and multi-pins.
-
 When the user runs \`/lux\`, or asks to review visual edits and comments:
 
 ### 1. Check for pending review
@@ -106,63 +103,6 @@ When the user asks to review, or runs \`/lux-web\`:
 3. Respond in structured markdown referencing each pinned element's selector and text snippet.
 `;
 
-export const SKILL_DEMO_CONTENT = `---
-name: lux-demo
-description: Interactive in-browser walkthrough and playground for Lux. Launches a lightweight local sandbox (./lux-demo/index.html) demonstrating direct visual editing, inline text selection, multi-element pins, and live agent code resolution. Use when the user asks for a demo, walkthrough, tutorial of Lux, or runs /lux-demo or /lux demo.
----
-
-# Lux Interactive Playground & Demo
-
-> [!NOTE]
-> **Zero-Bloat Ephemeral Sandbox:** The demo creates a self-contained \`./lux-demo/index.html\` file in the user's current project and auto-adds \`lux-demo/\` to \`.gitignore\`. It lets users experience the full round-trip: making visual edits in the browser, returning to chat, and watching the AI agent apply those changes to code in real time.
-
-## Workflow for \`/lux-demo\` (or \`/lux demo\`)
-
-When the user asks to try out Lux, requests a demo/tutorial, or runs \`/lux-demo\` / \`/lux demo\`:
-
-### 1. Transparently Explain Required Rights
-
-Before launching, briefly inform the user why permissions are needed:
-- **Terminal Execution:** To launch the local review server in the background (\`lux demo\`).
-- **File Edit Rights:** To modify \`./lux-demo/index.html\` when the user returns and asks you to apply their visual review.
-
-### 2. Launch the Demo Server
-
-Run the demo command in the background:
-\`\`\`bash
-lux demo
-\`\`\`
-*(If \`lux\` is not in PATH, use \`npx lux-edit demo\` or \`node packages/cli/dist/cli.js demo\`)*.
-
-### 3. Give the User the Challenge Briefing
-
-Provide a clean, encouraging response with the review link:
-
-\`\`\`markdown
-✦ **Spot the Difference: Lux Playground is live at http://127.0.0.1:4320**
-
-**The Challenge:**
-The design spec is on the left; the live build on the right has several visual flaws.
-- Use **Edit (\`E\`)** or **Comment (\`C\`)** to tag discrepancies on the live card (typos, badges, broken metric card).
-- Use **Shift + Click** to multi-pin elements across the grid.
-
-When you're finished, return here and run **/lux**. I will read your visual review, fix \`lux-demo/index.html\` to match the spec, and your browser will hot-reload live!
-\`\`\`
-
-### 4. Applying the Demo Review
-
-When the user returns and runs \`/lux\` (or asks you to apply the changes):
-1. Call \`lux_get_pending_review\` with \`workspaceDir: process.cwd()\`.
-2. Inspect the annotations and mutations targeting \`./lux-demo/index.html\`.
-3. Modify \`./lux-demo/index.html\`:
-   - Fix the typo in \`#live-product-title\` (*"Appolo Feild Recurder"* → *"Apollo Field Recorder"*)
-   - Align \`#live-badge\` styling with the target badge \`.pill-clean\`
-   - Reset \`#live-broken-spec\` styling, height, and margins to match standard \`.spec-item\`
-   - Apply any other requested visual tweaks to make the live build match the target spec
-4. Save \`./lux-demo/index.html\`.
-5. The lux file watcher will automatically reload the user's browser, resolve the session to **Implemented**, and complete the interactive loop!
-`;
-
 export const PLUGIN_MANIFEST = {
   $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
   name: 'lux-edit',
@@ -201,7 +141,6 @@ export function writePluginBundle(pluginDir: string, dryRun: boolean = false): b
     if (!dryRun) {
       fs.mkdirSync(path.join(pluginDir, 'skills', 'lux'), { recursive: true });
       fs.mkdirSync(path.join(pluginDir, 'skills', 'lux-web'), { recursive: true });
-      fs.mkdirSync(path.join(pluginDir, 'skills', 'lux-demo'), { recursive: true });
       fs.writeFileSync(
         path.join(pluginDir, 'plugin.json'),
         JSON.stringify(PLUGIN_MANIFEST, null, 2) + '\n'
@@ -217,10 +156,6 @@ export function writePluginBundle(pluginDir: string, dryRun: boolean = false): b
       fs.writeFileSync(
         path.join(pluginDir, 'skills', 'lux-web', 'SKILL.md'),
         SKILL_WEB_CONTENT
-      );
-      fs.writeFileSync(
-        path.join(pluginDir, 'skills', 'lux-demo', 'SKILL.md'),
-        SKILL_DEMO_CONTENT
       );
     }
     return true;
@@ -467,19 +402,11 @@ export function installCustomPath(
     } else {
       const mcpPath = path.join(resolvedPath, 'mcp.json');
       const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
-      const skillWebPath = path.join(resolvedPath, 'skills', 'lux-web', 'SKILL.md');
-      const skillDemoPath = path.join(resolvedPath, 'skills', 'lux-demo', 'SKILL.md');
       if (mergeMcpConfig(mcpPath, dryRun)) {
         log(`✓ Created custom MCP config:  ${mcpPath}`);
       }
       if (writeSkillFile(skillPath, dryRun)) {
         log(`✓ Created custom skill file:  ${skillPath}`);
-      }
-      if (writeSkillFile(skillWebPath, dryRun, SKILL_WEB_CONTENT)) {
-        log(`✓ Created custom skill file:  ${skillWebPath}`);
-      }
-      if (writeSkillFile(skillDemoPath, dryRun, SKILL_DEMO_CONTENT)) {
-        log(`✓ Created custom skill file:  ${skillDemoPath}`);
       }
       return true;
     }
@@ -505,12 +432,8 @@ export function uninstallCustomPath(
     } else {
       const mcpPath = path.join(resolvedPath, 'mcp.json');
       const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
-      const skillWebPath = path.join(resolvedPath, 'skills', 'lux-web', 'SKILL.md');
-      const skillDemoPath = path.join(resolvedPath, 'skills', 'lux-demo', 'SKILL.md');
       removeMcpConfig(mcpPath, dryRun);
       removeSkillFile(skillPath, dryRun);
-      removeSkillFile(skillWebPath, dryRun);
-      removeSkillFile(skillDemoPath, dryRun);
       log(`✓ Cleaned custom directory:     ${resolvedPath}`);
       return true;
     }
@@ -718,10 +641,9 @@ export async function runInit(options: InitOptions = {}) {
       log(`✓ Configured MCP config:  ${dotMcpConfigPath}`);
     }
 
-    // 4. Write standard skills/lux/SKILL.md, skills/lux-web/SKILL.md, and skills/lux-demo/SKILL.md
+    // 4. Write standard skills/lux/SKILL.md and skills/lux-web/SKILL.md
     const skillFile = path.join(cwd, 'skills', 'lux', 'SKILL.md');
     const skillWebFile = path.join(cwd, 'skills', 'lux-web', 'SKILL.md');
-    const skillDemoFile = path.join(cwd, 'skills', 'lux-demo', 'SKILL.md');
     if (!dryRun) {
       const legacySkillDir = path.join(cwd, 'skills', 'lux-review');
       if (fs.existsSync(legacySkillDir)) {
@@ -734,24 +656,17 @@ export async function runInit(options: InitOptions = {}) {
     if (writeSkillFile(skillWebFile, dryRun, SKILL_WEB_CONTENT)) {
       log(`✓ Created agent skill:    ${skillWebFile}`);
     }
-    if (writeSkillFile(skillDemoFile, dryRun, SKILL_DEMO_CONTENT)) {
-      log(`✓ Created agent skill:    ${skillDemoFile}`);
-    }
 
     // 5. Auto-detect and sync Claude Code ~/.claude/skills
     const claudeDir = path.join(home, '.claude');
     if (fs.existsSync(claudeDir)) {
       const claudeSkill = path.join(claudeDir, 'skills', 'lux', 'SKILL.md');
       const claudeWebSkill = path.join(claudeDir, 'skills', 'lux-web', 'SKILL.md');
-      const claudeDemoSkill = path.join(claudeDir, 'skills', 'lux-demo', 'SKILL.md');
       if (writeSkillFile(claudeSkill, dryRun)) {
         log(`✓ Synced Claude Code:     ${claudeSkill}`);
       }
       if (writeSkillFile(claudeWebSkill, dryRun, SKILL_WEB_CONTENT)) {
         log(`✓ Synced Claude Code:     ${claudeWebSkill}`);
-      }
-      if (writeSkillFile(claudeDemoSkill, dryRun, SKILL_DEMO_CONTENT)) {
-        log(`✓ Synced Claude Code:     ${claudeDemoSkill}`);
       }
     }
 
@@ -878,7 +793,6 @@ export async function runUninstall(options: UninstallOptions = {}) {
     const pluginMcpPath = path.join(cwd, 'mcp_config.json');
     const skillFile = path.join(cwd, 'skills', 'lux', 'SKILL.md');
     const skillWebFile = path.join(cwd, 'skills', 'lux-web', 'SKILL.md');
-    const skillDemoFile = path.join(cwd, 'skills', 'lux-demo', 'SKILL.md');
     const legacySkillFile = path.join(cwd, 'skills', 'lux-review', 'SKILL.md');
 
     if (removeMcpConfig(mcpConfigPath, dryRun)) {
@@ -911,9 +825,6 @@ export async function runUninstall(options: UninstallOptions = {}) {
     }
     if (removeSkillFile(skillWebFile, dryRun)) {
       log(`✓ Removed workspace skill:    ${skillWebFile}`);
-    }
-    if (removeSkillFile(skillDemoFile, dryRun)) {
-      log(`✓ Removed workspace skill:    ${skillDemoFile}`);
     }
     if (removeSkillFile(legacySkillFile, dryRun)) {
       log(`✓ Removed legacy skill:       ${legacySkillFile}`);
