@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.10.0...lux-edit-v0.11.0) (2026-10-07)
+
+
+### Features
+
+* **cli,skills:** add interactive demo playground and lux-demo skill ([#37](https://github.com/David-Sat/lux-edit/issues/37)) ([842b5a5](https://github.com/David-Sat/lux-edit/commit/842b5a54cd8e767eaa484d64ebfd69552157f967))
+* **mcp:** align with agent plugin standards, add review resolution tools, and harden safety ([#44](https://github.com/David-Sat/lux-edit/issues/44)) ([0d89c1a](https://github.com/David-Sat/lux-edit/commit/0d89c1a9a32cf0a80c92d59e20712e12f9ac4cb8))
+
 ## [0.10.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.9.0...lux-edit-v0.10.0) (2026-10-06)
 
 
