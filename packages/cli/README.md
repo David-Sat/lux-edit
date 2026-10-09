@@ -2,17 +2,25 @@
 
 In-browser visual editing, annotation, and review overlay for AI coding agents.
 
+[![npm version](https://img.shields.io/npm/v/lux-edit.svg)](https://www.npmjs.com/package/lux-edit)
+[![npm provenance](https://img.shields.io/badge/npm-provenance_verified-2ea44f.svg)](https://www.npmjs.com/package/lux-edit)
+[![CI](https://github.com/David-Sat/lux-edit/actions/workflows/ci.yml/badge.svg)](https://github.com/David-Sat/lux-edit/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/David-Sat/lux-edit/badge)](https://securityscorecards.dev/viewer/?repo=github.com/David-Sat/lux-edit)
+[![Socket.dev](https://socket.dev/api/badge/npm/package/lux-edit)](https://socket.dev/npm/package/lux-edit)
+[![Node.js](https://img.shields.io/node/v/lux-edit.svg)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-38bdf8.svg)](https://modelcontextprotocol.io)
 [![Agent Plugins](https://img.shields.io/badge/Agent%20Plugin-Standard-6366f1.svg)](https://agent-plugins.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](./LICENSE)
-[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local-purple.svg)](./PRIVACY.md)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local%20%7C%20Zero%20Telemetry-purple.svg)](./PRIVACY.md)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/workflow-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./docs/workflow-light.svg">
   <img alt="lux-edit Workflow" src="./docs/workflow-light.svg" width="100%">
 </picture>
+
+> [!NOTE]
+> **Security & Privacy Guarantee**: `lux-edit` runs **100% locally** on `127.0.0.1` and communicates with coding agents via standard `stdio` (MCP). There is **zero telemetry**, no remote analytics, and no external network calls. All diffs, annotations, and sessions are stored strictly on your local disk in `.visual-edit/`. Audited in [PRIVACY.md](./PRIVACY.md) and [SECURITY.md](./SECURITY.md).
 
 lux-edit injects a live visual editing layer into your web app or static HTML. Adjust styling, edit text directly in the DOM, and highlight words or drop comment pins. Everything syncs in real time as structured diffs to your AI coding agent via MCP.
 
@@ -28,6 +36,7 @@ Pick the method that best fits your workflow:
 | --- | --- | --- |
 | **Claude Code Plugin** | `claude plugin add https://github.com/David-Sat/lux-edit` | Claude Code CLI users |
 | **Current Project** | `npx lux-edit init` | Zero global pollution (`.mcp.json` + skills) |
+| **Smithery (MCP)** | `npx -y @smithery/cli install lux-edit` | 1-click install for Claude Desktop / Cursor |
 | **Global Machine** | `npm i -g lux-edit && lux init -g` | Interactive setup for Cursor, Antigravity, Claude, Windsurf |
 
 <details>
