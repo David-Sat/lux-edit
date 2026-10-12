@@ -8,6 +8,12 @@
       "extra-files": [
         "plugin.json",
         ".claude-plugin/plugin.json",
+        "server.json",
+        {
+          "type": "json",
+          "path": "server.json",
+          "jsonpath": "$.packages[0].version"
+        },
         "packages/cli/package.json",
         "packages/core/package.json",
         "packages/server/package.json",

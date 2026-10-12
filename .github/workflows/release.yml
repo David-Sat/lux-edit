@@ -61,3 +61,15 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
         working-directory: packages/cli
         run: npm publish --provenance --access public
+
+      - name: Publish to Official MCP Registry
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' || steps.release.outputs.release_created }}
+        continue-on-error: true
+        run: |
+          sleep 10
+          VERSION=$(jq -r '.version' packages/cli/package.json)
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > server.tmp && mv server.tmp server.json
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
