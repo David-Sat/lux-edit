@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.11.0...lux-edit-v0.12.0) (2026-10-12)
+
+
+### Features
+
+* **security:** add CodeQL, OpenSSF Scorecard, audit checks, Smithery manifest, and trust badges ([#48](https://github.com/David-Sat/lux-edit/issues/48)) ([3744435](https://github.com/David-Sat/lux-edit/commit/374443539be24e7a19c46b71a41e1264b19078fc))
+
 ## [0.11.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.10.0...lux-edit-v0.11.0) (2026-10-07)
 
 
