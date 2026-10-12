@@ -3,15 +3,9 @@
 In-browser visual editing, annotation, and review overlay for AI coding agents.
 
 [![npm version](https://img.shields.io/npm/v/lux-edit.svg)](https://www.npmjs.com/package/lux-edit)
-[![npm provenance](https://img.shields.io/badge/npm-provenance_verified-2ea44f.svg)](https://www.npmjs.com/package/lux-edit)
 [![CI](https://github.com/David-Sat/lux-edit/actions/workflows/ci.yml/badge.svg)](https://github.com/David-Sat/lux-edit/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/David-Sat/lux-edit/badge)](https://securityscorecards.dev/viewer/?repo=github.com/David-Sat/lux-edit)
-[![Socket.dev](https://socket.dev/api/badge/npm/package/lux-edit)](https://socket.dev/npm/package/lux-edit)
-[![Node.js](https://img.shields.io/node/v/lux-edit.svg)](https://nodejs.org)
-[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-38bdf8.svg)](https://modelcontextprotocol.io)
-[![Agent Plugins](https://img.shields.io/badge/Agent%20Plugin-Standard-6366f1.svg)](https://agent-plugins.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](./LICENSE)
-[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local%20%7C%20Zero%20Telemetry-purple.svg)](./PRIVACY.md)
+[![CodeQL](https://github.com/David-Sat/lux-edit/actions/workflows/codeql.yml/badge.svg)](https://github.com/David-Sat/lux-edit/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/npm/l/lux-edit.svg)](./LICENSE)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/workflow-dark.svg">
@@ -80,6 +74,10 @@ Enter numbers (e.g. 1,2), "a" for all, or press ENTER for detected defaults.
 ---
 
 ## Architecture
+
+[![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-38bdf8.svg)](https://modelcontextprotocol.io)
+[![Agent Plugins](https://img.shields.io/badge/Agent%20Plugin-Standard-6366f1.svg)](https://agent-plugins.org/)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local%20%7C%20Zero%20Telemetry-purple.svg)](./PRIVACY.md)
 
 lux-edit bridges the gap between browser inspection and your coding agent's local filesystem context:
 
