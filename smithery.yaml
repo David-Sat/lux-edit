@@ -1,0 +1,14 @@
+# Smithery configuration for Model Context Protocol (MCP) server
+# Docs: https://smithery.ai/docs/config
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      rootDir:
+        type: string
+        description: "Project root directory containing .visual-edit data (defaults to current working directory)"
+  commandFunction:
+    name: "lux-edit"
+    args: ["mcp"]

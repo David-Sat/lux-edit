@@ -38,14 +38,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=high
+
       - name: Build all packages
         run: pnpm build
 
       - name: Type check (TypeScript)
         run: pnpm lint
 
-      - name: Run test suite
-        run: pnpm test
+      - name: Run test suite with coverage
+        run: pnpm test:coverage
 
       - name: Verify clean working directory
         run: git diff --exit-code
