@@ -1,5 +1,6 @@
 {
   "name": "lux-edit",
+  "mcpName": "io.github.David-Sat/lux-edit",
   "version": "0.12.0",
   "description": "Live User eXperience overlay for visual UI editing, design tokens, and AI coding agents",
   "type": "module",

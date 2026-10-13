@@ -30,7 +30,6 @@ Pick the method that best fits your workflow:
 | --- | --- | --- |
 | **Claude Code Plugin** | `claude plugin add https://github.com/David-Sat/lux-edit` | Claude Code CLI users |
 | **Current Project** | `npx lux-edit init` | Zero global pollution (`.mcp.json` + skills) |
-| **Smithery (MCP)** | `npx -y @smithery/cli install lux-edit` | 1-click install for Claude Desktop / Cursor |
 | **Global Machine** | `npm i -g lux-edit && lux init -g` | Interactive setup for Cursor, Antigravity, Claude, Windsurf |
 
 <details>

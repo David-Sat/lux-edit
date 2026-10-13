@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.David-Sat/lux-edit",
+  "title": "Lux Edit",
+  "description": "In-browser visual editing, annotation, and DOM review overlay for AI coding agents.",
+  "repository": {
+    "url": "https://github.com/David-Sat/lux-edit",
+    "source": "github"
+  },
+  "version": "0.12.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "lux-edit",
+      "version": "0.12.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}
