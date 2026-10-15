@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.13.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.12.0...lux-edit-v0.13.0) (2026-10-15)
+
+
+### Features
+
+* **cli:** support official Anthropic Claude Code plugin spec and marketplace ([#53](https://github.com/David-Sat/lux-edit/issues/53)) ([e8a62d6](https://github.com/David-Sat/lux-edit/commit/e8a62d63e29ca7dfdb0d44844d3ff40f8824f90c))
+* **mcp:** remove smithery.yaml & configure Official MCP Registry local stdio publishing ([#51](https://github.com/David-Sat/lux-edit/issues/51)) ([ced5270](https://github.com/David-Sat/lux-edit/commit/ced5270f6ba077575161c45714898cff27d3ed6c))
+
 ## [0.12.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.11.0...lux-edit-v0.12.0) (2026-10-12)
 
 
