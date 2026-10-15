@@ -1,0 +1,15 @@
+{
+  "name": "lux-edit",
+  "metadata": {
+    "description": "Live in-browser visual editing, design token tweaking, and multi-agent review overlay for web apps."
+  },
+  "owner": {
+    "name": "David Satomi"
+  },
+  "plugins": [
+    {
+      "name": "lux-edit",
+      "source": "./"
+    }
+  ]
+}
