@@ -28,7 +28,7 @@ Pick the method that best fits your workflow:
 
 | Method | Command | Best For |
 | --- | --- | --- |
-| **Claude Code Plugin** | `claude plugin add https://github.com/David-Sat/lux-edit` | Claude Code CLI users |
+| **Claude Code Plugin** | `claude plugin marketplace add David-Sat/lux-edit`<br>`claude plugin install lux-edit` | Claude Code CLI users |
 | **Current Project** | `npx lux-edit init` | Zero global pollution (`.mcp.json` + skills) |
 | **Global Machine** | `npm i -g lux-edit && lux init -g` | Interactive setup for Cursor, Antigravity, Claude, Windsurf |
 

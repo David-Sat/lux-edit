@@ -37,7 +37,7 @@ describe('lux init and multi-agent configuration', () => {
       expect(paths.antigravityPlugin).toBe('/Users/testuser/.gemini/config/plugins/lux-edit');
       expect(paths.antigravityMcp).toBe('/Users/testuser/.gemini/config/mcp_config.json');
       expect(paths.antigravitySkill).toBe('/Users/testuser/.gemini/config/skills/lux/SKILL.md');
-      expect(paths.claudePlugin).toBe('/Users/testuser/.claude/plugins/lux-edit');
+      expect(paths.claudePlugin).toBe('/Users/testuser/.claude/skills/lux-edit');
       expect(paths.claudeCodeMcp).toBe('/Users/testuser/.claude/mcp.json');
       expect(paths.claudeCodeSkill).toBe('/Users/testuser/.claude/skills/lux/SKILL.md');
       expect(paths.claudeDesktopMcp).toBe('/Users/testuser/Library/Application Support/Claude/claude_desktop_config.json');
@@ -51,6 +51,7 @@ describe('lux init and multi-agent configuration', () => {
       const paths = getAgentConfigPaths('/home/testuser', 'linux');
       expect(paths.antigravityPlugin).toBe('/home/testuser/.gemini/config/plugins/lux-edit');
       expect(paths.antigravityMcp).toBe('/home/testuser/.gemini/config/mcp_config.json');
+      expect(paths.claudePlugin).toBe('/home/testuser/.claude/skills/lux-edit');
       expect(paths.claudeDesktopMcp).toBe('/home/testuser/.config/Claude/claude_desktop_config.json');
       expect(paths.clineMcp).toBe('/home/testuser/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json');
       expect(paths.rooCodeMcp).toBe('/home/testuser/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json');
@@ -58,11 +59,24 @@ describe('lux init and multi-agent configuration', () => {
   });
 
   describe('writePluginBundle and removePluginBundle', () => {
-    it('writes a complete Agent Plugin bundle (plugin.json, mcp_config.json, skills/lux/SKILL.md)', () => {
+    it('writes a complete Agent Plugin bundle (Claude .claude-plugin + Antigravity plugin.json + skills/lux)', () => {
       const pluginDir = path.join(fakeHome, 'plugins', 'lux-edit');
       const ok = writePluginBundle(pluginDir);
       expect(ok).toBe(true);
 
+      // Claude Code official plugin layout
+      expect(fs.existsSync(path.join(pluginDir, '.claude-plugin', 'plugin.json'))).toBe(true);
+      expect(fs.existsSync(path.join(pluginDir, '.claude-plugin', '.mcp.json'))).toBe(true);
+      expect(fs.existsSync(path.join(pluginDir, '.mcp.json'))).toBe(true);
+
+      const claudeManifest = JSON.parse(fs.readFileSync(path.join(pluginDir, '.claude-plugin', 'plugin.json'), 'utf-8'));
+      expect(claudeManifest.name).toBe('lux-edit');
+      expect(claudeManifest.version).toBe('0.12.0');
+
+      const claudeMcp = JSON.parse(fs.readFileSync(path.join(pluginDir, '.claude-plugin', '.mcp.json'), 'utf-8'));
+      expect(claudeMcp.lux).toBeDefined();
+
+      // Antigravity & universal Agent Plugin specification
       expect(fs.existsSync(path.join(pluginDir, 'plugin.json'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'mcp_config.json'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'skills', 'lux', 'SKILL.md'))).toBe(true);
@@ -79,6 +93,23 @@ describe('lux init and multi-agent configuration', () => {
 
       const skillWeb = fs.readFileSync(path.join(pluginDir, 'skills', 'lux-web', 'SKILL.md'), 'utf-8');
       expect(skillWeb).toContain('name: lux-web');
+    });
+
+    it('generates a bundle that passes official claude plugin validate if cli is present', () => {
+      const pluginDir = path.join(fakeHome, 'plugins', 'lux-edit-validate');
+      writePluginBundle(pluginDir);
+
+      try {
+        const { execSync } = require('node:child_process');
+        const res = execSync(`claude plugin validate "${pluginDir}"`, { encoding: 'utf-8' });
+        expect(res).toContain('Validation passed');
+      } catch (err: any) {
+        if (err.message?.includes('not found') || err.message?.includes('ENOENT') || err.status === 127) {
+          // Gracefully skip when running in environments without Claude CLI
+          return;
+        }
+        throw err;
+      }
     });
 
     it('removes an Agent Plugin bundle directory', () => {
@@ -246,6 +277,8 @@ describe('lux init and multi-agent configuration', () => {
       expect(fs.existsSync(path.join(paths.antigravityPlugin, 'mcp_config.json'))).toBe(true);
       expect(fs.existsSync(path.join(paths.antigravityPlugin, 'skills', 'lux', 'SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(paths.claudePlugin, 'plugin.json'))).toBe(true);
+      expect(fs.existsSync(path.join(paths.claudePlugin, '.claude-plugin', 'plugin.json'))).toBe(true);
+      expect(fs.existsSync(path.join(paths.claudePlugin, '.mcp.json'))).toBe(true);
 
       // Undetected legacy agents should be skipped (no ghost files)
       expect(fs.existsSync(paths.cursorMcp)).toBe(false);
@@ -322,6 +355,8 @@ describe('lux init and multi-agent configuration', () => {
         logger: () => {},
       });
 
+      expect(fs.existsSync(path.join(fakeWorkspace, '.claude-plugin', 'plugin.json'))).toBe(true);
+      expect(fs.existsSync(path.join(fakeWorkspace, '.claude-plugin', '.mcp.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'plugin.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'mcp_config.json'))).toBe(true);
       expect(fs.existsSync(path.join(fakeWorkspace, 'mcp.json'))).toBe(true);
@@ -336,6 +371,7 @@ describe('lux init and multi-agent configuration', () => {
         logger: () => {},
       });
 
+      expect(fs.existsSync(path.join(fakeWorkspace, '.claude-plugin'))).toBe(false);
       expect(fs.existsSync(path.join(fakeWorkspace, 'plugin.json'))).toBe(false);
       expect(fs.existsSync(path.join(fakeWorkspace, 'mcp_config.json'))).toBe(false);
       expect(fs.existsSync(path.join(fakeWorkspace, 'skills', 'lux', 'SKILL.md'))).toBe(false);
