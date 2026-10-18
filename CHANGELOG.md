@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.13.0...lux-edit-v0.14.0) (2026-10-18)
+
+
+### Features
+
+* **cli:** add transparent update notifications, overlay pill, lux update, and opt-in auto-update ([#54](https://github.com/David-Sat/lux-edit/issues/54)) ([300faf3](https://github.com/David-Sat/lux-edit/commit/300faf3dedf3f6094c23a2046eabed1962809d54))
+* **demo:** add Remotion product demo video source and README video layout ([#56](https://github.com/David-Sat/lux-edit/issues/56)) ([6a7a58f](https://github.com/David-Sat/lux-edit/commit/6a7a58f0a315071b76059c28d880925252b742a9))
+
 ## [0.13.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.12.0...lux-edit-v0.13.0) (2026-10-15)
 
 
