@@ -423,6 +423,32 @@ describe('lux init and multi-agent configuration', () => {
       expect(parsedAfter.mcpServers.lux).toBeUndefined();
       expect(fs.existsSync(path.join(agentsDir, 'skills', 'lux', 'SKILL.md'))).toBe(false);
     });
+
+    it('configures lux-edit@latest when autoUpdate is true', async () => {
+      const mcpPath = path.join(fakeWorkspace, 'auto-mcp.json');
+      mergeMcpConfig(mcpPath, false, true);
+
+      const parsed = JSON.parse(fs.readFileSync(mcpPath, 'utf-8'));
+      expect(parsed.mcpServers.lux.args).toEqual(['-y', 'lux-edit@latest', 'mcp']);
+
+      // Default should remain pinned without @latest
+      const defaultMcpPath = path.join(fakeWorkspace, 'default-mcp.json');
+      mergeMcpConfig(defaultMcpPath, false, false);
+      const defaultParsed = JSON.parse(fs.readFileSync(defaultMcpPath, 'utf-8'));
+      expect(defaultParsed.mcpServers.lux.args).toEqual(['-y', 'lux-edit', 'mcp']);
+
+      // Workspace runInit with autoUpdate
+      await runInit({
+        global: false,
+        home: fakeHome,
+        cwd: fakeWorkspace,
+        autoUpdate: true,
+        logger: () => {},
+      });
+
+      const wsMcp = JSON.parse(fs.readFileSync(path.join(fakeWorkspace, 'mcp.json'), 'utf-8'));
+      expect(wsMcp.mcpServers.lux.args).toEqual(['-y', 'lux-edit@latest', 'mcp']);
+    });
   });
 });
 

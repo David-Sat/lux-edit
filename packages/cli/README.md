@@ -151,27 +151,41 @@ claude mcp add lux -- lux mcp
 
 ---
 
-## Update & Uninstall
+## Updating & Auto-Updates
 
-### Updating
+### Single-Command Upgrade: `lux update`
 
-**From npm:**
+To upgrade `lux-edit` and re-sync all agent skills (`~/.claude/skills/lux/SKILL.md`, Antigravity plugins, MCP configs):
+
 ```bash
-# Update CLI to latest published release
-npm install -g lux-edit@latest
-
-# Refresh agent skills & MCP configs
-lux init -g
+lux update
+# or without global install:
+npx lux-edit update
 ```
 
-**From local repository (monorepo / local development):**
-```bash
-# Rebuild the monorepo packages
-pnpm build
+Options:
+- `lux update --check`: Check for available updates without making changes.
+- `lux update --force`: Re-sync agent skills and templates even if already on the latest version.
 
-# Refresh agent skills & MCP configs from the current local build
-lux init -g
+---
+
+### In-Browser Update Reminder
+When reviewing in your browser, a subtle status pill appears in the drawer footer whenever a new version is published. Clicking it copies `lux update` to your clipboard with a link to the release changelog.
+
+---
+
+### Auto-Updates & Security Transparency
+
+By default, `lux init` uses pinned package execution (`npx -y lux-edit mcp`) to **guarantee stability, transparency, and prevent silent code execution** on your machine.
+
+If you prefer completely hands-off updates across all your secondary devices and laptops so your coding agents always launch the latest tools without manual commands:
+
+```bash
+# Opt-in to automatic @latest MCP execution
+npx lux-edit init --auto-update
 ```
+
+When enabled, MCP client configurations are set to `npx -y lux-edit@latest mcp`, pulling new releases as soon as they are published. You can revert back to pinned at any time with `npx lux-edit init`.
 
 ### Uninstalling & Cleanup
 

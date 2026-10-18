@@ -7,6 +7,7 @@ export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [updateCopiedToast, setUpdateCopiedToast] = useState(false);
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
   const [editingAnnotationText, setEditingAnnotationText] = useState<string>('');
 
@@ -397,43 +398,97 @@ export function EditReviewDrawer() {
       </div>
 
       <div
+        class="ve-drawer-autosave-bar"
         style={{
           padding: '8px 16px',
-          background: 'rgba(0, 0, 0, 0.2)',
+          background: 'rgba(0, 0, 0, 0.25)',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: '7px',
+          justifyContent: 'space-between',
           fontSize: '11px',
           color: 'var(--ve-text-muted, #94a3b8)',
           fontWeight: 500,
           userSelect: 'none',
         }}
       >
-        <span
-          style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            backgroundColor: '#22c55e',
-            boxShadow: '0 0 6px rgba(34, 197, 94, 0.6)',
-            flexShrink: 0,
-          }}
-        />
-        <span>
-          Changes auto-saved &bull; Run{' '}
-          <strong
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+          <span
             style={{
-              color: 'var(--ve-accent-text, #0284c7)',
-              fontWeight: 700,
-              fontFamily: 'monospace',
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: '#22c55e',
+              boxShadow: '0 0 6px rgba(34, 197, 94, 0.6)',
+              flexShrink: 0,
             }}
+          />
+          <span>
+            Changes auto-saved &bull; Run{' '}
+            <strong
+              style={{
+                color: 'var(--ve-accent-text, #0284c7)',
+                fontWeight: 700,
+                fontFamily: 'monospace',
+              }}
+            >
+              /lux
+            </strong>{' '}
+            in chat
+          </span>
+        </div>
+
+        {state.updateInfo?.updateAvailable ? (
+          <button
+            class="ve-update-pill"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '2px 8px',
+              borderRadius: '12px',
+              background: 'rgba(14, 165, 233, 0.15)',
+              border: '1px solid rgba(14, 165, 233, 0.4)',
+              color: '#38bdf8',
+              fontSize: '10px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText('lux update');
+                setUpdateCopiedToast(true);
+                setTimeout(() => setUpdateCopiedToast(false), 2500);
+              } catch {}
+            }}
+            title={`v${state.updateInfo.latestVersion} available! Click to copy "lux update"`}
           >
-            /lux
-          </strong>{' '}
-          in chat
-        </span>
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: '#38bdf8',
+                boxShadow: '0 0 6px #38bdf8',
+              }}
+            />
+            <span>
+              {updateCopiedToast ? 'Copied "lux update"!' : `Update v${state.updateInfo.latestVersion}`}
+            </span>
+          </button>
+        ) : (
+          <span
+            style={{
+              fontSize: '10px',
+              color: 'var(--ve-text-muted, #64748b)',
+              fontWeight: 500,
+            }}
+            title="lux is up to date"
+          >
+            v{state.version}
+          </span>
+        )}
       </div>
 
       <div class="ve-drawer-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px' }}>

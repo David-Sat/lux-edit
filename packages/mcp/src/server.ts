@@ -9,9 +9,16 @@ import {
   SERVER_METADATA_FILE,
   DEFAULT_SERVER_URL,
   API_ROUTES,
+  checkForUpdates,
+  stripTrailingSlashes,
 } from '@visual-edit/core';
 import path from 'node:path';
 import fs from 'node:fs';
+
+let mcpPkgVersion = '0.13.0';
+try {
+  mcpPkgVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+} catch {}
 
 function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBatch {
   if (!batch) return false;
@@ -46,7 +53,7 @@ function readServerMetadata(rootDir: string): LuxServerMetadata | null {
 
 async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Promise<VisualEditBatch | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + `${API_ROUTES.PENDING}${autoResolve ? '?resolve=true' : ''}`;
+    const url = stripTrailingSlashes(serverUrl) + `${API_ROUTES.PENDING}${autoResolve ? '?resolve=true' : ''}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       const data = (await res.json()) as VisualEditBatch | null;
@@ -60,7 +67,7 @@ async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Pr
 
 async function fetchSessionsFromRunningServer(serverUrl: string): Promise<VisualEditBatch[] | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + API_ROUTES.SESSIONS;
+    const url = stripTrailingSlashes(serverUrl) + API_ROUTES.SESSIONS;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       return (await res.json()) as VisualEditBatch[];
@@ -197,13 +204,21 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   };
 
   const getPendingReviewHandler = async (args?: { workspaceDir?: string; serverUrl?: string }) => {
+    let updateNotice = '';
+    try {
+      const update = await checkForUpdates(mcpPkgVersion);
+      if (update.updateAvailable) {
+        updateNotice = `\n\n*(Note: A newer version of lux-edit (v${update.latestVersion}) is available. Run \`lux update\` to upgrade.)*`;
+      }
+    } catch {}
+
     const batch = await resolvePendingBatch(args);
     if (!hasPendingContent(batch)) {
       return {
         content: [
           {
             type: 'text' as const,
-            text: 'No pending visual edits or comments found. Make sure lux is running in the right workspace directory or pass workspaceDir.',
+            text: `No pending visual edits or comments found. Make sure lux is running in the right workspace directory or pass workspaceDir.${updateNotice}`,
           },
         ],
       };
@@ -214,7 +229,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       content: [
         {
           type: 'text' as const,
-          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
+          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\`${updateNotice}`,
         },
       ],
     };
@@ -382,7 +397,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     const meta = readServerMetadata(targetRootDir) || readServerMetadata(resolvedRoot);
     const targetUrl = serverUrl || meta?.url || DEFAULT_SERVER_URL;
     try {
-      const url = targetUrl.replace(/\/+$/, '') + `${API_ROUTES.PENDING}?resolve=true`;
+      const url = stripTrailingSlashes(targetUrl) + `${API_ROUTES.PENDING}?resolve=true`;
       await fetch(url, { signal: AbortSignal.timeout(600) }).catch(() => {});
     } catch {}
 

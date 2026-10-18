@@ -38,7 +38,17 @@ describe('Server & EventStore Integration', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+    expect(html).toContain('window.__LUX_VERSION__');
     expect(html).toContain('Build Web Interfaces Visually with AI');
+  });
+
+  it('serves version and update status at /__visual_edit__/api/version', async () => {
+    const res = await fetch(`${reviewUrl}/__visual_edit__/api/version`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.currentVersion).toBeDefined();
+    expect(data.latestVersion).toBeDefined();
+    expect(typeof data.updateAvailable).toBe('boolean');
   });
 
   it('serves the overlay JS bundle at /__visual_edit__/overlay.js', async () => {
@@ -431,6 +441,32 @@ describe('Static Directory Target Mode', () => {
     const css = await res.text();
     expect(css).toContain('background: #fafafa;');
     expect(css).not.toContain('overlay.js');
+  });
+
+  it('blocks path traversal attempts with 403 Forbidden', async () => {
+    // Attempt percent-encoded path traversals that bypass simple string checks
+    const res1 = await fetch(`${reviewUrl}/..%2f..%2fpackage.json`);
+    expect(res1.status).toBe(403);
+    const body1 = await res1.text();
+    expect(body1).toContain('Forbidden: Path Traversal Denied');
+
+    const res2 = await fetch(`${reviewUrl}/%2e%2e%2f%2e%2e%2fpackage.json`);
+    expect(res2.status).toBe(403);
+    const body2 = await res2.text();
+    expect(body2).toContain('Forbidden: Path Traversal Denied');
+
+    const res3 = await fetch(`${reviewUrl}/%2e%2e%5c%2e%2e%5cpackage.json`);
+    expect(res3.status).toBe(403);
+    const body3 = await res3.text();
+    expect(body3).toContain('Forbidden: Path Traversal Denied');
+  });
+
+  it('rejects invalid URL encodings and null bytes with 400 Bad Request', async () => {
+    const resMalformed = await fetch(`${reviewUrl}/%FF`);
+    expect(resMalformed.status).toBe(400);
+
+    const resNull = await fetch(`${reviewUrl}/index.html%00.jpg`);
+    expect(resNull.status).toBe(400);
   });
 });
 

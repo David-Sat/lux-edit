@@ -32,6 +32,13 @@ describe('OverlayStateManager', () => {
       public onclose = null;
     };
 
+    // Mock fetch to prevent pending unhandled HTTP requests in happy-dom
+    const origFetch = globalThis.fetch;
+    (globalThis as any).fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as any);
+
     // Reset singleton instance
     (OverlayStateManager as any).instance = undefined;
     state = OverlayStateManager.getInstance();
@@ -40,6 +47,7 @@ describe('OverlayStateManager', () => {
   afterEach(() => {
     storageMap.clear();
     delete (globalThis as any).WebSocket;
+    vi.restoreAllMocks();
   });
 
   describe('singleton & initial state', () => {
