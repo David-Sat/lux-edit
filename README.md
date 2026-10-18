@@ -7,6 +7,12 @@ In-browser visual editing, annotation, and review overlay for AI coding agents.
 [![CodeQL](https://github.com/David-Sat/lux-edit/actions/workflows/codeql.yml/badge.svg)](https://github.com/David-Sat/lux-edit/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/npm/l/lux-edit.svg)](./LICENSE)
 
+<!-- Lux In-Browser Demo Video -->
+<!-- Tip: Drag & drop out/lux-demo.mp4 into the GitHub PR or Web Editor to generate the user-attachments CDN URL, then paste it into the src below -->
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/PASTE_UPLOADED_VIDEO_URL_HERE" title="Lux Product Demo" autoplay loop muted playsinline width="100%"></video>
+</div>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./docs/workflow-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./docs/workflow-light.svg">
