@@ -18,7 +18,11 @@ import { VoiceRecorder } from './voice-recorder.js';
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
   try {
-    return new URL(import.meta.url).pathname.replace(new RegExp(`${API_ROUTES.OVERLAY_JS.replace(/\./g, '\\.')}$`), '');
+    const pathname = new URL(import.meta.url).pathname;
+    if (pathname.endsWith(API_ROUTES.OVERLAY_JS)) {
+      return pathname.slice(0, -API_ROUTES.OVERLAY_JS.length);
+    }
+    return '';
   } catch {
     return '';
   }

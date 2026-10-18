@@ -442,6 +442,32 @@ describe('Static Directory Target Mode', () => {
     expect(css).toContain('background: #fafafa;');
     expect(css).not.toContain('overlay.js');
   });
+
+  it('blocks path traversal attempts with 403 Forbidden', async () => {
+    // Attempt percent-encoded path traversals that bypass simple string checks
+    const res1 = await fetch(`${reviewUrl}/..%2f..%2fpackage.json`);
+    expect(res1.status).toBe(403);
+    const body1 = await res1.text();
+    expect(body1).toContain('Forbidden: Path Traversal Denied');
+
+    const res2 = await fetch(`${reviewUrl}/%2e%2e%2f%2e%2e%2fpackage.json`);
+    expect(res2.status).toBe(403);
+    const body2 = await res2.text();
+    expect(body2).toContain('Forbidden: Path Traversal Denied');
+
+    const res3 = await fetch(`${reviewUrl}/%2e%2e%5c%2e%2e%5cpackage.json`);
+    expect(res3.status).toBe(403);
+    const body3 = await res3.text();
+    expect(body3).toContain('Forbidden: Path Traversal Denied');
+  });
+
+  it('rejects invalid URL encodings and null bytes with 400 Bad Request', async () => {
+    const resMalformed = await fetch(`${reviewUrl}/%FF`);
+    expect(resMalformed.status).toBe(400);
+
+    const resNull = await fetch(`${reviewUrl}/index.html%00.jpg`);
+    expect(resNull.status).toBe(400);
+  });
 });
 
 describe('Multiple Concurrent Servers & Port Fallback', () => {

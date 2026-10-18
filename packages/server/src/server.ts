@@ -387,34 +387,69 @@ export class VisualEditServer {
     }
 
     if (this.isStatic && this.staticDir) {
-      let cleanPath = pathname;
+      const resolvedStaticRoot = path.resolve(this.staticDir);
+      const safeRoot = resolvedStaticRoot.endsWith(path.sep)
+        ? resolvedStaticRoot
+        : resolvedStaticRoot + path.sep;
+
+      let decodedPath = pathname;
+      try {
+        decodedPath = decodeURIComponent(pathname);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Bad Request: Invalid URL encoding');
+        return;
+      }
+
+      if (decodedPath.includes('\0')) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Bad Request: Invalid path');
+        return;
+      }
+
+      let cleanPath = decodedPath;
       if (cleanPath.endsWith('/')) {
         cleanPath += 'index.html';
       }
 
-      let candidateHtml: string | null = null;
-      const directPath = path.join(this.staticDir, cleanPath);
+      const relativePath = cleanPath.replace(/^[/\\]+/, '');
+      const directPath = path.resolve(resolvedStaticRoot, relativePath);
 
-      if (fs.existsSync(directPath)) {
-        if (fs.statSync(directPath).isFile() && directPath.endsWith('.html')) {
-          candidateHtml = directPath;
-        } else if (fs.statSync(directPath).isDirectory()) {
-          const indexHtml = path.join(directPath, 'index.html');
-          if (fs.existsSync(indexHtml) && fs.statSync(indexHtml).isFile()) {
-            candidateHtml = indexHtml;
+      const relToRoot = path.relative(resolvedStaticRoot, directPath);
+      if (
+        relToRoot.startsWith('..') ||
+        path.isAbsolute(relToRoot) ||
+        (!directPath.startsWith(safeRoot) && directPath !== resolvedStaticRoot)
+      ) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden: Path Traversal Denied');
+        return;
+      }
+
+      let candidateHtml: string | null = null;
+
+      if (directPath.startsWith(safeRoot) || directPath === resolvedStaticRoot) {
+        if (fs.existsSync(directPath)) {
+          if (fs.statSync(directPath).isFile() && directPath.endsWith('.html')) {
+            candidateHtml = directPath;
+          } else if (fs.statSync(directPath).isDirectory()) {
+            const indexHtml = path.resolve(directPath, 'index.html');
+            if (indexHtml.startsWith(safeRoot) && fs.existsSync(indexHtml) && fs.statSync(indexHtml).isFile()) {
+              candidateHtml = indexHtml;
+            }
           }
-        }
-      } else if (!path.extname(cleanPath)) {
-        const withHtmlExt = `${directPath}.html`;
-        const rootIndexHtml = path.join(this.staticDir, 'index.html');
-        if (fs.existsSync(withHtmlExt) && fs.statSync(withHtmlExt).isFile()) {
-          candidateHtml = withHtmlExt;
-        } else if (fs.existsSync(rootIndexHtml) && fs.statSync(rootIndexHtml).isFile()) {
-          candidateHtml = rootIndexHtml;
+        } else if (!path.extname(cleanPath)) {
+          const withHtmlExt = path.resolve(resolvedStaticRoot, `${relativePath}.html`);
+          const rootIndexHtml = path.resolve(resolvedStaticRoot, 'index.html');
+          if (withHtmlExt.startsWith(safeRoot) && fs.existsSync(withHtmlExt) && fs.statSync(withHtmlExt).isFile()) {
+            candidateHtml = withHtmlExt;
+          } else if (fs.existsSync(rootIndexHtml) && fs.statSync(rootIndexHtml).isFile()) {
+            candidateHtml = rootIndexHtml;
+          }
         }
       }
 
-      if (candidateHtml) {
+      if (candidateHtml && (candidateHtml.startsWith(safeRoot) || candidateHtml === resolvedStaticRoot)) {
         const rawHtml = fs.readFileSync(candidateHtml, 'utf-8');
         const injected = this.injectOverlayScript(rawHtml);
         res.writeHead(200, {
