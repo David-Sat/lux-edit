@@ -10,7 +10,7 @@ In-browser visual editing, annotation, and review overlay for AI coding agents.
 <!-- Lux In-Browser Demo Video -->
 <!-- Tip: Drag & drop out/lux-demo.mp4 into the GitHub PR or Web Editor to generate the user-attachments CDN URL, then paste it into the src below -->
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/PASTE_UPLOADED_VIDEO_URL_HERE" title="Lux Product Demo" autoplay loop muted playsinline width="100%"></video>
+  <video src="[https://github.com/user-attachments/assets/8bd9ec95-bdaf-489a-89b0-fcc444611838]" title="Lux Product Demo" autoplay loop muted playsinline width="100%"></video>
 </div>
 
 <picture>
