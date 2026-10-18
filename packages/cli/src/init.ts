@@ -147,29 +147,43 @@ export const CLAUDE_PLUGIN_MANIFEST = {
   ],
 };
 
-export const CLAUDE_DOT_MCP_CONTENT = {
-  lux: {
-    command: 'npx',
-    args: ['-y', 'lux-edit', 'mcp'],
-  },
-};
-
-export const MCP_CONFIG_CONTENT = {
-  mcpServers: {
+export function getClaudeDotMcpContent(autoUpdate: boolean = false) {
+  return {
     lux: {
       command: 'npx',
-      args: ['-y', 'lux-edit', 'mcp'],
+      args: ['-y', autoUpdate ? 'lux-edit@latest' : 'lux-edit', 'mcp'],
     },
-  },
-};
+  };
+}
+
+export function getMcpConfigContent(autoUpdate: boolean = false) {
+  return {
+    mcpServers: {
+      lux: {
+        command: 'npx',
+        args: ['-y', autoUpdate ? 'lux-edit@latest' : 'lux-edit', 'mcp'],
+      },
+    },
+  };
+}
+
+export const CLAUDE_DOT_MCP_CONTENT = getClaudeDotMcpContent(false);
+export const MCP_CONFIG_CONTENT = getMcpConfigContent(false);
 
 // Helper to write a self-contained Agent Plugin bundle (Claude Code .claude-plugin + Antigravity plugin.json + skills/lux & lux-web)
-export function writePluginBundle(pluginDir: string, dryRun: boolean = false): boolean {
+export function writePluginBundle(
+  pluginDir: string,
+  dryRun: boolean = false,
+  autoUpdate: boolean = false
+): boolean {
   try {
     if (!dryRun) {
       fs.mkdirSync(path.join(pluginDir, '.claude-plugin'), { recursive: true });
       fs.mkdirSync(path.join(pluginDir, 'skills', 'lux'), { recursive: true });
       fs.mkdirSync(path.join(pluginDir, 'skills', 'lux-web'), { recursive: true });
+
+      const claudeDotMcp = getClaudeDotMcpContent(autoUpdate);
+      const mcpConfig = getMcpConfigContent(autoUpdate);
 
       // Claude Code official plugin layout
       fs.writeFileSync(
@@ -178,11 +192,11 @@ export function writePluginBundle(pluginDir: string, dryRun: boolean = false): b
       );
       fs.writeFileSync(
         path.join(pluginDir, '.claude-plugin', '.mcp.json'),
-        JSON.stringify(CLAUDE_DOT_MCP_CONTENT, null, 2) + '\n'
+        JSON.stringify(claudeDotMcp, null, 2) + '\n'
       );
       fs.writeFileSync(
         path.join(pluginDir, '.mcp.json'),
-        JSON.stringify(MCP_CONFIG_CONTENT, null, 2) + '\n'
+        JSON.stringify(mcpConfig, null, 2) + '\n'
       );
 
       // Antigravity & Agent Plugin specification
@@ -192,7 +206,7 @@ export function writePluginBundle(pluginDir: string, dryRun: boolean = false): b
       );
       fs.writeFileSync(
         path.join(pluginDir, 'mcp_config.json'),
-        JSON.stringify(MCP_CONFIG_CONTENT, null, 2) + '\n'
+        JSON.stringify(mcpConfig, null, 2) + '\n'
       );
 
       // Skills
@@ -291,7 +305,11 @@ export function isAgentInstalled(
 }
 
 // Helper to safely merge lux into existing MCP JSON config and clean legacy keys
-export function mergeMcpConfig(filePath: string, dryRun: boolean = false): boolean {
+export function mergeMcpConfig(
+  filePath: string,
+  dryRun: boolean = false,
+  autoUpdate: boolean = false
+): boolean {
   try {
     let config: any = { mcpServers: {} };
     if (fs.existsSync(filePath)) {
@@ -308,7 +326,7 @@ export function mergeMcpConfig(filePath: string, dryRun: boolean = false): boole
 
     config.mcpServers.lux = {
       command: 'npx',
-      args: ['-y', 'lux-edit', 'mcp'],
+      args: ['-y', autoUpdate ? 'lux-edit@latest' : 'lux-edit', 'mcp'],
     };
 
     if (!dryRun) {
@@ -437,19 +455,20 @@ export function getAgentConfigPaths(
 export function installCustomPath(
   targetPath: string,
   dryRun: boolean = false,
-  log: (msg: string) => void = console.log
+  log: (msg: string) => void = console.log,
+  autoUpdate: boolean = false
 ): boolean {
   try {
     const resolvedPath = path.resolve(targetPath);
     if (resolvedPath.endsWith('.json')) {
-      if (mergeMcpConfig(resolvedPath, dryRun)) {
+      if (mergeMcpConfig(resolvedPath, dryRun, autoUpdate)) {
         log(`✓ Configured custom MCP file: ${resolvedPath}`);
         return true;
       }
     } else {
       const mcpPath = path.join(resolvedPath, 'mcp.json');
       const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
-      if (mergeMcpConfig(mcpPath, dryRun)) {
+      if (mergeMcpConfig(mcpPath, dryRun, autoUpdate)) {
         log(`✓ Created custom MCP config:  ${mcpPath}`);
       }
       if (writeSkillFile(skillPath, dryRun)) {
@@ -547,6 +566,7 @@ export interface InitOptions {
   home?: string;
   cwd?: string;
   logger?: (msg: string) => void;
+  autoUpdate?: boolean;
 }
 
 export async function runInit(options: InitOptions = {}) {
@@ -555,14 +575,19 @@ export async function runInit(options: InitOptions = {}) {
   const dryRun = !!options.dryRun;
   const isGlobal = !!options.global;
   const forceAll = !!options.all;
+  const autoUpdate = !!options.autoUpdate;
   const targetAgent = options.agent?.toLowerCase();
   const customPath = options.path;
   const log = options.logger || console.log;
 
+  if (autoUpdate) {
+    log('⚡ Auto-update enabled: MCP configs will run lux-edit@latest');
+  }
+
   // 1. Custom Path Mode
   if (customPath) {
     log(`\nConfiguring custom path: ${customPath}\n`);
-    installCustomPath(customPath, dryRun, log);
+    installCustomPath(customPath, dryRun, log, autoUpdate);
     return;
   }
 
@@ -606,7 +631,7 @@ export async function runInit(options: InitOptions = {}) {
 
     // Tier 1: Plugin-Compatible Agents (Agent Plugin Standard: plugin.json + mcp_config.json + skills/)
     if (shouldTarget('antigravity') || shouldTarget('gemini')) {
-      if (writePluginBundle(paths.antigravityPlugin, dryRun)) {
+      if (writePluginBundle(paths.antigravityPlugin, dryRun, autoUpdate)) {
         log(`✓ Antigravity plugin:     ${paths.antigravityPlugin} (Skills + MCP)`);
         // Clean up legacy standalone skill & mcp if present to prevent duplicate registrations
         if (fs.existsSync(paths.antigravitySkill)) {
@@ -632,10 +657,10 @@ export async function runInit(options: InitOptions = {}) {
           }
         }
       }
-      if (writePluginBundle(paths.claudePlugin, dryRun)) {
+      if (writePluginBundle(paths.claudePlugin, dryRun, autoUpdate)) {
         log(`✓ Claude Code plugin:     ${paths.claudePlugin} (Skills + MCP)`);
       }
-      if (mergeMcpConfig(paths.claudeCodeMcp, dryRun)) {
+      if (mergeMcpConfig(paths.claudeCodeMcp, dryRun, autoUpdate)) {
         log(`✓ Claude Code MCP:        ${paths.claudeCodeMcp}`);
       }
     }
@@ -653,7 +678,7 @@ export async function runInit(options: InitOptions = {}) {
 
     for (const client of standaloneClients) {
       if (shouldTarget(client.key)) {
-        if (mergeMcpConfig(client.path, dryRun)) {
+        if (mergeMcpConfig(client.path, dryRun, autoUpdate)) {
           log(`✓ ${client.name.padEnd(16)}:    ${client.path}`);
         }
       } else {
@@ -678,7 +703,7 @@ export async function runInit(options: InitOptions = {}) {
       );
       fs.writeFileSync(
         path.join(claudePluginDir, '.mcp.json'),
-        JSON.stringify(CLAUDE_DOT_MCP_CONTENT, null, 2) + '\n'
+        JSON.stringify(getClaudeDotMcpContent(autoUpdate), null, 2) + '\n'
       );
     }
     log(`✓ Created Claude plugin:  ${path.join(claudePluginDir, 'plugin.json')}`);
@@ -692,17 +717,17 @@ export async function runInit(options: InitOptions = {}) {
 
     // 3. Write standard mcp_config.json
     const pluginMcpPath = path.join(cwd, 'mcp_config.json');
-    if (mergeMcpConfig(pluginMcpPath, dryRun)) {
+    if (mergeMcpConfig(pluginMcpPath, dryRun, autoUpdate)) {
       log(`✓ Configured plugin MCP:  ${pluginMcpPath}`);
     }
 
     // 4. Write standard mcp.json and .mcp.json (universal across Cursor, Claude Code, Windsurf, Zed)
     const mcpConfigPath = path.join(cwd, 'mcp.json');
     const dotMcpConfigPath = path.join(cwd, '.mcp.json');
-    if (mergeMcpConfig(mcpConfigPath, dryRun)) {
+    if (mergeMcpConfig(mcpConfigPath, dryRun, autoUpdate)) {
       log(`✓ Configured MCP config:  ${mcpConfigPath}`);
     }
-    if (mergeMcpConfig(dotMcpConfigPath, dryRun)) {
+    if (mergeMcpConfig(dotMcpConfigPath, dryRun, autoUpdate)) {
       log(`✓ Configured MCP config:  ${dotMcpConfigPath}`);
     }
 
@@ -739,7 +764,7 @@ export async function runInit(options: InitOptions = {}) {
           }
         }
       }
-      if (writePluginBundle(claudePluginDir, dryRun)) {
+      if (writePluginBundle(claudePluginDir, dryRun, autoUpdate)) {
         log(`✓ Synced Claude Code:     ${claudePluginDir}`);
       }
     }
@@ -748,7 +773,7 @@ export async function runInit(options: InitOptions = {}) {
     const geminiDir = path.join(home, '.gemini');
     if (fs.existsSync(geminiDir)) {
       const geminiPluginDir = path.join(geminiDir, 'config', 'plugins', 'lux-edit');
-      if (writePluginBundle(geminiPluginDir, dryRun)) {
+      if (writePluginBundle(geminiPluginDir, dryRun, autoUpdate)) {
         log(`✓ Synced Antigravity:     ${geminiPluginDir}`);
       }
     }

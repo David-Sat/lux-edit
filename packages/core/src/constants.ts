@@ -10,6 +10,7 @@ export const API_ROUTES = {
   EDITS: '/__visual_edit__/api/edits',
   SESSIONS: '/__visual_edit__/api/sessions',
   OVERLAY_JS: '/__visual_edit__/overlay.js',
+  VERSION: '/__visual_edit__/api/version',
   WS: '/__visual_edit__/ws',
 } as const;
 

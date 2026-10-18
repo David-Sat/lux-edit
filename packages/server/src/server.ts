@@ -11,6 +11,7 @@ import {
   SERVER_METADATA_DIR,
   SERVER_METADATA_FILE,
   LuxServerMetadata,
+  checkForUpdates,
 } from '@visual-edit/core';
 import { EventStore } from './event-store.js';
 import { WebSocketHub } from './ws-hub.js';
@@ -25,8 +26,14 @@ export interface VisualEditServerOptions {
   appId?: string;
 }
 
+let serverPkgVersion = '0.13.0';
+try {
+  serverPkgVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+} catch {}
+
 export class VisualEditServer {
   public readonly appId: string;
+  public readonly version: string = serverPkgVersion;
   private server: http.Server;
   private proxy: httpProxy | null = null;
   private isStatic = false;
@@ -231,7 +238,7 @@ export class VisualEditServer {
 
   private injectOverlayScript(html: string): string {
     const scriptSrc = `${this.basePath}${API_ROUTES.OVERLAY_JS}`;
-    const configScript = `<script>window.__LUX_APP_ID__ = ${JSON.stringify(this.appId)};</script>`;
+    const configScript = `<script>window.__LUX_APP_ID__ = ${JSON.stringify(this.appId)}; window.__LUX_VERSION__ = ${JSON.stringify(this.version)};</script>`;
     const scriptTag = `${configScript}\n<script type="module" src="${scriptSrc}"></script>`;
     if (html.includes('</head>')) {
       return html.replace('</head>', `${scriptTag}\n</head>`);
@@ -313,6 +320,29 @@ export class VisualEditServer {
     if ((pathname === API_ROUTES.SESSIONS || pathname === '/__lux/api/sessions') && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(this.eventStore.listSessions()));
+      return;
+    }
+
+    if ((pathname === API_ROUTES.VERSION || pathname === '/__lux/api/version') && req.method === 'GET') {
+      checkForUpdates(this.version)
+        .then((result) => {
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+          });
+          res.end(JSON.stringify(result));
+        })
+        .catch(() => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              updateAvailable: false,
+              currentVersion: this.version,
+              latestVersion: this.version,
+              changelogUrl: 'https://github.com/David-Sat/lux-edit/releases',
+            })
+          );
+        });
       return;
     }
 

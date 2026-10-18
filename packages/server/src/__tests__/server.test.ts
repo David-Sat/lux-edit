@@ -38,7 +38,17 @@ describe('Server & EventStore Integration', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('<script type="module" src="/__visual_edit__/overlay.js"></script>');
+    expect(html).toContain('window.__LUX_VERSION__');
     expect(html).toContain('Build Web Interfaces Visually with AI');
+  });
+
+  it('serves version and update status at /__visual_edit__/api/version', async () => {
+    const res = await fetch(`${reviewUrl}/__visual_edit__/api/version`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.currentVersion).toBeDefined();
+    expect(data.latestVersion).toBeDefined();
+    expect(typeof data.updateAvailable).toBe('boolean');
   });
 
   it('serves the overlay JS bundle at /__visual_edit__/overlay.js', async () => {

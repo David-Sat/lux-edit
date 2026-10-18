@@ -8,9 +8,11 @@ import os from 'node:os';
 
 declare const __PACKAGE_VERSION__: string;
 
-import { DEFAULT_PORT } from '@visual-edit/core';
+import { DEFAULT_PORT, checkForUpdates } from '@visual-edit/core';
+import { runUpdate } from './update.js';
+import { runInit, runUninstall } from './init.js';
 
-let cliVersion = '0.5.0';
+let cliVersion = '0.13.0';
 try {
   cliVersion = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
 } catch (e) {}
@@ -65,6 +67,19 @@ program
       }
       console.log(`MCP server:  npx lux-edit mcp`);
       console.log('\nPress Ctrl+C to stop.\n');
+
+      // Non-blocking update check (cached 24h)
+      checkForUpdates(cliVersion)
+        .then((update) => {
+          if (update.updateAvailable) {
+            console.log('┌─────────────────────────────────────────────────────────────┐');
+            console.log(`│  Update available: v${cliVersion} → v${update.latestVersion}`.padEnd(62) + '│');
+            console.log(`│  Changelog: https://github.com/David-Sat/lux-edit/releases`.padEnd(62) + '│');
+            console.log(`│  Run 'lux update' to upgrade automatically`.padEnd(62) + '│');
+            console.log('└─────────────────────────────────────────────────────────────┘\n');
+          }
+        })
+        .catch(() => {});
     } catch (err: any) {
       console.error('Failed to start lux server:', err.message);
       process.exit(1);
@@ -79,8 +94,6 @@ program
     await startMcpStdio(options.root);
   });
 
-import { runInit, runUninstall } from './init.js';
-
 program
   .command('init')
   .alias('install')
@@ -90,6 +103,7 @@ program
   .option('--agent <name>', 'Target a specific agent (antigravity, claude, cursor, windsurf, desktop)')
   .option('--path <path>', 'Install to custom MCP JSON config file or directory')
   .option('--all', 'Configure all major agents regardless of whether they are detected on this machine', false)
+  .option('--auto-update', 'Configure MCP clients to run lux-edit@latest automatically on startup (opt-in auto-updates)', false)
   .option('--dry-run', 'Show planned changes without writing files', false)
   .action(async (options) => {
     await runInit({
@@ -99,6 +113,22 @@ program
       dryRun: options.dryRun,
       yes: options.yes,
       path: options.path,
+      autoUpdate: options.autoUpdate,
+    });
+  });
+
+program
+  .command('update')
+  .alias('upgrade')
+  .description('Check for updates, upgrade lux-edit, and re-sync agent skills')
+  .option('-c, --check', 'Check for updates without installing', false)
+  .option('-f, --force', 'Force re-sync even if version matches', false)
+  .option('--auto-update', 'Also configure MCP clients for auto-updating (@latest)', false)
+  .action(async (options) => {
+    await runUpdate({
+      check: options.check,
+      force: options.force,
+      autoUpdate: options.autoUpdate,
     });
   });
 

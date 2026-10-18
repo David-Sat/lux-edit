@@ -9,9 +9,15 @@ import {
   SERVER_METADATA_FILE,
   DEFAULT_SERVER_URL,
   API_ROUTES,
+  checkForUpdates,
 } from '@visual-edit/core';
 import path from 'node:path';
 import fs from 'node:fs';
+
+let mcpPkgVersion = '0.13.0';
+try {
+  mcpPkgVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
+} catch {}
 
 function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBatch {
   if (!batch) return false;
@@ -197,13 +203,21 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
   };
 
   const getPendingReviewHandler = async (args?: { workspaceDir?: string; serverUrl?: string }) => {
+    let updateNotice = '';
+    try {
+      const update = await checkForUpdates(mcpPkgVersion);
+      if (update.updateAvailable) {
+        updateNotice = `\n\n*(Note: A newer version of lux-edit (v${update.latestVersion}) is available. Run \`lux update\` to upgrade.)*`;
+      }
+    } catch {}
+
     const batch = await resolvePendingBatch(args);
     if (!hasPendingContent(batch)) {
       return {
         content: [
           {
             type: 'text' as const,
-            text: 'No pending visual edits or comments found. Make sure lux is running in the right workspace directory or pass workspaceDir.',
+            text: `No pending visual edits or comments found. Make sure lux is running in the right workspace directory or pass workspaceDir.${updateNotice}`,
           },
         ],
       };
@@ -214,7 +228,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       content: [
         {
           type: 'text' as const,
-          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\``,
+          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(batch, null, 2)}\n\`\`\`${updateNotice}`,
         },
       ],
     };

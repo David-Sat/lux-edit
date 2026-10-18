@@ -66,6 +66,17 @@ export class OverlayStateManager {
     fontFamily: 'Inter, system-ui, sans-serif',
   };
 
+  public version: string =
+    typeof window !== 'undefined' && (window as any).__LUX_VERSION__
+      ? (window as any).__LUX_VERSION__
+      : '0.13.0';
+  public updateInfo: {
+    updateAvailable: boolean;
+    currentVersion: string;
+    latestVersion: string;
+    changelogUrl: string;
+  } | null = null;
+
   private initialThemeSnapshot: Record<string, string> = {};
   private snapshots = new Map<HTMLElement, ElementSnapshot>();
   private listeners = new Set<() => void>();
@@ -76,6 +87,23 @@ export class OverlayStateManager {
     this.captureInitialTheme();
     this.loadFromStorage();
     this.initWebSocket();
+    this.fetchVersionInfo();
+  }
+
+  public async fetchVersionInfo(): Promise<void> {
+    try {
+      if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+      if (typeof window.location !== 'undefined' && window.location.protocol === 'about:') return;
+      const url = `${BASE_PATH_PREFIX}${API_ROUTES.VERSION}`;
+      const res = await fetch(url).catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data === 'object') {
+          this.updateInfo = data;
+          this.notify();
+        }
+      }
+    } catch {}
   }
 
   private captureInitialTheme(): void {
