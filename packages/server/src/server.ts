@@ -12,6 +12,7 @@ import {
   SERVER_METADATA_FILE,
   LuxServerMetadata,
   checkForUpdates,
+  stripTrailingSlashes,
 } from '@visual-edit/core';
 import { EventStore } from './event-store.js';
 import { WebSocketHub } from './ws-hub.js';
@@ -58,7 +59,7 @@ export class VisualEditServer {
     let basePath = (options.basePath || process.env.LUX_BASE_PATH || '').trim();
     if (basePath) {
       if (!basePath.startsWith('/')) basePath = '/' + basePath;
-      basePath = basePath.replace(/\/+$/, '');
+      basePath = stripTrailingSlashes(basePath);
     }
     this.basePath = basePath;
     this.overlayScriptPath = this.resolveOverlayPath();

@@ -52,6 +52,18 @@ export function isNewerVersion(current: string, latest: string): boolean {
   return false;
 }
 
+/**
+ * Safely strips trailing slashes from a URL or path without regular expressions,
+ * preventing polynomial regular expression denial-of-service (ReDoS) vulnerabilities.
+ */
+export function stripTrailingSlashes(input: string): string {
+  let end = input.length;
+  while (end > 0 && input.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return input.slice(0, end);
+}
+
 export function getDefaultUpdateCachePath(): string {
   try {
     const home = os.homedir();
@@ -111,7 +123,8 @@ export async function checkForUpdates(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    const res = await fetch(`${registryUrl.replace(/\/+$/, '')}/${packageName}/latest`, {
+    const cleanRegistry = stripTrailingSlashes(registryUrl);
+    const res = await fetch(`${cleanRegistry}/${packageName}/latest`, {
       signal: controller.signal,
       headers: {
         Accept: 'application/json',

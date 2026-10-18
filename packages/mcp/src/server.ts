@@ -10,6 +10,7 @@ import {
   DEFAULT_SERVER_URL,
   API_ROUTES,
   checkForUpdates,
+  stripTrailingSlashes,
 } from '@visual-edit/core';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -52,7 +53,7 @@ function readServerMetadata(rootDir: string): LuxServerMetadata | null {
 
 async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Promise<VisualEditBatch | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + `${API_ROUTES.PENDING}${autoResolve ? '?resolve=true' : ''}`;
+    const url = stripTrailingSlashes(serverUrl) + `${API_ROUTES.PENDING}${autoResolve ? '?resolve=true' : ''}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       const data = (await res.json()) as VisualEditBatch | null;
@@ -66,7 +67,7 @@ async function fetchFromRunningServer(serverUrl: string, autoResolve = true): Pr
 
 async function fetchSessionsFromRunningServer(serverUrl: string): Promise<VisualEditBatch[] | null> {
   try {
-    const url = serverUrl.replace(/\/+$/, '') + API_ROUTES.SESSIONS;
+    const url = stripTrailingSlashes(serverUrl) + API_ROUTES.SESSIONS;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
       return (await res.json()) as VisualEditBatch[];
@@ -396,7 +397,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     const meta = readServerMetadata(targetRootDir) || readServerMetadata(resolvedRoot);
     const targetUrl = serverUrl || meta?.url || DEFAULT_SERVER_URL;
     try {
-      const url = targetUrl.replace(/\/+$/, '') + `${API_ROUTES.PENDING}?resolve=true`;
+      const url = stripTrailingSlashes(targetUrl) + `${API_ROUTES.PENDING}?resolve=true`;
       await fetch(url, { signal: AbortSignal.timeout(600) }).catch(() => {});
     } catch {}
 

@@ -5,6 +5,7 @@ import os from 'node:os';
 import {
   isNewerVersion,
   checkForUpdates,
+  stripTrailingSlashes,
   DEFAULT_UPDATE_TTL_MS,
 } from '../update-checker.js';
 
@@ -106,6 +107,17 @@ describe('update-checker', () => {
       expect(res.updateAvailable).toBe(false);
       expect(res.latestVersion).toBe('0.13.0');
       expect(res.currentVersion).toBe('0.13.0');
+    });
+  });
+
+  describe('stripTrailingSlashes', () => {
+    it('strips single and multiple trailing slashes without regex ReDoS', () => {
+      expect(stripTrailingSlashes('https://registry.npmjs.org/')).toBe('https://registry.npmjs.org');
+      expect(stripTrailingSlashes('https://registry.npmjs.org///')).toBe('https://registry.npmjs.org');
+      expect(stripTrailingSlashes('https://registry.npmjs.org')).toBe('https://registry.npmjs.org');
+      expect(stripTrailingSlashes('/')).toBe('');
+      expect(stripTrailingSlashes('///')).toBe('');
+      expect(stripTrailingSlashes('')).toBe('');
     });
   });
 });
