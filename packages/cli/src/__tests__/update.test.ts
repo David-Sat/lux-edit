@@ -21,6 +21,7 @@ describe('lux update command', () => {
 
     const res = await runUpdate({
       check: true,
+      currentVersion: '0.13.0',
       logger: (msg) => logs.push(msg),
     });
 

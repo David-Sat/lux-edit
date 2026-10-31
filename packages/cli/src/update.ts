@@ -8,35 +8,39 @@ export interface UpdateOptions {
   force?: boolean;
   autoUpdate?: boolean;
   logger?: (msg: string) => void;
+  currentVersion?: string;
 }
 
 export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateCheckResult> {
   const log = options.logger || console.log;
 
-  let currentVersion = '0.13.0';
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
-    );
-    currentVersion = pkg.version || currentVersion;
-  } catch {}
+  let currentVersion = options.currentVersion || '0.13.0';
+  if (!options.currentVersion) {
+    try {
+      const pkg = JSON.parse(
+        fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
+      );
+      currentVersion = pkg.version || currentVersion;
+    } catch {}
+  }
 
   log('\nChecking for updates to lux-edit...');
   const result = await checkForUpdates(currentVersion, { force: true });
+  const displayCurrent = result.currentVersion || currentVersion;
 
   if (options.check) {
     if (result.updateAvailable) {
-      log(`\nUpdate available: v${currentVersion} → v${result.latestVersion}`);
+      log(`\nUpdate available: v${displayCurrent} → v${result.latestVersion}`);
       log(`Changelog:        ${result.changelogUrl}`);
       log(`Run 'lux update' to upgrade automatically.\n`);
     } else {
-      log(`\n✓ lux-edit is up to date (v${currentVersion})\n`);
+      log(`\n✓ lux-edit is up to date (v${displayCurrent})\n`);
     }
     return result;
   }
 
   if (!result.updateAvailable && !options.force) {
-    log(`\n✓ lux-edit is already up to date (v${currentVersion})`);
+    log(`\n✓ lux-edit is already up to date (v${displayCurrent})`);
     log('\nRefreshing agent skills and MCP settings to ensure latest configs...');
     try {
       await runInit({ yes: true, global: true, autoUpdate: options.autoUpdate, logger: log });
@@ -47,7 +51,7 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
     return result;
   }
 
-  log(`\nFound newer version: v${result.latestVersion} (currently installed: v${currentVersion})`);
+  log(`\nFound newer version: v${result.latestVersion} (currently installed: v${displayCurrent})`);
   log(`Changelog: ${result.changelogUrl}\n`);
 
   // 1. Try upgrading the global package
