@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.13.0...lux-edit-v0.14.0) (2026-10-31)
+
+
+### Features
+
+* **cli:** add transparent update notifications, overlay pill, lux update, and opt-in auto-update ([#54](https://github.com/David-Sat/lux-edit/issues/54)) ([300faf3](https://github.com/David-Sat/lux-edit/commit/300faf3dedf3f6094c23a2046eabed1962809d54))
+* **cli:** fix Claude Code integration, add 10-harness registry, canary CI & patch security advisories ([#57](https://github.com/David-Sat/lux-edit/issues/57)) ([33e5970](https://github.com/David-Sat/lux-edit/commit/33e59707077c79530c7321a189162695a9516f99))
+* **demo:** add Remotion product demo video source and README video layout ([#56](https://github.com/David-Sat/lux-edit/issues/56)) ([6a7a58f](https://github.com/David-Sat/lux-edit/commit/6a7a58f0a315071b76059c28d880925252b742a9))
+
+
+### Bug Fixes
+
+* **cli:** decouple update logger and tests from fluctuating package.json version ([85fd229](https://github.com/David-Sat/lux-edit/commit/85fd22923c910851456ee96cfbfc5446099226e2))
+
 ## [0.13.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.12.0...lux-edit-v0.13.0) (2026-10-15)
 
 
