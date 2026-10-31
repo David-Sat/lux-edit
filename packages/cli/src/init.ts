@@ -103,11 +103,29 @@ When the user asks to review, or runs \`/lux-web\`:
 3. Respond in structured markdown referencing each pinned element's selector and text snippet.
 `;
 
+declare const __PACKAGE_VERSION__: string | undefined;
+
+export function getPackageVersion(): string {
+  if (typeof __PACKAGE_VERSION__ !== 'undefined' && __PACKAGE_VERSION__) {
+    return __PACKAGE_VERSION__;
+  }
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
+    );
+    return pkg.version || '0.13.0';
+  } catch {
+    return '0.13.0';
+  }
+}
+
 export const PLUGIN_MANIFEST = {
   $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
   name: 'lux-edit',
   description: 'Live User eXperience overlay for visual UI editing, design token tweaking, and multi-agent feedback',
-  version: '0.12.0',
+  get version() {
+    return getPackageVersion();
+  },
   author: {
     name: 'David Satomi',
     url: 'https://github.com/David-Sat',
@@ -129,7 +147,9 @@ export const PLUGIN_MANIFEST = {
 export const CLAUDE_PLUGIN_MANIFEST = {
   name: 'lux-edit',
   description: 'Live in-browser visual editing, design token tweaking, and multi-agent review overlay for web apps.',
-  version: '0.12.0',
+  get version() {
+    return getPackageVersion();
+  },
   author: {
     name: 'David Satomi',
     url: 'https://github.com/David-Sat',
@@ -238,18 +258,250 @@ export function removePluginBundle(pluginDir: string, dryRun: boolean = false): 
   }
 }
 
-// Smart detection to verify if an agent/tool is actually installed on the system
-export function isAgentInstalled(
-  agentKey: 'antigravity' | 'claude' | 'desktop' | 'cursor' | 'windsurf' | 'cline' | 'roo',
+export type AgentHarnessKey =
+  | 'antigravity'
+  | 'claude'
+  | 'cursor'
+  | 'windsurf'
+  | 'desktop'
+  | 'cline'
+  | 'roo'
+  | 'zed'
+  | 'continue'
+  | 'vscode';
+
+export interface AgentHarnessSpec {
+  key: AgentHarnessKey;
+  name: string;
+  aliases?: string[];
+  isDetected: (home: string, platform?: NodeJS.Platform) => boolean;
+  mcpPath?: (home: string, platform?: NodeJS.Platform) => string;
+  mcpMerger?: (filePath: string, dryRun?: boolean, autoUpdate?: boolean) => boolean;
+  mcpRemover?: (filePath: string, dryRun?: boolean) => boolean;
+  skillsStrategy: 'bundle' | 'flat' | 'none';
+  bundlePath?: (home: string, platform?: NodeJS.Platform) => string;
+  skillsPaths?: (home: string, platform?: NodeJS.Platform) => Array<{ path: string; content: string }>;
+  cleanLegacyPaths?: (home: string, platform?: NodeJS.Platform) => string[];
+  postInstall?: (home: string, dryRun?: boolean, autoUpdate?: boolean) => void;
+  postUninstall?: (home: string, dryRun?: boolean) => void;
+}
+
+export function getVscodeGlobalStorage(
   home: string = os.homedir(),
   platform: NodeJS.Platform = process.platform
+): string {
+  if (platform === 'darwin') {
+    return path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage');
+  } else if (platform === 'win32') {
+    return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code', 'User', 'globalStorage');
+  } else {
+    return path.join(home, '.config', 'Code', 'User', 'globalStorage');
+  }
+}
+
+// Helpers for Zed Editor context_servers
+export function mergeZedConfig(
+  filePath: string,
+  dryRun: boolean = false,
+  autoUpdate: boolean = false
 ): boolean {
-  switch (agentKey) {
-    case 'antigravity':
-      return fs.existsSync(path.join(home, '.gemini'));
-    case 'claude':
-      return fs.existsSync(path.join(home, '.claude'));
-    case 'desktop':
+  try {
+    let config: any = { context_servers: {} };
+    if (fs.existsSync(filePath)) {
+      try {
+        config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (!config.context_servers) config.context_servers = {};
+      } catch {
+        return false;
+      }
+    }
+    config.context_servers.lux = {
+      command: 'npx',
+      args: ['-y', autoUpdate ? 'lux-edit@latest' : 'lux-edit', 'mcp'],
+    };
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeZedConfig(filePath: string, dryRun: boolean = false): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    let config: any;
+    try {
+      config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+      return false;
+    }
+    if (!config || !config.context_servers || !('lux' in config.context_servers)) return false;
+    delete config.context_servers.lux;
+    if (!dryRun) {
+      fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Helpers for Continue.dev mcpServers
+export function mergeContinueConfig(
+  filePath: string,
+  dryRun: boolean = false,
+  autoUpdate: boolean = false
+): boolean {
+  try {
+    let config: any = { mcpServers: [] };
+    if (fs.existsSync(filePath)) {
+      try {
+        config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      } catch {
+        return false;
+      }
+    }
+    const luxEntry = {
+      name: 'lux',
+      command: 'npx',
+      args: ['-y', autoUpdate ? 'lux-edit@latest' : 'lux-edit', 'mcp'],
+    };
+    if (Array.isArray(config.mcpServers) || !config.mcpServers) {
+      if (!Array.isArray(config.mcpServers)) config.mcpServers = [];
+      config.mcpServers = config.mcpServers.filter((s: any) => s && s.name !== 'lux');
+      config.mcpServers.push(luxEntry);
+    } else if (typeof config.mcpServers === 'object') {
+      config.mcpServers.lux = {
+        command: 'npx',
+        args: ['-y', autoUpdate ? 'lux-edit@latest' : 'lux-edit', 'mcp'],
+      };
+    }
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeContinueConfig(filePath: string, dryRun: boolean = false): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    let config: any;
+    try {
+      config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+      return false;
+    }
+    if (!config || !config.mcpServers) return false;
+    let modified = false;
+    if (Array.isArray(config.mcpServers)) {
+      const beforeLen = config.mcpServers.length;
+      config.mcpServers = config.mcpServers.filter((s: any) => s.name !== 'lux');
+      modified = config.mcpServers.length !== beforeLen;
+    } else if (typeof config.mcpServers === 'object' && 'lux' in config.mcpServers) {
+      delete config.mcpServers.lux;
+      modified = true;
+    }
+    if (modified && !dryRun) {
+      fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n');
+    }
+    return modified;
+  } catch {
+    return false;
+  }
+}
+
+function registerClaudeCodeMcpViaCli(autoUpdate: boolean = false): void {
+  try {
+    const pkg = autoUpdate ? 'lux-edit@latest' : 'lux-edit';
+    const { execSync } = require('node:child_process');
+    execSync(`claude mcp add -s user lux -- npx -y ${pkg} mcp`, { stdio: 'ignore' });
+  } catch {}
+}
+
+function deregisterClaudeCodeMcpViaCli(): void {
+  try {
+    const { execSync } = require('node:child_process');
+    execSync('claude mcp remove -s user lux', { stdio: 'ignore' });
+  } catch {}
+}
+
+export const AGENT_HARNESSES: AgentHarnessSpec[] = [
+  {
+    key: 'antigravity',
+    name: 'Google Antigravity',
+    aliases: ['gemini'],
+    isDetected: (home) => fs.existsSync(path.join(home, '.gemini')),
+    skillsStrategy: 'bundle',
+    bundlePath: (home) => path.join(home, '.gemini', 'config', 'plugins', 'lux-edit'),
+    cleanLegacyPaths: (home) => [
+      path.join(home, '.gemini', 'config', 'skills', 'lux', 'SKILL.md'),
+      path.join(home, '.gemini', 'config', 'mcp_config.json'),
+    ],
+  },
+  {
+    key: 'claude',
+    name: 'Claude Code',
+    aliases: ['claude-code'],
+    isDetected: (home) => fs.existsSync(path.join(home, '.claude')) || fs.existsSync(path.join(home, '.claude.json')),
+    mcpPath: (home) => path.join(home, '.claude.json'),
+    skillsStrategy: 'flat',
+    skillsPaths: (home) => [
+      { path: path.join(home, '.claude', 'skills', 'lux', 'SKILL.md'), content: SKILL_CONTENT },
+      { path: path.join(home, '.claude', 'skills', 'lux-web', 'SKILL.md'), content: SKILL_WEB_CONTENT },
+    ],
+    cleanLegacyPaths: (home) => [
+      path.join(home, '.claude', 'plugins', 'lux-edit'),
+      path.join(home, '.claude', 'skills', 'lux-review'),
+      path.join(home, '.claude', 'skills', 'lux-edit'),
+      path.join(home, '.claude', 'mcp.json'),
+    ],
+    postInstall: (home, dryRun, autoUpdate) => {
+      if (!dryRun && home === os.homedir()) {
+        registerClaudeCodeMcpViaCli(autoUpdate);
+      }
+    },
+    postUninstall: (home, dryRun) => {
+      if (!dryRun && home === os.homedir()) {
+        deregisterClaudeCodeMcpViaCli();
+      }
+    },
+  },
+  {
+    key: 'cursor',
+    name: 'Cursor',
+    isDetected: (home, platform = process.platform) => {
+      if (platform === 'darwin') {
+        return fs.existsSync(path.join(home, '.cursor')) || fs.existsSync('/Applications/Cursor.app');
+      }
+      return fs.existsSync(path.join(home, '.cursor'));
+    },
+    mcpPath: (home) => path.join(home, '.cursor', 'mcp.json'),
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'windsurf',
+    name: 'Windsurf',
+    isDetected: (home, platform = process.platform) => {
+      if (platform === 'darwin') {
+        return fs.existsSync(path.join(home, '.codeium', 'windsurf')) || fs.existsSync('/Applications/Windsurf.app');
+      }
+      return fs.existsSync(path.join(home, '.codeium', 'windsurf'));
+    },
+    mcpPath: (home) => path.join(home, '.codeium', 'windsurf', 'mcp_config.json'),
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'desktop',
+    name: 'Claude Desktop',
+    aliases: ['claude-desktop'],
+    isDetected: (home, platform = process.platform) => {
       if (platform === 'darwin') {
         return (
           fs.existsSync(path.join(home, 'Library', 'Application Support', 'Claude')) ||
@@ -261,47 +513,217 @@ export function isAgentInstalled(
       } else {
         return fs.existsSync(path.join(home, '.config', 'Claude'));
       }
-    case 'cursor':
+    },
+    mcpPath: (home, platform = process.platform) => {
+      if (platform === 'darwin') {
+        return path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+      } else if (platform === 'win32') {
+        return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json');
+      } else {
+        return path.join(home, '.config', 'Claude', 'claude_desktop_config.json');
+      }
+    },
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'cline',
+    name: 'Cline',
+    isDetected: (home, platform = process.platform) =>
+      fs.existsSync(path.join(getVscodeGlobalStorage(home, platform), 'saoudrizwan.claude-dev')),
+    mcpPath: (home, platform = process.platform) =>
+      path.join(getVscodeGlobalStorage(home, platform), 'saoudrizwan.claude-dev', 'settings', 'cline_mcp_settings.json'),
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'roo',
+    name: 'Roo Code',
+    aliases: ['roo-code'],
+    isDetected: (home, platform = process.platform) =>
+      fs.existsSync(path.join(getVscodeGlobalStorage(home, platform), 'rooveterinaryinc.roo-cline')),
+    mcpPath: (home, platform = process.platform) =>
+      path.join(getVscodeGlobalStorage(home, platform), 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json'),
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'zed',
+    name: 'Zed Editor',
+    isDetected: (home, platform = process.platform) => {
+      if (platform === 'win32') {
+        return fs.existsSync(path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Zed'));
+      }
+      if (platform === 'darwin') {
+        return fs.existsSync(path.join(home, '.config', 'zed')) || fs.existsSync('/Applications/Zed.app');
+      }
+      return fs.existsSync(path.join(home, '.config', 'zed'));
+    },
+    mcpPath: (home, platform = process.platform) => {
+      if (platform === 'win32') {
+        return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Zed', 'settings.json');
+      }
+      return path.join(home, '.config', 'zed', 'settings.json');
+    },
+    mcpMerger: mergeZedConfig,
+    mcpRemover: removeZedConfig,
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'continue',
+    name: 'Continue.dev',
+    aliases: ['continue'],
+    isDetected: (home) => fs.existsSync(path.join(home, '.continue')),
+    mcpPath: (home) => path.join(home, '.continue', 'config.json'),
+    mcpMerger: mergeContinueConfig,
+    mcpRemover: removeContinueConfig,
+    skillsStrategy: 'none',
+  },
+  {
+    key: 'vscode',
+    name: 'VS Code',
+    aliases: ['code', 'copilot'],
+    isDetected: (home, platform = process.platform) => {
       if (platform === 'darwin') {
         return (
-          fs.existsSync(path.join(home, '.cursor')) ||
-          fs.existsSync('/Applications/Cursor.app')
+          fs.existsSync(path.join(home, 'Library', 'Application Support', 'Code')) ||
+          fs.existsSync('/Applications/Visual Studio Code.app')
         );
-      }
-      return fs.existsSync(path.join(home, '.cursor'));
-    case 'windsurf':
-      if (platform === 'darwin') {
-        return (
-          fs.existsSync(path.join(home, '.codeium', 'windsurf')) ||
-          fs.existsSync('/Applications/Windsurf.app')
-        );
-      }
-      return fs.existsSync(path.join(home, '.codeium', 'windsurf'));
-    case 'cline': {
-      let vscodeGlobal: string;
-      if (platform === 'darwin') {
-        vscodeGlobal = path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage');
       } else if (platform === 'win32') {
-        vscodeGlobal = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code', 'User', 'globalStorage');
-      } else {
-        vscodeGlobal = path.join(home, '.config', 'Code', 'User', 'globalStorage');
+        return fs.existsSync(path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code'));
       }
-      return fs.existsSync(path.join(vscodeGlobal, 'saoudrizwan.claude-dev'));
-    }
-    case 'roo': {
-      let vscodeGlobal: string;
-      if (platform === 'darwin') {
-        vscodeGlobal = path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage');
-      } else if (platform === 'win32') {
-        vscodeGlobal = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code', 'User', 'globalStorage');
-      } else {
-        vscodeGlobal = path.join(home, '.config', 'Code', 'User', 'globalStorage');
+      return fs.existsSync(path.join(home, '.config', 'Code'));
+    },
+    mcpPath: (home) => path.join(home, '.vscode', 'mcp.json'),
+    skillsStrategy: 'none',
+  },
+];
+
+export function installHarness(
+  spec: AgentHarnessSpec,
+  home: string,
+  dryRun: boolean = false,
+  autoUpdate: boolean = false,
+  log: (msg: string) => void = console.log,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  try {
+    // 1. Clean legacy paths before installing
+    if (!dryRun && spec.cleanLegacyPaths) {
+      for (const legacyPath of spec.cleanLegacyPaths(home, platform)) {
+        if (fs.existsSync(legacyPath)) {
+          if (legacyPath.endsWith('.json')) {
+            removeMcpConfig(legacyPath, dryRun);
+          } else {
+            fs.rmSync(legacyPath, { recursive: true, force: true });
+          }
+        }
       }
-      return fs.existsSync(path.join(vscodeGlobal, 'rooveterinaryinc.roo-cline'));
     }
-    default:
-      return false;
+
+    // 2. Install skills or bundle
+    if (spec.skillsStrategy === 'bundle' && spec.bundlePath) {
+      const bPath = spec.bundlePath(home, platform);
+      if (writePluginBundle(bPath, dryRun, autoUpdate)) {
+        log(`✓ ${spec.name === 'Google Antigravity' ? 'Antigravity' : spec.name} plugin:     ${bPath} (Skills + MCP)`);
+      }
+    } else if (spec.skillsStrategy === 'flat' && spec.skillsPaths) {
+      for (const s of spec.skillsPaths(home, platform)) {
+        if (writeSkillFile(s.path, dryRun, s.content)) {
+          log(`✓ ${spec.name} skill:     ${s.path}`);
+        }
+      }
+    }
+
+    // 3. Configure MCP (standalone)
+    if (spec.mcpPath) {
+      const mPath = spec.mcpPath(home, platform);
+      const merger = spec.mcpMerger || mergeMcpConfig;
+      if (merger(mPath, dryRun, autoUpdate)) {
+        if (spec.key === 'claude') {
+          log(`✓ Claude Code MCP:        ${mPath}`);
+        } else {
+          log(`✓ ${spec.name.padEnd(16)}:    ${mPath}`);
+        }
+      }
+    }
+
+    // 4. Post-install hook (e.g. CLI delegation)
+    if (spec.postInstall) {
+      spec.postInstall(home, dryRun, autoUpdate);
+    }
+    return true;
+  } catch (err: any) {
+    log(`✗ Failed to install ${spec.name}: ${err.message}`);
+    return false;
   }
+}
+
+export function uninstallHarness(
+  spec: AgentHarnessSpec,
+  home: string,
+  dryRun: boolean = false,
+  log: (msg: string) => void = console.log,
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  try {
+    if (spec.skillsStrategy === 'bundle' && spec.bundlePath) {
+      const bPath = spec.bundlePath(home, platform);
+      if (removePluginBundle(bPath, dryRun)) {
+        log(`✓ Removed ${spec.name === 'Google Antigravity' ? 'Antigravity' : spec.name} plugin: ${bPath}`);
+      }
+    } else if (spec.skillsStrategy === 'flat' && spec.skillsPaths) {
+      for (const s of spec.skillsPaths(home, platform)) {
+        if (removeSkillFile(s.path, dryRun)) {
+          log(`✓ Removed ${spec.name} skill: ${s.path}`);
+        }
+      }
+    }
+
+    if (spec.mcpPath) {
+      const mPath = spec.mcpPath(home, platform);
+      const remover = spec.mcpRemover || removeMcpConfig;
+      if (remover(mPath, dryRun)) {
+        if (spec.key === 'claude') {
+          log(`✓ Removed Claude Code MCP:   ${mPath}`);
+        } else {
+          log(`✓ Removed ${spec.name.padEnd(16)}: ${mPath}`);
+        }
+      }
+    }
+
+    if (!dryRun && spec.cleanLegacyPaths) {
+      for (const legacyPath of spec.cleanLegacyPaths(home, platform)) {
+        if (fs.existsSync(legacyPath)) {
+          if (legacyPath.endsWith('.json')) {
+            removeMcpConfig(legacyPath, dryRun);
+          } else {
+            fs.rmSync(legacyPath, { recursive: true, force: true });
+          }
+        }
+      }
+    }
+
+    if (spec.postUninstall) {
+      spec.postUninstall(home, dryRun);
+    }
+    return true;
+  } catch (err: any) {
+    log(`✗ Failed to uninstall ${spec.name}: ${err.message}`);
+    return false;
+  }
+}
+
+// Smart detection to verify if an agent/tool is actually installed on the system
+export function isAgentInstalled(
+  agentKey: AgentHarnessKey | 'gemini' | 'claude-code' | 'roo-code' | 'code' | 'copilot',
+  home: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  const harness = AGENT_HARNESSES.find(
+    (h) => h.key === agentKey || (h.aliases && h.aliases.includes(agentKey as string))
+  );
+  if (harness) {
+    return harness.isDetected(home, platform);
+  }
+  return false;
 }
 
 // Helper to safely merge lux into existing MCP JSON config and clean legacy keys
@@ -401,53 +823,54 @@ export interface AgentPaths {
   antigravityPlugin: string;
   antigravityMcp: string;
   antigravitySkill: string;
-  claudePlugin: string;
+  claudePlugin?: string;
   claudeCodeMcp: string;
   claudeCodeSkill: string;
+  claudeCodeWebSkill: string;
   // Major standalone MCP agents
   claudeDesktopMcp: string;
   windsurfMcp: string;
   cursorMcp: string;
   clineMcp?: string;
   rooCodeMcp?: string;
+  zedMcp?: string;
+  continueMcp?: string;
+  vscodeMcp?: string;
 }
 
 export function getAgentConfigPaths(
   home: string = os.homedir(),
   platform: NodeJS.Platform = process.platform
 ): AgentPaths {
-  // Claude Desktop config path
-  let claudeDesktopMcp: string;
-  if (platform === 'darwin') {
-    claudeDesktopMcp = path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-  } else if (platform === 'win32') {
-    claudeDesktopMcp = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Claude', 'claude_desktop_config.json');
-  } else {
-    claudeDesktopMcp = path.join(home, '.config', 'Claude', 'claude_desktop_config.json');
-  }
+  const antigravity = AGENT_HARNESSES.find((h) => h.key === 'antigravity')!;
+  const claude = AGENT_HARNESSES.find((h) => h.key === 'claude')!;
+  const desktop = AGENT_HARNESSES.find((h) => h.key === 'desktop')!;
+  const windsurf = AGENT_HARNESSES.find((h) => h.key === 'windsurf')!;
+  const cursor = AGENT_HARNESSES.find((h) => h.key === 'cursor')!;
+  const cline = AGENT_HARNESSES.find((h) => h.key === 'cline')!;
+  const roo = AGENT_HARNESSES.find((h) => h.key === 'roo')!;
+  const zed = AGENT_HARNESSES.find((h) => h.key === 'zed')!;
+  const cont = AGENT_HARNESSES.find((h) => h.key === 'continue')!;
+  const vscode = AGENT_HARNESSES.find((h) => h.key === 'vscode')!;
 
-  // VS Code globalStorage base directory (for optional legacy path resolution)
-  let vscodeGlobalStorage: string;
-  if (platform === 'darwin') {
-    vscodeGlobalStorage = path.join(home, 'Library', 'Application Support', 'Code', 'User', 'globalStorage');
-  } else if (platform === 'win32') {
-    vscodeGlobalStorage = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Code', 'User', 'globalStorage');
-  } else {
-    vscodeGlobalStorage = path.join(home, '.config', 'Code', 'User', 'globalStorage');
-  }
+  const claudeSkills = claude.skillsPaths!(home, platform);
 
   return {
-    antigravityPlugin: path.join(home, '.gemini', 'config', 'plugins', 'lux-edit'),
+    antigravityPlugin: antigravity.bundlePath!(home, platform),
     antigravityMcp: path.join(home, '.gemini', 'config', 'mcp_config.json'),
     antigravitySkill: path.join(home, '.gemini', 'config', 'skills', 'lux', 'SKILL.md'),
     claudePlugin: path.join(home, '.claude', 'skills', 'lux-edit'),
-    claudeCodeMcp: path.join(home, '.claude', 'mcp.json'),
-    claudeCodeSkill: path.join(home, '.claude', 'skills', 'lux', 'SKILL.md'),
-    claudeDesktopMcp,
-    windsurfMcp: path.join(home, '.codeium', 'windsurf', 'mcp_config.json'),
-    cursorMcp: path.join(home, '.cursor', 'mcp.json'),
-    clineMcp: path.join(vscodeGlobalStorage, 'saoudrizwan.claude-dev', 'settings', 'cline_mcp_settings.json'),
-    rooCodeMcp: path.join(vscodeGlobalStorage, 'rooveterinaryinc.roo-cline', 'settings', 'cline_mcp_settings.json'),
+    claudeCodeMcp: claude.mcpPath!(home, platform),
+    claudeCodeSkill: claudeSkills[0].path,
+    claudeCodeWebSkill: claudeSkills[1].path,
+    claudeDesktopMcp: desktop.mcpPath!(home, platform),
+    windsurfMcp: windsurf.mcpPath!(home, platform),
+    cursorMcp: cursor.mcpPath!(home, platform),
+    clineMcp: cline.mcpPath!(home, platform),
+    rooCodeMcp: roo.mcpPath!(home, platform),
+    zedMcp: zed.mcpPath!(home, platform),
+    continueMcp: cont.mcpPath!(home, platform),
+    vscodeMcp: vscode.mcpPath!(home, platform),
   };
 }
 
@@ -596,17 +1019,11 @@ export async function runInit(options: InitOptions = {}) {
     log('\nInstalling lux globally across user agent environments\n');
     const paths = getAgentConfigPaths(home);
 
-    const agentCandidates: Array<{
-      key: 'antigravity' | 'claude' | 'cursor' | 'windsurf' | 'desktop';
-      name: string;
-      detected: boolean;
-    }> = [
-      { key: 'antigravity', name: 'Google Antigravity', detected: isAgentInstalled('antigravity', home) },
-      { key: 'claude', name: 'Claude Code', detected: isAgentInstalled('claude', home) },
-      { key: 'cursor', name: 'Cursor', detected: isAgentInstalled('cursor', home) },
-      { key: 'windsurf', name: 'Windsurf', detected: isAgentInstalled('windsurf', home) },
-      { key: 'desktop', name: 'Claude Desktop', detected: isAgentInstalled('desktop', home) },
-    ];
+    const agentCandidates = AGENT_HARNESSES.map((harness) => ({
+      key: harness.key,
+      name: harness.name,
+      detected: harness.isDetected(home, process.platform),
+    }));
 
     let selectedAgentKeys: string[];
     if (targetAgent) {
@@ -627,63 +1044,16 @@ export async function runInit(options: InitOptions = {}) {
       }
     }
 
-    const shouldTarget = (key: string) => selectedAgentKeys.includes(key);
+    const shouldTarget = (harness: AgentHarnessSpec) =>
+      selectedAgentKeys.includes(harness.key) ||
+      (harness.aliases && harness.aliases.some((alias) => selectedAgentKeys.includes(alias)));
 
-    // Tier 1: Plugin-Compatible Agents (Agent Plugin Standard: plugin.json + mcp_config.json + skills/)
-    if (shouldTarget('antigravity') || shouldTarget('gemini')) {
-      if (writePluginBundle(paths.antigravityPlugin, dryRun, autoUpdate)) {
-        log(`✓ Antigravity plugin:     ${paths.antigravityPlugin} (Skills + MCP)`);
-        // Clean up legacy standalone skill & mcp if present to prevent duplicate registrations
-        if (fs.existsSync(paths.antigravitySkill)) {
-          removeSkillFile(paths.antigravitySkill, dryRun);
-        }
-        if (fs.existsSync(paths.antigravityMcp)) {
-          removeMcpConfig(paths.antigravityMcp, dryRun);
-        }
-      }
-    }
-
-    if (shouldTarget('claude') || shouldTarget('claude-code')) {
-      if (!dryRun) {
-        const legacyClaudeDirs = [
-          path.join(home, '.claude', 'plugins', 'lux-edit'),
-          path.join(home, '.claude', 'skills', 'lux-review'),
-          path.join(home, '.claude', 'skills', 'lux'),
-          path.join(home, '.claude', 'skills', 'lux-web'),
-        ];
-        for (const dir of legacyClaudeDirs) {
-          if (fs.existsSync(dir)) {
-            fs.rmSync(dir, { recursive: true, force: true });
-          }
-        }
-      }
-      if (writePluginBundle(paths.claudePlugin, dryRun, autoUpdate)) {
-        log(`✓ Claude Code plugin:     ${paths.claudePlugin} (Skills + MCP)`);
-      }
-      if (mergeMcpConfig(paths.claudeCodeMcp, dryRun, autoUpdate)) {
-        log(`✓ Claude Code MCP:        ${paths.claudeCodeMcp}`);
-      }
-    }
-
-    // Tier 2: Standalone MCP Clients (Cursor, Windsurf, Claude Desktop)
-    const standaloneClients: Array<{
-      key: 'desktop' | 'windsurf' | 'cursor';
-      name: string;
-      path: string;
-    }> = [
-      { key: 'desktop', name: 'Claude Desktop', path: paths.claudeDesktopMcp },
-      { key: 'windsurf', name: 'Windsurf', path: paths.windsurfMcp },
-      { key: 'cursor', name: 'Cursor', path: paths.cursorMcp },
-    ];
-
-    for (const client of standaloneClients) {
-      if (shouldTarget(client.key)) {
-        if (mergeMcpConfig(client.path, dryRun, autoUpdate)) {
-          log(`✓ ${client.name.padEnd(16)}:    ${client.path}`);
-        }
+    for (const harness of AGENT_HARNESSES) {
+      if (shouldTarget(harness)) {
+        installHarness(harness, home, dryRun, autoUpdate, log);
       } else {
-        const detected = isAgentInstalled(client.key, home);
-        log(`- ${client.name.padEnd(16)}:    (${detected ? 'skipped' : 'not detected, skipped'})`);
+        const detected = harness.isDetected(home, process.platform);
+        log(`- ${harness.name.padEnd(16)}:    (${detected ? 'skipped' : 'not detected, skipped'})`);
       }
     }
 
@@ -747,25 +1117,28 @@ export async function runInit(options: InitOptions = {}) {
       log(`✓ Created agent skill:    ${skillWebFile}`);
     }
 
-    // 6. Auto-detect and sync Claude Code ~/.claude/skills/lux-edit plugin bundle
+    // 6. Auto-detect and sync Claude Code ~/.claude/skills
     const claudeDir = path.join(home, '.claude');
-    if (fs.existsSync(claudeDir)) {
-      const claudePluginDir = path.join(claudeDir, 'skills', 'lux-edit');
+    if (fs.existsSync(claudeDir) || fs.existsSync(path.join(home, '.claude.json'))) {
       if (!dryRun) {
-        const legacyFlatSkills = [
+        const legacyClaudeDirs = [
           path.join(claudeDir, 'skills', 'lux-review'),
-          path.join(claudeDir, 'skills', 'lux'),
-          path.join(claudeDir, 'skills', 'lux-web'),
+          path.join(claudeDir, 'skills', 'lux-edit'),
           path.join(claudeDir, 'plugins', 'lux-edit'),
         ];
-        for (const dir of legacyFlatSkills) {
+        for (const dir of legacyClaudeDirs) {
           if (fs.existsSync(dir)) {
             fs.rmSync(dir, { recursive: true, force: true });
           }
         }
       }
-      if (writePluginBundle(claudePluginDir, dryRun, autoUpdate)) {
-        log(`✓ Synced Claude Code:     ${claudePluginDir}`);
+      const claudeSkill = path.join(claudeDir, 'skills', 'lux', 'SKILL.md');
+      const claudeWebSkill = path.join(claudeDir, 'skills', 'lux-web', 'SKILL.md');
+      if (writeSkillFile(claudeSkill, dryRun)) {
+        log(`✓ Synced Claude Code:     ${claudeSkill}`);
+      }
+      if (writeSkillFile(claudeWebSkill, dryRun, SKILL_WEB_CONTENT)) {
+        log(`✓ Synced Claude Code:     ${claudeWebSkill}`);
       }
     }
 
@@ -825,62 +1198,17 @@ export async function runUninstall(options: UninstallOptions = {}) {
   // 2. Global Mode
   if (isGlobal) {
     log('\nRemoving lux globally from user agent environments\n');
-    const paths = getAgentConfigPaths(home);
-    const shouldTarget = (name: string) => !targetAgent || targetAgent === name || targetAgent === 'all';
 
-    // Tier 1: Google Antigravity / Gemini
-    if (shouldTarget('antigravity') || shouldTarget('gemini')) {
-      if (removePluginBundle(paths.antigravityPlugin, dryRun)) {
-        log(`✓ Removed Antigravity plugin: ${paths.antigravityPlugin}`);
-      }
-      if (removeSkillFile(paths.antigravitySkill, dryRun)) {
-        log(`✓ Removed Antigravity skill:  ${paths.antigravitySkill}`);
-      }
-      if (removeMcpConfig(paths.antigravityMcp, dryRun)) {
-        log(`✓ Removed Antigravity MCP:    ${paths.antigravityMcp}`);
-      }
-    }
+    const shouldTarget = (harness: AgentHarnessSpec) =>
+      !targetAgent ||
+      targetAgent === 'all' ||
+      targetAgent === harness.key ||
+      (harness.aliases && harness.aliases.includes(targetAgent)) ||
+      targetAgent === harness.name.toLowerCase().replace(/\s+/g, '');
 
-    // Tier 1: Claude Code
-    if (shouldTarget('claude') || shouldTarget('claude-code')) {
-      if (removePluginBundle(paths.claudePlugin, dryRun)) {
-        log(`✓ Removed Claude Code plugin: ${paths.claudePlugin}`);
-      }
-      if (!dryRun) {
-        const legacyClaudeDirs = [
-          path.join(home, '.claude', 'plugins', 'lux-edit'),
-          path.join(home, '.claude', 'skills', 'lux-review'),
-          path.join(home, '.claude', 'skills', 'lux'),
-          path.join(home, '.claude', 'skills', 'lux-web'),
-        ];
-        for (const dir of legacyClaudeDirs) {
-          if (fs.existsSync(dir)) {
-            fs.rmSync(dir, { recursive: true, force: true });
-          }
-        }
-      }
-      if (removeMcpConfig(paths.claudeCodeMcp, dryRun)) {
-        log(`✓ Removed Claude Code MCP:    ${paths.claudeCodeMcp}`);
-      }
-    }
-
-    // Tier 2: Standalone MCP Clients
-    const standaloneClients: Array<{
-      key: 'desktop' | 'windsurf' | 'cursor';
-      name: string;
-      path: string;
-    }> = [
-      { key: 'desktop', name: 'Claude Desktop', path: paths.claudeDesktopMcp },
-      { key: 'windsurf', name: 'Windsurf', path: paths.windsurfMcp },
-      { key: 'cursor', name: 'Cursor', path: paths.cursorMcp },
-    ];
-
-    for (const client of standaloneClients) {
-      if (!shouldTarget(client.key) && !shouldTarget(client.name.toLowerCase().replace(/\s+/g, ''))) {
-        continue;
-      }
-      if (removeMcpConfig(client.path, dryRun)) {
-        log(`✓ Removed ${client.name.padEnd(16)}: ${client.path}`);
+    for (const harness of AGENT_HARNESSES) {
+      if (shouldTarget(harness)) {
+        uninstallHarness(harness, home, dryRun, log);
       }
     }
 

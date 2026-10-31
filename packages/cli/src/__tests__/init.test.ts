@@ -11,10 +11,16 @@ import {
   removePluginBundle,
   isAgentInstalled,
   getAgentConfigPaths,
+  getPackageVersion,
   installCustomPath,
   uninstallCustomPath,
   runInit,
   runUninstall,
+  installHarness,
+  uninstallHarness,
+  AGENT_HARNESSES,
+  PLUGIN_MANIFEST,
+  CLAUDE_PLUGIN_MANIFEST,
 } from '../init.js';
 
 describe('lux init and multi-agent configuration', () => {
@@ -38,13 +44,17 @@ describe('lux init and multi-agent configuration', () => {
       expect(paths.antigravityMcp).toBe('/Users/testuser/.gemini/config/mcp_config.json');
       expect(paths.antigravitySkill).toBe('/Users/testuser/.gemini/config/skills/lux/SKILL.md');
       expect(paths.claudePlugin).toBe('/Users/testuser/.claude/skills/lux-edit');
-      expect(paths.claudeCodeMcp).toBe('/Users/testuser/.claude/mcp.json');
+      expect(paths.claudeCodeMcp).toBe('/Users/testuser/.claude.json');
       expect(paths.claudeCodeSkill).toBe('/Users/testuser/.claude/skills/lux/SKILL.md');
+      expect(paths.claudeCodeWebSkill).toBe('/Users/testuser/.claude/skills/lux-web/SKILL.md');
       expect(paths.claudeDesktopMcp).toBe('/Users/testuser/Library/Application Support/Claude/claude_desktop_config.json');
       expect(paths.windsurfMcp).toBe('/Users/testuser/.codeium/windsurf/mcp_config.json');
       expect(paths.cursorMcp).toBe('/Users/testuser/.cursor/mcp.json');
       expect(paths.clineMcp).toBe('/Users/testuser/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json');
       expect(paths.rooCodeMcp).toBe('/Users/testuser/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json');
+      expect(paths.zedMcp).toBe('/Users/testuser/.config/zed/settings.json');
+      expect(paths.continueMcp).toBe('/Users/testuser/.continue/config.json');
+      expect(paths.vscodeMcp).toBe('/Users/testuser/.vscode/mcp.json');
     });
 
     it('resolves correct paths for Linux', () => {
@@ -52,9 +62,15 @@ describe('lux init and multi-agent configuration', () => {
       expect(paths.antigravityPlugin).toBe('/home/testuser/.gemini/config/plugins/lux-edit');
       expect(paths.antigravityMcp).toBe('/home/testuser/.gemini/config/mcp_config.json');
       expect(paths.claudePlugin).toBe('/home/testuser/.claude/skills/lux-edit');
+      expect(paths.claudeCodeMcp).toBe('/home/testuser/.claude.json');
+      expect(paths.claudeCodeSkill).toBe('/home/testuser/.claude/skills/lux/SKILL.md');
+      expect(paths.claudeCodeWebSkill).toBe('/home/testuser/.claude/skills/lux-web/SKILL.md');
       expect(paths.claudeDesktopMcp).toBe('/home/testuser/.config/Claude/claude_desktop_config.json');
       expect(paths.clineMcp).toBe('/home/testuser/.config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json');
       expect(paths.rooCodeMcp).toBe('/home/testuser/.config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json');
+      expect(paths.zedMcp).toBe('/home/testuser/.config/zed/settings.json');
+      expect(paths.continueMcp).toBe('/home/testuser/.continue/config.json');
+      expect(paths.vscodeMcp).toBe('/home/testuser/.vscode/mcp.json');
     });
   });
 
@@ -71,7 +87,7 @@ describe('lux init and multi-agent configuration', () => {
 
       const claudeManifest = JSON.parse(fs.readFileSync(path.join(pluginDir, '.claude-plugin', 'plugin.json'), 'utf-8'));
       expect(claudeManifest.name).toBe('lux-edit');
-      expect(claudeManifest.version).toBe('0.12.0');
+      expect(claudeManifest.version).toBe(getPackageVersion());
 
       const claudeMcp = JSON.parse(fs.readFileSync(path.join(pluginDir, '.claude-plugin', '.mcp.json'), 'utf-8'));
       expect(claudeMcp.lux).toBeDefined();
@@ -272,13 +288,17 @@ describe('lux init and multi-agent configuration', () => {
       });
 
       const paths = getAgentConfigPaths(fakeHome);
-      // Plugin-compatible agents installed
+      // Antigravity plugin-compatible agent installed
       expect(fs.existsSync(path.join(paths.antigravityPlugin, 'plugin.json'))).toBe(true);
       expect(fs.existsSync(path.join(paths.antigravityPlugin, 'mcp_config.json'))).toBe(true);
       expect(fs.existsSync(path.join(paths.antigravityPlugin, 'skills', 'lux', 'SKILL.md'))).toBe(true);
-      expect(fs.existsSync(path.join(paths.claudePlugin, 'plugin.json'))).toBe(true);
-      expect(fs.existsSync(path.join(paths.claudePlugin, '.claude-plugin', 'plugin.json'))).toBe(true);
-      expect(fs.existsSync(path.join(paths.claudePlugin, '.mcp.json'))).toBe(true);
+
+      // Claude Code skills and user-scope MCP installed
+      expect(fs.existsSync(paths.claudeCodeSkill)).toBe(true);
+      expect(fs.existsSync(paths.claudeCodeWebSkill)).toBe(true);
+      expect(fs.existsSync(paths.claudeCodeMcp)).toBe(true);
+      const claudeMcp = JSON.parse(fs.readFileSync(paths.claudeCodeMcp, 'utf-8'));
+      expect(claudeMcp.mcpServers.lux).toBeDefined();
 
       // Undetected legacy agents should be skipped (no ghost files)
       expect(fs.existsSync(paths.cursorMcp)).toBe(false);
@@ -293,9 +313,75 @@ describe('lux init and multi-agent configuration', () => {
       });
 
       expect(fs.existsSync(paths.antigravityPlugin)).toBe(false);
-      expect(fs.existsSync(paths.claudePlugin)).toBe(false);
+      expect(fs.existsSync(paths.claudeCodeSkill)).toBe(false);
+      expect(fs.existsSync(paths.claudeCodeWebSkill)).toBe(false);
+      const claudeMcpAfter = JSON.parse(fs.readFileSync(paths.claudeCodeMcp, 'utf-8'));
+      expect(claudeMcpAfter.mcpServers.lux).toBeUndefined();
       expect(uninstallLogs.some((l) => l.includes('Removed Antigravity plugin'))).toBe(true);
+      expect(uninstallLogs.some((l) => l.includes('Removed Claude Code MCP'))).toBe(true);
       expect(uninstallLogs.some((l) => l.includes('Global uninstallation complete'))).toBe(true);
+    });
+
+    it('configures Claude Code with both /lux and /lux-web skills and ~/.claude.json when --agent claude is targeted', async () => {
+      // Simulate existing ~/.claude.json with custom server and legacy ~/.claude/mcp.json and legacy skill folders
+      const claudeJsonPath = path.join(fakeHome, '.claude.json');
+      fs.writeFileSync(
+        claudeJsonPath,
+        JSON.stringify({
+          mcpServers: {
+            custom: { command: 'node', args: ['server.js'] },
+          },
+        })
+      );
+      const legacyMcpPath = path.join(fakeHome, '.claude', 'mcp.json');
+      fs.mkdirSync(path.dirname(legacyMcpPath), { recursive: true });
+      fs.writeFileSync(legacyMcpPath, JSON.stringify({ mcpServers: { lux: { command: 'npx', args: ['lux'] } } }));
+
+      const legacyEditDir = path.join(fakeHome, '.claude', 'skills', 'lux-edit');
+      fs.mkdirSync(legacyEditDir, { recursive: true });
+      fs.writeFileSync(path.join(legacyEditDir, 'dummy.txt'), 'old');
+
+      const logs: string[] = [];
+      await runInit({
+        global: true,
+        agent: 'claude',
+        home: fakeHome,
+        logger: (msg) => logs.push(msg),
+      });
+
+      const paths = getAgentConfigPaths(fakeHome);
+      // Both skills created
+      expect(fs.existsSync(paths.claudeCodeSkill)).toBe(true);
+      expect(fs.existsSync(paths.claudeCodeWebSkill)).toBe(true);
+      expect(fs.readFileSync(paths.claudeCodeSkill, 'utf-8')).toContain('name: lux');
+      expect(fs.readFileSync(paths.claudeCodeWebSkill, 'utf-8')).toContain('name: lux-web');
+
+      // User-scope ~/.claude.json updated, custom server preserved
+      const claudeJson = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf-8'));
+      expect(claudeJson.mcpServers.custom).toEqual({ command: 'node', args: ['server.js'] });
+      expect(claudeJson.mcpServers.lux).toEqual({
+        command: 'npx',
+        args: ['-y', 'lux-edit', 'mcp'],
+      });
+
+      // Legacy files cleaned up
+      expect(fs.existsSync(legacyEditDir)).toBe(false);
+      const legacyMcp = JSON.parse(fs.readFileSync(legacyMcpPath, 'utf-8'));
+      expect(legacyMcp.mcpServers.lux).toBeUndefined();
+
+      // Clean uninstall
+      await runUninstall({
+        global: true,
+        agent: 'claude',
+        home: fakeHome,
+        logger: () => {},
+      });
+
+      expect(fs.existsSync(paths.claudeCodeSkill)).toBe(false);
+      expect(fs.existsSync(paths.claudeCodeWebSkill)).toBe(false);
+      const claudeJsonAfter = JSON.parse(fs.readFileSync(claudeJsonPath, 'utf-8'));
+      expect(claudeJsonAfter.mcpServers.custom).toBeDefined();
+      expect(claudeJsonAfter.mcpServers.lux).toBeUndefined();
     });
 
     it('configures legacy agents when --all is specified', async () => {
@@ -448,6 +534,188 @@ describe('lux init and multi-agent configuration', () => {
 
       const wsMcp = JSON.parse(fs.readFileSync(path.join(fakeWorkspace, 'mcp.json'), 'utf-8'));
       expect(wsMcp.mcpServers.lux.args).toEqual(['-y', 'lux-edit@latest', 'mcp']);
+    });
+  });
+
+  describe('Harness Registry and Contract Invariants', () => {
+    it('defines non-empty, unique keys for every registered harness', () => {
+      const keys = AGENT_HARNESSES.map((h) => h.key);
+      const uniqueKeys = new Set(keys);
+      expect(uniqueKeys.size).toBe(keys.length);
+      for (const harness of AGENT_HARNESSES) {
+        expect(harness.name).toBeTruthy();
+        expect(['bundle', 'flat', 'none']).toContain(harness.skillsStrategy);
+      }
+    });
+
+    it('enforces Claude Code contract invariants (no ~/.claude/mcp.json, flat skills layout)', () => {
+      const claude = AGENT_HARNESSES.find((h) => h.key === 'claude')!;
+      expect(claude).toBeDefined();
+
+      const mcpPath = claude.mcpPath!('/Users/testuser', 'darwin');
+      expect(mcpPath).toBe('/Users/testuser/.claude.json');
+      expect(mcpPath).not.toContain('/.claude/mcp.json');
+
+      expect(claude.skillsStrategy).toBe('flat');
+      const skills = claude.skillsPaths!('/Users/testuser', 'darwin');
+      expect(skills.length).toBe(2);
+      expect(skills.map((s) => s.path)).toEqual([
+        '/Users/testuser/.claude/skills/lux/SKILL.md',
+        '/Users/testuser/.claude/skills/lux-web/SKILL.md',
+      ]);
+
+      const legacyClean = claude.cleanLegacyPaths!('/Users/testuser', 'darwin');
+      expect(legacyClean).toContain('/Users/testuser/.claude/skills/lux-edit');
+      expect(legacyClean).toContain('/Users/testuser/.claude/mcp.json');
+    });
+
+    it('enforces Google Antigravity contract invariants (plugin bundle with skills and mcp)', () => {
+      const antigravity = AGENT_HARNESSES.find((h) => h.key === 'antigravity')!;
+      expect(antigravity).toBeDefined();
+      expect(antigravity.skillsStrategy).toBe('bundle');
+      const bundleDir = antigravity.bundlePath!('/Users/testuser', 'darwin');
+      expect(bundleDir).toBe('/Users/testuser/.gemini/config/plugins/lux-edit');
+    });
+
+    it('enforces Standalone MCP client contract invariants (Cursor, Windsurf, Claude Desktop)', () => {
+      const cursor = AGENT_HARNESSES.find((h) => h.key === 'cursor')!;
+      expect(cursor.skillsStrategy).toBe('none');
+      expect(cursor.mcpPath!('/Users/testuser', 'darwin')).toBe('/Users/testuser/.cursor/mcp.json');
+
+      const windsurf = AGENT_HARNESSES.find((h) => h.key === 'windsurf')!;
+      expect(windsurf.skillsStrategy).toBe('none');
+      expect(windsurf.mcpPath!('/Users/testuser', 'darwin')).toBe('/Users/testuser/.codeium/windsurf/mcp_config.json');
+
+      const desktopMac = AGENT_HARNESSES.find((h) => h.key === 'desktop')!.mcpPath!('/Users/testuser', 'darwin');
+      expect(desktopMac).toContain('Library/Application Support/Claude/claude_desktop_config.json');
+
+      const desktopLinux = AGENT_HARNESSES.find((h) => h.key === 'desktop')!.mcpPath!('/home/testuser', 'linux');
+      expect(desktopLinux).toBe('/home/testuser/.config/Claude/claude_desktop_config.json');
+    });
+
+    it('enforces editor and extension harness contract invariants (Cline, Roo, Zed, Continue, VS Code)', () => {
+      // 1. Cline & Roo Code
+      const cline = AGENT_HARNESSES.find((h) => h.key === 'cline')!;
+      expect(cline.mcpPath!('/Users/testuser', 'darwin')).toContain('saoudrizwan.claude-dev/settings/cline_mcp_settings.json');
+
+      const roo = AGENT_HARNESSES.find((h) => h.key === 'roo')!;
+      expect(roo.mcpPath!('/Users/testuser', 'darwin')).toContain('rooveterinaryinc.roo-cline/settings/cline_mcp_settings.json');
+
+      // 2. Zed
+      const zed = AGENT_HARNESSES.find((h) => h.key === 'zed')!;
+      expect(zed.mcpPath!('/Users/testuser', 'darwin')).toBe('/Users/testuser/.config/zed/settings.json');
+      expect(zed.mcpPath!('/home/testuser', 'linux')).toBe('/home/testuser/.config/zed/settings.json');
+
+      // 3. Continue.dev
+      const continueHarness = AGENT_HARNESSES.find((h) => h.key === 'continue')!;
+      expect(continueHarness.mcpPath!('/Users/testuser', 'darwin')).toBe('/Users/testuser/.continue/config.json');
+
+      // 4. VS Code
+      const vscode = AGENT_HARNESSES.find((h) => h.key === 'vscode')!;
+      expect(vscode.mcpPath!('/Users/testuser', 'darwin')).toBe('/Users/testuser/.vscode/mcp.json');
+    });
+
+    it('installs and uninstalls Zed and Continue cleanly', async () => {
+      const zedFile = path.join(fakeHome, '.config', 'zed', 'settings.json');
+      fs.mkdirSync(path.dirname(zedFile), { recursive: true });
+      fs.writeFileSync(zedFile, JSON.stringify({ theme: 'One Dark' }));
+
+      const continueFile = path.join(fakeHome, '.continue', 'config.json');
+      fs.mkdirSync(path.dirname(continueFile), { recursive: true });
+      fs.writeFileSync(continueFile, JSON.stringify({ models: [] }));
+
+      // Test Zed install/uninstall
+      const zed = AGENT_HARNESSES.find((h) => h.key === 'zed')!;
+      installHarness(zed, fakeHome, false, false, () => {});
+      const zedConfig = JSON.parse(fs.readFileSync(zedFile, 'utf-8'));
+      expect(zedConfig.theme).toBe('One Dark');
+      expect(zedConfig.context_servers.lux).toBeDefined();
+
+      uninstallHarness(zed, fakeHome, false, () => {});
+      const zedConfigAfter = JSON.parse(fs.readFileSync(zedFile, 'utf-8'));
+      expect(zedConfigAfter.context_servers.lux).toBeUndefined();
+
+      // Test Continue install/uninstall
+      const cont = AGENT_HARNESSES.find((h) => h.key === 'continue')!;
+      installHarness(cont, fakeHome, false, false, () => {});
+      const continueConfig = JSON.parse(fs.readFileSync(continueFile, 'utf-8'));
+      expect(continueConfig.models).toEqual([]);
+      expect(continueConfig.mcpServers.some((s: any) => s.name === 'lux')).toBe(true);
+
+      uninstallHarness(cont, fakeHome, false, () => {});
+      const continueConfigAfter = JSON.parse(fs.readFileSync(continueFile, 'utf-8'));
+      expect(continueConfigAfter.mcpServers.some((s: any) => s.name === 'lux')).toBe(false);
+    });
+  });
+
+  describe('Manifest Version Consistency & Drift Gate', () => {
+    it('ensures all exported plugin manifests dynamically match the active package version', () => {
+      const pkgVersion = getPackageVersion();
+      expect(PLUGIN_MANIFEST.version).toBe(pkgVersion);
+      expect(CLAUDE_PLUGIN_MANIFEST.version).toBe(pkgVersion);
+
+      // Verify serialization preserves dynamic version
+      const serializedPlugin = JSON.parse(JSON.stringify(PLUGIN_MANIFEST));
+      expect(serializedPlugin.version).toBe(pkgVersion);
+
+      const serializedClaude = JSON.parse(JSON.stringify(CLAUDE_PLUGIN_MANIFEST));
+      expect(serializedClaude.version).toBe(pkgVersion);
+    });
+
+    it('verifies root repository manifest files match active package.json version', () => {
+      const rootPkgPath = path.resolve(__dirname, '../../../../package.json');
+      if (fs.existsSync(rootPkgPath)) {
+        const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+        const rootDir = path.dirname(rootPkgPath);
+
+        const pluginJsonPath = path.join(rootDir, 'plugin.json');
+        if (fs.existsSync(pluginJsonPath)) {
+          const pluginJson = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf-8'));
+          expect(pluginJson.version).toBe(rootPkg.version);
+        }
+
+        const claudePluginPath = path.join(rootDir, '.claude-plugin', 'plugin.json');
+        if (fs.existsSync(claudePluginPath)) {
+          const claudeJson = JSON.parse(fs.readFileSync(claudePluginPath, 'utf-8'));
+          expect(claudeJson.version).toBe(rootPkg.version);
+        }
+
+        const serverJsonPath = path.join(rootDir, 'server.json');
+        if (fs.existsSync(serverJsonPath)) {
+          const serverJson = JSON.parse(fs.readFileSync(serverJsonPath, 'utf-8'));
+          expect(serverJson.version).toBe(rootPkg.version);
+        }
+      }
+    });
+  });
+
+  describe('Black-Box Harness Verification', () => {
+    it('verifies Claude Code user scope registration produces valid YAML frontmatter and MCP JSON schema', async () => {
+      const claudeHome = path.join(fakeHome, 'claude-smoke');
+      fs.mkdirSync(claudeHome, { recursive: true });
+
+      await runInit({
+        global: true,
+        agent: 'claude',
+        home: claudeHome,
+        logger: () => {},
+      });
+
+      const paths = getAgentConfigPaths(claudeHome);
+      // Verify skill frontmatter format
+      const skillLux = fs.readFileSync(paths.claudeCodeSkill, 'utf-8');
+      expect(skillLux).toMatch(/^---\r?\nname:\s*lux\r?\ndescription:/m);
+
+      const skillWeb = fs.readFileSync(paths.claudeCodeWebSkill, 'utf-8');
+      expect(skillWeb).toMatch(/^---\r?\nname:\s*lux-web\r?\ndescription:/m);
+
+      // Verify MCP structure adheres to Claude Code ~/.claude.json mcpServers schema
+      const claudeJson = JSON.parse(fs.readFileSync(paths.claudeCodeMcp, 'utf-8'));
+      expect(claudeJson.mcpServers).toBeDefined();
+      expect(claudeJson.mcpServers.lux).toEqual({
+        command: 'npx',
+        args: ['-y', 'lux-edit', 'mcp'],
+      });
     });
   });
 });

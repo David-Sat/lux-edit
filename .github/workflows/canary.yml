@@ -1,0 +1,82 @@
+name: Agent Harness Canary
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/cli/**'
+      - '.github/workflows/canary.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  claude-code-canary:
+    name: Claude Code Harness Canary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies & build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install latest Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run lux init for Claude Code
+        run: node packages/cli/dist/cli.js init -g --agent claude -y
+
+      - name: Verify Claude Code discovers lux MCP server
+        run: |
+          claude mcp list
+          claude mcp list | grep -q "lux" || (echo "Claude Code failed to list lux MCP server" && exit 1)
+
+      - name: Verify skills are installed in ~/.claude/skills
+        run: |
+          test -f "$HOME/.claude/skills/lux/SKILL.md" || (echo "Missing lux skill" && exit 1)
+          test -f "$HOME/.claude/skills/lux-web/SKILL.md" || (echo "Missing lux-web skill" && exit 1)
+
+      - name: Run lux uninstall for Claude Code
+        run: node packages/cli/dist/cli.js uninstall -g --agent claude
+
+      - name: Verify clean uninstallation
+        run: |
+          test ! -f "$HOME/.claude/skills/lux/SKILL.md"
+          test ! -f "$HOME/.claude/skills/lux-web/SKILL.md"
+
+      - name: Create GitHub Issue on failure
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_ISSUE=$(gh issue list --state open --search "Canary Alert" --json number -q '.[0].number' 2>/dev/null || true)
+          if [ -z "$EXISTING_ISSUE" ]; then
+            gh issue create \
+              --title "🚨 Canary Alert: Agent harness integration broken" \
+              --body "The scheduled agent harness canary test failed on $(date -u).
+
+          **Run link:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          An upstream harness update (e.g. Claude Code CLI) may have changed its configuration paths or protocol discovery." \
+              --label "bug"
+          else
+            echo "Active canary issue #$EXISTING_ISSUE already exists. Skipping duplicate."
+          fi
