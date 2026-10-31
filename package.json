@@ -31,7 +31,10 @@
   "pnpm": {
     "overrides": {
       "proxy-addr": "^2.0.8",
-      "fast-uri": "^3.1.7"
+      "fast-uri": "^3.1.7",
+      "follow-redirects": "^1.16.2",
+      "body-parser": "^2.4.0",
+      "zod": "^4.6.7"
     }
   }
 }
