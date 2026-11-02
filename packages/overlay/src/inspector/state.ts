@@ -10,10 +10,13 @@ import {
   VoiceTargetPin,
   STORAGE_KEYS,
   API_ROUTES,
+  DockPosition,
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
 import { VoiceRecorder } from './voice-recorder.js';
+
+export type { DockPosition };
 
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
@@ -45,6 +48,11 @@ export class OverlayStateManager {
   public isDockMenuOpen = false;
   public isDrawerOpen = false;
   public isThemePanelOpen = false;
+  public dockPosition: DockPosition = {
+    side: 'right',
+    verticalAnchor: 'bottom',
+    offsetY: 24,
+  };
 
   public activeElement: HTMLElement | null = null;
   public hoveredElement: HTMLElement | null = null;
@@ -92,6 +100,9 @@ export class OverlayStateManager {
     this.loadFromStorage();
     this.initWebSocket();
     this.fetchVersionInfo();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => this.clampDockPosition());
+    }
   }
 
   public async fetchVersionInfo(): Promise<void> {
@@ -161,6 +172,26 @@ export class OverlayStateManager {
           this.annotations = data.annotations || [];
           this.voiceReviews = data.voiceReviews || [];
           this.userPrompt = data.userPrompt || '';
+        }
+      }
+    } catch (e) {}
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const savedPos = localStorage.getItem(STORAGE_KEYS.DOCK_POSITION);
+        if (savedPos) {
+          const parsed = JSON.parse(savedPos);
+          if (
+            (parsed.side === 'left' || parsed.side === 'right') &&
+            (parsed.verticalAnchor === 'top' || parsed.verticalAnchor === 'bottom') &&
+            typeof parsed.offsetY === 'number'
+          ) {
+            this.dockPosition = {
+              side: parsed.side,
+              verticalAnchor: parsed.verticalAnchor,
+              offsetY: Math.max(10, parsed.offsetY),
+            };
+          }
         }
       }
     } catch (e) {}
@@ -386,6 +417,28 @@ export class OverlayStateManager {
   public setDockMenuOpen(val: boolean): void {
     this.isDockMenuOpen = val;
     this.notify();
+  }
+
+  public setDockPosition(pos: DockPosition): void {
+    this.dockPosition = pos;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.DOCK_POSITION, JSON.stringify(pos));
+      }
+    } catch {}
+    this.notify();
+  }
+
+  public clampDockPosition(): void {
+    if (typeof window === 'undefined') return;
+    const maxOffset = Math.max(20, window.innerHeight - 80);
+    if (this.dockPosition.offsetY > maxOffset) {
+      this.dockPosition = {
+        ...this.dockPosition,
+        offsetY: maxOffset,
+      };
+      this.notify();
+    }
   }
 
   public setDrawerOpen(val: boolean): void {

@@ -13,8 +13,11 @@ import { ThemePanel } from './inspector/theme-panel.js';
 
 export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const state = OverlayStateManager.getInstance();
+  const [, setTick] = useState(0);
 
-
+  useEffect(() => {
+    return state.subscribe(() => setTick((t) => t + 1));
+  }, []);
 
   useEffect(() => {
     const isInsideShadow = (e: Event): boolean => {
@@ -274,8 +277,19 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
     };
   }, [shadowRoot]);
 
+  const dockPos = state.dockPosition;
+  const isLeft = dockPos.side === 'left';
+  const isTop = dockPos.verticalAnchor === 'top';
+  const panelOffsetY = Math.max(78, dockPos.offsetY + 54);
+
   return (
-    <div class="ve-root">
+    <div
+      class={`ve-root ${isLeft ? 've-dock-left' : 've-dock-right'} ${isTop ? 've-dock-top' : 've-dock-bottom'}`}
+      style={{
+        '--ve-dock-offset-y': `${dockPos.offsetY}px`,
+        '--ve-panel-offset-y': `${panelOffsetY}px`,
+      }}
+    >
       <style>{OVERLAY_STYLES}</style>
       <SelectionBox />
       <FloatingToolbar />

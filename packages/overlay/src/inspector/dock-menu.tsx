@@ -1,13 +1,136 @@
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { VoiceRecorder } from './voice-recorder.js';
+
+function useDraggableDock() {
+  const state = OverlayStateManager.getInstance();
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    initialLeft: number;
+    initialTop: number;
+    width: number;
+    height: number;
+    isDragging: boolean;
+    element: HTMLElement;
+  } | null>(null);
+  const wasDraggingRef = useRef(false);
+
+  const startDrag = (e: PointerEvent, element: HTMLElement) => {
+    if (e.button !== 0) return;
+    try {
+      if (element.setPointerCapture) {
+        element.setPointerCapture(e.pointerId);
+      }
+    } catch {}
+    const rect = element.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialLeft: rect.left,
+      initialTop: rect.top,
+      width: rect.width,
+      height: rect.height,
+      isDragging: false,
+      element,
+    };
+    wasDraggingRef.current = false;
+  };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    if (!dragRef.current.isDragging) {
+      if (Math.hypot(dx, dy) > 5) {
+        dragRef.current.isDragging = true;
+        setIsDragging(true);
+      }
+    }
+    if (dragRef.current.isDragging) {
+      const width = dragRef.current.width;
+      const height = dragRef.current.height;
+      const newX = Math.max(10, Math.min(window.innerWidth - width - 10, dragRef.current.initialLeft + dx));
+      const newY = Math.max(10, Math.min(window.innerHeight - height - 10, dragRef.current.initialTop + dy));
+      setDragPos({ x: newX, y: newY });
+    }
+  };
+
+  const endDrag = (e: PointerEvent) => {
+    if (!dragRef.current) return;
+    const { isDragging: didDrag, width, height, element } = dragRef.current;
+    try {
+      if (element && element.hasPointerCapture && element.hasPointerCapture(e.pointerId)) {
+        element.releasePointerCapture(e.pointerId);
+      }
+    } catch {}
+
+    if (didDrag && dragPos) {
+      wasDraggingRef.current = true;
+      const centerX = dragPos.x + width / 2;
+      const side: 'left' | 'right' = centerX < window.innerWidth / 2 ? 'left' : 'right';
+      const margin = 20;
+
+      const clampedY = Math.max(margin, Math.min(window.innerHeight - height - margin, dragPos.y));
+      let verticalAnchor: 'top' | 'bottom';
+      let offsetY: number;
+      if (clampedY + height / 2 < window.innerHeight / 2) {
+        verticalAnchor = 'top';
+        offsetY = Math.round(clampedY);
+      } else {
+        verticalAnchor = 'bottom';
+        offsetY = Math.round(window.innerHeight - clampedY - height);
+      }
+
+      state.setDockPosition({ side, verticalAnchor, offsetY });
+    }
+
+    dragRef.current = null;
+    setIsDragging(false);
+    setDragPos(null);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      onPointerMove(e);
+    };
+
+    const handleWindowPointerUp = (e: PointerEvent) => {
+      endDrag(e);
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('pointercancel', handleWindowPointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
+    };
+  }, [isDragging, dragPos]);
+
+  return {
+    isDragging,
+    dragPos,
+    wasDraggingRef,
+    startDrag,
+    onPointerMove,
+    endDrag,
+  };
+}
 
 export function DockMenu() {
   const state = OverlayStateManager.getInstance();
   const recorder = VoiceRecorder.getInstance();
   const [, setTick] = useState(0);
   const [voiceState, setVoiceState] = useState(recorder.getState());
+  const { isDragging, dragPos, wasDraggingRef, startDrag, onPointerMove, endDrag } = useDraggableDock();
 
   useEffect(() => {
     const unsubState = state.subscribe(() => setTick((t) => t + 1));
@@ -27,7 +150,7 @@ export function DockMenu() {
 
     return (
       <div
-        class="ve-dock-menu ve-voice-recording-dock"
+        class={`ve-dock-menu ve-voice-recording-dock ${isDragging ? 've-dragging' : ''}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -44,8 +167,40 @@ export function DockMenu() {
             : '0 8px 32px rgba(245, 158, 11, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)',
           transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
           animation: 'veSlideUp 0.15s ease-out',
+          ...(isDragging && dragPos
+            ? {
+                position: 'fixed',
+                left: `${dragPos.x}px`,
+                top: `${dragPos.y}px`,
+                right: 'auto',
+                bottom: 'auto',
+                transition: 'none',
+                zIndex: 2147483647,
+              }
+            : {}),
         }}
       >
+        <div
+          class="ve-dock-drag-handle"
+          title="Drag to reposition (snaps to edge)"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
+            if (dockEl) startDrag(e, dockEl);
+          }}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="3" cy="3" r="1.5" />
+            <circle cx="7" cy="3" r="1.5" />
+            <circle cx="3" cy="7" r="1.5" />
+            <circle cx="7" cy="7" r="1.5" />
+            <circle cx="3" cy="11" r="1.5" />
+            <circle cx="7" cy="11" r="1.5" />
+          </svg>
+        </div>
         <span
           style={{
             width: '10px',
@@ -148,9 +303,32 @@ export function DockMenu() {
   if (!state.isDockMenuOpen && state.activeTool === 'none') {
     return (
       <button
-        class="ve-launcher-btn"
-        title="Open LUX Tools (V / C / R)"
-        onClick={() => state.setDockMenuOpen(true)}
+        class={`ve-launcher-btn ${isDragging ? 've-dragging' : ''}`}
+        style={
+          isDragging && dragPos
+            ? {
+                position: 'fixed',
+                left: `${dragPos.x}px`,
+                top: `${dragPos.y}px`,
+                right: 'auto',
+                bottom: 'auto',
+                transition: 'none',
+                zIndex: 2147483647,
+              }
+            : undefined
+        }
+        title="Open LUX Tools (drag to reposition)"
+        onPointerDown={(e) => startDrag(e, e.currentTarget as HTMLElement)}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onClick={() => {
+          if (wasDraggingRef.current) {
+            wasDraggingRef.current = false;
+            return;
+          }
+          state.setDockMenuOpen(true);
+        }}
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="12 2 2 7 12 12 22 7 12 2" />
@@ -164,10 +342,44 @@ export function DockMenu() {
 
   return (
     <div
-      class="ve-dock-menu"
+      class={`ve-dock-menu ${isDragging ? 've-dragging' : ''}`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      style={
+        isDragging && dragPos
+          ? {
+              position: 'fixed',
+              left: `${dragPos.x}px`,
+              top: `${dragPos.y}px`,
+              right: 'auto',
+              bottom: 'auto',
+              transition: 'none',
+              zIndex: 2147483647,
+            }
+          : undefined
+      }
     >
+      <div
+        class="ve-dock-drag-handle"
+        title="Drag to reposition (snaps to edge)"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
+          if (dockEl) startDrag(e, dockEl);
+        }}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+          <circle cx="3" cy="3" r="1.5" />
+          <circle cx="7" cy="3" r="1.5" />
+          <circle cx="3" cy="7" r="1.5" />
+          <circle cx="7" cy="7" r="1.5" />
+          <circle cx="3" cy="11" r="1.5" />
+          <circle cx="7" cy="11" r="1.5" />
+        </svg>
+      </div>
       <button
         class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'edit' ? 'none' : 'edit')}
