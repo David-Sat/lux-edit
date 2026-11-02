@@ -63,6 +63,12 @@ export interface CommentAnnotation {
   screenshot?: string;
 }
 
+export interface DockPosition {
+  side: 'left' | 'right';
+  verticalAnchor: 'top' | 'bottom';
+  offsetY: number;
+}
+
 export type SessionStatus =
   | 'draft'
   | 'submitted'

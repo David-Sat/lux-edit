@@ -278,4 +278,60 @@ describe('OverlayStateManager', () => {
       expect(batch.status).toBe('draft');
     });
   });
+
+  describe('dock positioning & edge-snapping persistence', () => {
+    it('initializes with default bottom-right position', () => {
+      expect(state.dockPosition).toEqual({
+        side: 'right',
+        verticalAnchor: 'bottom',
+        offsetY: 24,
+      });
+    });
+
+    it('updates position, notifies listeners, and persists to localStorage', () => {
+      const listener = vi.fn();
+      state.subscribe(listener);
+
+      state.setDockPosition({
+        side: 'left',
+        verticalAnchor: 'top',
+        offsetY: 120,
+      });
+
+      expect(listener).toHaveBeenCalled();
+      expect(state.dockPosition).toEqual({
+        side: 'left',
+        verticalAnchor: 'top',
+        offsetY: 120,
+      });
+
+      const saved = window.localStorage.getItem('lux_dock_position');
+      expect(saved).toBeTruthy();
+      expect(JSON.parse(saved!)).toEqual({
+        side: 'left',
+        verticalAnchor: 'top',
+        offsetY: 120,
+      });
+    });
+
+    it('recovers saved dock position across fresh instance reloads', () => {
+      window.localStorage.setItem(
+        'lux_dock_position',
+        JSON.stringify({
+          side: 'left',
+          verticalAnchor: 'bottom',
+          offsetY: 80,
+        })
+      );
+
+      (OverlayStateManager as any).instance = undefined;
+      const reloaded = OverlayStateManager.getInstance();
+
+      expect(reloaded.dockPosition).toEqual({
+        side: 'left',
+        verticalAnchor: 'bottom',
+        offsetY: 80,
+      });
+    });
+  });
 });

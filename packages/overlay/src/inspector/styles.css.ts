@@ -260,7 +260,8 @@ export const OVERLAY_STYLES = `
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.1),
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.35),
@@ -269,7 +270,15 @@ export const OVERLAY_STYLES = `
   backdrop-filter: var(--ve-glass-backdrop);
   -webkit-backdrop-filter: var(--ve-glass-backdrop);
   z-index: var(--ve-z-launcher);
-  transition: all 0.22s var(--ve-ease-spring);
+  transition:
+    inset-inline-start 0.28s var(--ve-ease-spring),
+    inset-inline-end 0.28s var(--ve-ease-spring),
+    inset-block-start 0.28s var(--ve-ease-spring),
+    inset-block-end 0.28s var(--ve-ease-spring),
+    transform 0.22s var(--ve-ease-spring),
+    background 0.22s var(--ve-ease-spring),
+    border-color 0.22s var(--ve-ease-spring),
+    box-shadow 0.22s var(--ve-ease-spring);
   overflow: visible;
 
   & > svg {
@@ -287,6 +296,10 @@ export const OVERLAY_STYLES = `
       inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.5),
       0 12px 32px -4px rgba(0, 0, 0, 0.4),
       0 22px 52px -8px rgba(0, 0, 0, 0.5);
+  }
+
+  &:active {
+    cursor: grabbing;
   }
 }
 
@@ -326,6 +339,79 @@ export const OVERLAY_STYLES = `
   gap: 6px;
   z-index: var(--ve-z-launcher);
   animation: veSlideUp 0.15s ease-out;
+  touch-action: none;
+  transition:
+    inset-inline-start 0.28s var(--ve-ease-spring),
+    inset-inline-end 0.28s var(--ve-ease-spring),
+    inset-block-start 0.28s var(--ve-ease-spring),
+    inset-block-end 0.28s var(--ve-ease-spring);
+}
+
+.ve-dock-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 16px;
+  block-size: 26px;
+  cursor: grab;
+  touch-action: none;
+  color: var(--ve-text-muted);
+  opacity: 0.6;
+  border-radius: 6px;
+  margin-inline-end: 2px;
+  user-select: none;
+  transition: opacity var(--ve-transition-fast), background var(--ve-transition-fast), color var(--ve-transition-fast);
+
+  &:hover {
+    opacity: 1;
+    color: var(--ve-text-primary);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  &:active {
+    cursor: grabbing;
+    background: rgba(255, 255, 255, 0.15);
+  }
+}
+
+.ve-dragging {
+  transition: none !important;
+  cursor: grabbing !important;
+  user-select: none !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Dock Edge-snapping Positional Rules */
+.ve-dock-right .ve-launcher-btn,
+.ve-dock-right .ve-dock-menu {
+  inset-inline-end: 20px;
+  inset-inline-start: auto;
+}
+
+.ve-dock-left .ve-launcher-btn,
+.ve-dock-left .ve-dock-menu {
+  inset-inline-start: 20px;
+  inset-inline-end: auto;
+}
+
+.ve-dock-bottom .ve-launcher-btn {
+  inset-block-end: var(--ve-dock-offset-y, 24px);
+  inset-block-start: auto;
+}
+
+.ve-dock-bottom .ve-dock-menu {
+  inset-block-end: var(--ve-dock-offset-y, 20px);
+  inset-block-start: auto;
+}
+
+.ve-dock-top .ve-launcher-btn {
+  inset-block-start: var(--ve-dock-offset-y, 24px);
+  inset-block-end: auto;
+}
+
+.ve-dock-top .ve-dock-menu {
+  inset-block-start: var(--ve-dock-offset-y, 20px);
+  inset-block-end: auto;
 }
 
 .ve-dock-item {
@@ -973,6 +1059,11 @@ export const OVERLAY_STYLES = `
   display: flex;
   flex-direction: column;
   animation: veSlideUp 0.16s ease-out;
+  transition:
+    inset-inline-start 0.28s var(--ve-ease-spring),
+    inset-inline-end 0.28s var(--ve-ease-spring),
+    inset-block-start 0.28s var(--ve-ease-spring),
+    inset-block-end 0.28s var(--ve-ease-spring);
 }
 
 /* Edit Review Drawer */
@@ -988,6 +1079,37 @@ export const OVERLAY_STYLES = `
   display: flex;
   flex-direction: column;
   animation: veSlideUp 0.16s ease-out;
+  transition:
+    inset-inline-start 0.28s var(--ve-ease-spring),
+    inset-inline-end 0.28s var(--ve-ease-spring),
+    inset-block-start 0.28s var(--ve-ease-spring),
+    inset-block-end 0.28s var(--ve-ease-spring);
+}
+
+.ve-dock-right .ve-drawer,
+.ve-dock-right .ve-theme-panel {
+  inset-inline-end: 20px;
+  inset-inline-start: auto;
+}
+
+.ve-dock-left .ve-drawer,
+.ve-dock-left .ve-theme-panel {
+  inset-inline-start: 20px;
+  inset-inline-end: auto;
+}
+
+.ve-dock-bottom .ve-drawer,
+.ve-dock-bottom .ve-theme-panel {
+  inset-block-end: var(--ve-panel-offset-y, 78px);
+  inset-block-start: auto;
+  max-block-size: calc(100vh - var(--ve-panel-offset-y, 78px) - 20px);
+}
+
+.ve-dock-top .ve-drawer,
+.ve-dock-top .ve-theme-panel {
+  inset-block-start: var(--ve-panel-offset-y, 78px);
+  inset-block-end: auto;
+  max-block-size: calc(100vh - var(--ve-panel-offset-y, 78px) - 20px);
 }
 
 .ve-drawer-header {
