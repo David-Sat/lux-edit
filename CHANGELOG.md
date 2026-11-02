@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.14.0...lux-edit-v0.15.0) (2026-11-02)
+
+
+### Features
+
+* **overlay:** make launcher button and dock movable with edge snapping ([#59](https://github.com/David-Sat/lux-edit/issues/59)) ([a568e34](https://github.com/David-Sat/lux-edit/commit/a568e340d7373e3a0a794d6f74b33345d289d264))
+
 ## [0.14.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.13.0...lux-edit-v0.14.0) (2026-10-31)
 
 
