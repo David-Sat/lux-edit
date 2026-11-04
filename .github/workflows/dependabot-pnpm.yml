@@ -1,0 +1,47 @@
+name: Dependabot Lockfile Auto-Fixer
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix-lockfile:
+    name: Re-sync pnpm lockfile
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Dependabot branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Regenerate pnpm lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Commit and push updated lockfile if changed
+        run: |
+          if ! git diff --quiet pnpm-lock.yaml; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pnpm-lock.yaml
+            git commit -m "build(deps): auto-sync pnpm-lock.yaml with overrides"
+            git push
+          else
+            echo "Lockfile is already up to date with package.json overrides."
+          fi
