@@ -60,6 +60,8 @@ export class OverlayStateManager {
   public commentTargetElements: HTMLElement[] = [];
   public commentTargetSelectedText?: string;
   public commentTargetBounds?: { x: number; y: number; width: number; height: number };
+  public commentDraftText: string = '';
+  public pendingPageReload: boolean = false;
 
   public userPrompt = '';
   public sessionId = `session_${Date.now().toString(36)}`;
@@ -192,6 +194,15 @@ export class OverlayStateManager {
               offsetY: Math.max(10, parsed.offsetY),
             };
           }
+        }
+      }
+    } catch (e) {}
+
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        const savedDraft = sessionStorage.getItem(STORAGE_KEYS.COMPOSER_DRAFT);
+        if (savedDraft) {
+          this.commentDraftText = savedDraft;
         }
       }
     } catch (e) {}
@@ -528,6 +539,27 @@ export class OverlayStateManager {
     this.notify();
   }
 
+  public isComposingComment(): boolean {
+    return Boolean(
+      this.commentTargetElement ||
+      this.commentTargetElements.length > 0 ||
+      (this.activeTool === 'comment' && this.commentDraftText.trim().length > 0)
+    );
+  }
+
+  public setCommentDraftText(text: string): void {
+    this.commentDraftText = text;
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        if (text.trim()) {
+          sessionStorage.setItem(STORAGE_KEYS.COMPOSER_DRAFT, text);
+        } else {
+          sessionStorage.removeItem(STORAGE_KEYS.COMPOSER_DRAFT);
+        }
+      }
+    } catch {}
+  }
+
   public setCommentTarget(
     el: HTMLElement | null,
     options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number } }
@@ -536,6 +568,19 @@ export class OverlayStateManager {
     this.commentTargetElements = el ? [el] : [];
     this.commentTargetSelectedText = options?.selectedText;
     this.commentTargetBounds = options?.bounds;
+
+    if (!el) {
+      this.setCommentDraftText('');
+      if (this.pendingPageReload) {
+        this.pendingPageReload = false;
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }, 150);
+      }
+    }
+
     this.notify();
   }
 
@@ -599,13 +644,25 @@ export class OverlayStateManager {
     const selectedText = options?.selectedText || this.commentTargetSelectedText;
     const customBounds = options?.bounds || this.commentTargetBounds;
 
+    const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
+    const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
     const primaryLoc = primaryTarget ? resolveSourceLocation(primaryTarget) : undefined;
     const primaryElBounds = primaryTarget ? primaryTarget.getBoundingClientRect() : undefined;
-    const primaryBounds =
-      customBounds ||
-      (primaryElBounds
-        ? { x: primaryElBounds.left, y: primaryElBounds.top, width: primaryElBounds.width, height: primaryElBounds.height }
-        : undefined);
+    const primaryBounds = customBounds
+      ? {
+          x: Math.round(customBounds.x + scrollX),
+          y: Math.round(customBounds.y + scrollY),
+          width: Math.round(customBounds.width),
+          height: Math.round(customBounds.height),
+        }
+      : primaryElBounds
+      ? {
+          x: Math.round(primaryElBounds.left + scrollX),
+          y: Math.round(primaryElBounds.top + scrollY),
+          width: Math.round(primaryElBounds.width),
+          height: Math.round(primaryElBounds.height),
+        }
+      : undefined;
 
     const annotationTargets: AnnotationTarget[] | undefined = isMulti
       ? targetsList.map((targetEl) => {
@@ -614,7 +671,12 @@ export class OverlayStateManager {
           return {
             targetSelector: loc.selector,
             sourceLocation: loc,
-            bounds: { x: b.left, y: b.top, width: b.width, height: b.height },
+            bounds: {
+              x: Math.round(b.left + scrollX),
+              y: Math.round(b.top + scrollY),
+              width: Math.round(b.width),
+              height: Math.round(b.height),
+            },
             htmlSnippet: loc.htmlSnippet || targetEl.outerHTML.slice(0, 300),
           };
         })
@@ -641,8 +703,18 @@ export class OverlayStateManager {
     this.commentTargetElements = [];
     this.commentTargetSelectedText = undefined;
     this.commentTargetBounds = undefined;
+    this.setCommentDraftText('');
     this.activeTool = 'none';
     this.notify();
+
+    if (this.pendingPageReload) {
+      this.pendingPageReload = false;
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          window.location.reload();
+        }
+      }, 150);
+    }
   }
 
   public updateAnnotation(id: string, newText: string): void {
@@ -1082,11 +1154,12 @@ export class OverlayStateManager {
             this.agentReplies.push(data.payload);
             this.notify();
           } else if (data.type === 'RELOAD_PAGE') {
-            try {
-              localStorage.removeItem(this.getStorageKey());
-              localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-            } catch (e) {}
-            window.location.reload();
+            if (this.isComposingComment()) {
+              this.pendingPageReload = true;
+              this.notify();
+            } else {
+              window.location.reload();
+            }
           }
         } catch (e) {
           console.error('[visual-edit] WebSocket error parsing message:', e);

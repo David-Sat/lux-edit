@@ -773,6 +773,62 @@ describe('Parallel Sessions, Port Isolation, and Stale Session TTL', () => {
     expect(session4330?.status).toBe('draft');
   });
 
+  it('preserves comments created after agent review turn began and does not auto-resolve un-fetched drafts', () => {
+    const store = new EventStore(path.join(os.tmpdir(), `lux-turn-test-${Date.now()}`));
+
+    // Session 1: Never fetched by agent, still in draft
+    store.saveBatch({
+      id: 'session_unfetched_draft',
+      timestamp: Date.now() - 5000,
+      route: '/',
+      url: 'http://127.0.0.1:4320/',
+      status: 'draft',
+      mutations: [],
+      annotations: [{ id: 'a1', timestamp: Date.now() - 5000, type: 'element', comment: 'Work in progress' }],
+    });
+
+    // Session 2: Fetched by agent at T=now-3000, but user added a new comment at T=now-1000
+    store.saveBatch({
+      id: 'session_concurrent_comment',
+      timestamp: Date.now() - 10000,
+      route: '/',
+      url: 'http://127.0.0.1:4320/',
+      status: 'submitted',
+      lastFetchedAt: Date.now() - 3000, // Agent review turn started here
+      mutations: [],
+      annotations: [
+        { id: 'old_ann', timestamp: Date.now() - 5000, type: 'element', comment: 'Old comment' },
+        { id: 'new_ann', timestamp: Date.now() - 1000, type: 'element', comment: 'Added while agent is working' },
+      ],
+    });
+
+    // Session 3: Fetched by agent at T=now-2000, all comments are older (T=now-6000)
+    store.saveBatch({
+      id: 'session_implemented_cleanly',
+      timestamp: Date.now() - 10000,
+      route: '/',
+      url: 'http://127.0.0.1:4320/',
+      status: 'submitted',
+      lastFetchedAt: Date.now() - 2000,
+      mutations: [],
+      annotations: [
+        { id: 'done_ann', timestamp: Date.now() - 6000, type: 'element', comment: 'Addressed by agent' },
+      ],
+    });
+
+    // Run auto-resolve with onlyIfOlderThanReviewTurn: true (file watcher behavior)
+    store.markPendingSessionsImplemented({ port: 4320, onlyIfOlderThanReviewTurn: true });
+
+    // Session 1: Unfetched draft MUST remain draft
+    expect(store.getSession('session_unfetched_draft')?.status).toBe('draft');
+
+    // Session 2: Has comments newer than lastFetchedAt; MUST remain submitted/pending!
+    expect(store.getSession('session_concurrent_comment')?.status).toBe('submitted');
+
+    // Session 3: All comments older than lastFetchedAt; MUST be marked implemented
+    expect(store.getSession('session_implemented_cleanly')?.status).toBe('implemented');
+  });
+
   it('isolates parallel live running servers end-to-end with WebSockets and file watcher', async () => {
     const liveDir = path.join(os.tmpdir(), `lux-live-parallel-${Date.now()}`);
     fs.mkdirSync(liveDir, { recursive: true });
