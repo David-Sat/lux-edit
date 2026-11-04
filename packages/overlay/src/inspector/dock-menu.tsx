@@ -7,121 +7,120 @@ function useDraggableDock() {
   const state = OverlayStateManager.getInstance();
   const [isDragging, setIsDragging] = useState(false);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    initialLeft: number;
-    initialTop: number;
-    width: number;
-    height: number;
-    isDragging: boolean;
-    element: HTMLElement;
-  } | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const wasDraggingRef = useRef(false);
 
-  const startDrag = (e: PointerEvent, element: HTMLElement) => {
-    if (e.button !== 0) return;
-    try {
-      if (element.setPointerCapture) {
-        element.setPointerCapture(e.pointerId);
-      }
-    } catch {}
-    const rect = element.getBoundingClientRect();
-    dragRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      initialLeft: rect.left,
-      initialTop: rect.top,
-      width: rect.width,
-      height: rect.height,
-      isDragging: false,
-      element,
-    };
-    wasDraggingRef.current = false;
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    if (!dragRef.current.isDragging) {
-      if (Math.hypot(dx, dy) > 5) {
-        dragRef.current.isDragging = true;
-        setIsDragging(true);
-      }
-    }
-    if (dragRef.current.isDragging) {
-      const width = dragRef.current.width;
-      const height = dragRef.current.height;
-      const newX = Math.max(10, Math.min(window.innerWidth - width - 10, dragRef.current.initialLeft + dx));
-      const newY = Math.max(10, Math.min(window.innerHeight - height - 10, dragRef.current.initialTop + dy));
-      setDragPos({ x: newX, y: newY });
-    }
-  };
-
-  const endDrag = (e: PointerEvent) => {
-    if (!dragRef.current) return;
-    const { isDragging: didDrag, width, height, element } = dragRef.current;
-    try {
-      if (element && element.hasPointerCapture && element.hasPointerCapture(e.pointerId)) {
-        element.releasePointerCapture(e.pointerId);
-      }
-    } catch {}
-
-    if (didDrag && dragPos) {
-      wasDraggingRef.current = true;
-      const centerX = dragPos.x + width / 2;
-      const side: 'left' | 'right' = centerX < window.innerWidth / 2 ? 'left' : 'right';
-      const margin = 20;
-
-      const clampedY = Math.max(margin, Math.min(window.innerHeight - height - margin, dragPos.y));
-      let verticalAnchor: 'top' | 'bottom';
-      let offsetY: number;
-      if (clampedY + height / 2 < window.innerHeight / 2) {
-        verticalAnchor = 'top';
-        offsetY = Math.round(clampedY);
-      } else {
-        verticalAnchor = 'bottom';
-        offsetY = Math.round(window.innerHeight - clampedY - height);
-      }
-
-      state.setDockPosition({ side, verticalAnchor, offsetY });
-    }
-
-    dragRef.current = null;
-    setIsDragging(false);
-    setDragPos(null);
-  };
-
   useEffect(() => {
-    if (!isDragging) return;
-
-    const handleWindowPointerMove = (e: PointerEvent) => {
-      onPointerMove(e);
-    };
-
-    const handleWindowPointerUp = (e: PointerEvent) => {
-      endDrag(e);
-    };
-
-    window.addEventListener('pointermove', handleWindowPointerMove);
-    window.addEventListener('pointerup', handleWindowPointerUp);
-    window.addEventListener('pointercancel', handleWindowPointerUp);
-
     return () => {
-      window.removeEventListener('pointermove', handleWindowPointerMove);
-      window.removeEventListener('pointerup', handleWindowPointerUp);
-      window.removeEventListener('pointercancel', handleWindowPointerUp);
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
     };
-  }, [isDragging, dragPos]);
+  }, []);
+
+  const startDrag = (e: PointerEvent, targetElement: HTMLElement) => {
+    if (e.button !== 0) return;
+
+    if (cleanupRef.current) {
+      cleanupRef.current();
+      cleanupRef.current = null;
+    }
+
+    const handleEl = e.currentTarget as HTMLElement | null;
+    const pointerId = e.pointerId;
+    try {
+      if (handleEl && handleEl.setPointerCapture) {
+        handleEl.setPointerCapture(pointerId);
+      }
+    } catch {}
+
+    const rect = targetElement.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialLeft = rect.left;
+    const initialTop = rect.top;
+    const width = rect.width;
+    const height = rect.height;
+
+    let hasMoved = false;
+    wasDraggingRef.current = false;
+
+    const onPointerMove = (moveEv: PointerEvent) => {
+      const dx = moveEv.clientX - startX;
+      const dy = moveEv.clientY - startY;
+
+      if (!hasMoved) {
+        if (Math.hypot(dx, dy) >= 4) {
+          hasMoved = true;
+          setIsDragging(true);
+        }
+      }
+
+      if (hasMoved) {
+        moveEv.preventDefault();
+        const newX = Math.max(10, Math.min(window.innerWidth - width - 10, initialLeft + dx));
+        const newY = Math.max(10, Math.min(window.innerHeight - height - 10, initialTop + dy));
+        setDragPos({ x: newX, y: newY });
+      }
+    };
+
+    const onPointerUp = (upEv: PointerEvent) => {
+      cleanup();
+
+      try {
+        if (handleEl && handleEl.hasPointerCapture && handleEl.hasPointerCapture(pointerId)) {
+          handleEl.releasePointerCapture(pointerId);
+        }
+      } catch {}
+
+      if (hasMoved) {
+        wasDraggingRef.current = true;
+        const totalDx = upEv.clientX - startX;
+        const totalDy = upEv.clientY - startY;
+        const finalX = Math.max(10, Math.min(window.innerWidth - width - 10, initialLeft + totalDx));
+        const finalY = Math.max(10, Math.min(window.innerHeight - height - 10, initialTop + totalDy));
+
+        const centerX = finalX + width / 2;
+        const side: 'left' | 'right' = centerX < window.innerWidth / 2 ? 'left' : 'right';
+        const margin = 20;
+
+        const clampedY = Math.max(margin, Math.min(window.innerHeight - height - margin, finalY));
+        let verticalAnchor: 'top' | 'bottom';
+        let offsetY: number;
+        if (clampedY + height / 2 < window.innerHeight / 2) {
+          verticalAnchor = 'top';
+          offsetY = Math.round(clampedY);
+        } else {
+          verticalAnchor = 'bottom';
+          offsetY = Math.round(window.innerHeight - clampedY - height);
+        }
+
+        state.setDockPosition({ side, verticalAnchor, offsetY });
+      }
+
+      setIsDragging(false);
+      setDragPos(null);
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', onPointerUp, true);
+      window.removeEventListener('pointercancel', onPointerUp, true);
+      cleanupRef.current = null;
+    };
+
+    cleanupRef.current = cleanup;
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', onPointerUp, true);
+    window.addEventListener('pointercancel', onPointerUp, true);
+  };
 
   return {
     isDragging,
     dragPos,
     wasDraggingRef,
     startDrag,
-    onPointerMove,
-    endDrag,
   };
 }
 
@@ -130,7 +129,7 @@ export function DockMenu() {
   const recorder = VoiceRecorder.getInstance();
   const [, setTick] = useState(0);
   const [voiceState, setVoiceState] = useState(recorder.getState());
-  const { isDragging, dragPos, wasDraggingRef, startDrag, onPointerMove, endDrag } = useDraggableDock();
+  const { isDragging, dragPos, wasDraggingRef, startDrag } = useDraggableDock();
 
   useEffect(() => {
     const unsubState = state.subscribe(() => setTick((t) => t + 1));
@@ -188,11 +187,8 @@ export function DockMenu() {
             const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
             if (dockEl) startDrag(e, dockEl);
           }}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
         >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style={{ pointerEvents: 'none' }}>
             <circle cx="3" cy="3" r="1.5" />
             <circle cx="7" cy="3" r="1.5" />
             <circle cx="3" cy="7" r="1.5" />
@@ -319,9 +315,6 @@ export function DockMenu() {
         }
         title="Open LUX Tools (drag to reposition)"
         onPointerDown={(e) => startDrag(e, e.currentTarget as HTMLElement)}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
         onClick={() => {
           if (wasDraggingRef.current) {
             wasDraggingRef.current = false;
@@ -367,11 +360,8 @@ export function DockMenu() {
           const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
           if (dockEl) startDrag(e, dockEl);
         }}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
       >
-        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style={{ pointerEvents: 'none' }}>
           <circle cx="3" cy="3" r="1.5" />
           <circle cx="7" cy="3" r="1.5" />
           <circle cx="3" cy="7" r="1.5" />
