@@ -360,6 +360,8 @@ export const OVERLAY_STYLES = `
   border-radius: 6px;
   margin-inline-end: 2px;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
   transition: opacity var(--ve-transition-fast), background var(--ve-transition-fast), color var(--ve-transition-fast);
 
   &:hover {
@@ -374,9 +376,13 @@ export const OVERLAY_STYLES = `
   }
 }
 
+.ve-dragging,
+.ve-dragging * {
+  cursor: grabbing !important;
+}
+
 .ve-dragging {
   transition: none !important;
-  cursor: grabbing !important;
   user-select: none !important;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.3) !important;
 }
