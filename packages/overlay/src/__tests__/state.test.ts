@@ -334,4 +334,51 @@ describe('OverlayStateManager', () => {
       });
     });
   });
+
+  describe('comment composing & reload resilience', () => {
+    it('detects when user is actively composing comments', () => {
+      expect(state.isComposingComment()).toBe(false);
+
+      const target = document.createElement('div');
+      document.body.appendChild(target);
+
+      state.setCommentTarget(target);
+      expect(state.isComposingComment()).toBe(true);
+
+      state.setCommentTarget(null);
+      expect(state.isComposingComment()).toBe(false);
+
+      state.setTool('comment');
+      state.setCommentDraftText('Typing something...');
+      expect(state.isComposingComment()).toBe(true);
+    });
+
+    it('defers RELOAD_PAGE when user is composing and executes on save', () => {
+      const target = document.createElement('button');
+      document.body.appendChild(target);
+
+      state.setCommentTarget(target);
+      state.setCommentDraftText('Unfinished comment');
+
+      expect(state.isComposingComment()).toBe(true);
+      expect(state.pendingPageReload).toBe(false);
+
+      // Simulate receiving RELOAD_PAGE over WebSocket
+      const ws = (state as any).ws;
+      if (ws?.onmessage) {
+        ws.onmessage({ data: JSON.stringify({ type: 'RELOAD_PAGE', payload: { file: 'App.tsx' } }) });
+      }
+
+      // Reload must be deferred because user is actively composing
+      expect(state.pendingPageReload).toBe(true);
+
+      // User submits comment
+      state.addComment('Finished comment', target);
+
+      // Comment is saved and pending reload is cleared
+      expect(state.annotations.length).toBe(1);
+      expect(state.annotations[0].comment).toBe('Finished comment');
+      expect(state.pendingPageReload).toBe(false);
+    });
+  });
 });
