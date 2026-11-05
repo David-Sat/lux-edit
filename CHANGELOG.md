@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.15.0...lux-edit-v0.15.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **overlay:** repair dock handle drag-and-drop and eliminate click-follow glitch ([#62](https://github.com/David-Sat/lux-edit/issues/62)) ([85cac4f](https://github.com/David-Sat/lux-edit/commit/85cac4f343aec1eb70c0ba7376360cbfa5ab991a))
+
 ## [0.15.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.14.0...lux-edit-v0.15.0) (2026-11-02)
 
 
