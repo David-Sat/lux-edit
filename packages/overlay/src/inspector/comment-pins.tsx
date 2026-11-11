@@ -1,6 +1,9 @@
 import { h, Fragment } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
+import { normalizeRoute, isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
+
+export { normalizeRoute, isAnnotationOnRoute };
 
 function EditCommentTextarea({
   value,
@@ -57,59 +60,6 @@ function EditCommentTextarea({
   );
 }
 
-export function normalizeRoute(path: string): string {
-  let p = (path || '').trim();
-  if (!p || p === '/') return '/';
-
-  // Ensure leading slash
-  if (!p.startsWith('/')) {
-    p = '/' + p;
-  }
-
-  // Remove trailing slashes
-  while (p.length > 1 && p.endsWith('/')) {
-    p = p.slice(0, -1);
-  }
-
-  // Normalize directory index files (/index.html, /index.htm) to directory root
-  if (p === '/index.html' || p === '/index.htm') {
-    return '/';
-  }
-  if (p.endsWith('/index.html')) {
-    p = p.slice(0, -'/index.html'.length) || '/';
-  } else if (p.endsWith('/index.htm')) {
-    p = p.slice(0, -'/index.htm'.length) || '/';
-  } else if (p.endsWith('.html')) {
-    // Normalize clean URL extension (/about.html -> /about)
-    p = p.slice(0, -'.html'.length) || '/';
-  } else if (p.endsWith('.htm')) {
-    p = p.slice(0, -'.htm'.length) || '/';
-  }
-
-  return p || '/';
-}
-
-export function isAnnotationOnRoute(
-  ann: { pathname?: string; url?: string },
-  currentPath: string
-): boolean {
-  if (!ann.pathname && !ann.url) return true;
-  const normCurrent = normalizeRoute(currentPath);
-
-  if (ann.pathname) {
-    return normalizeRoute(ann.pathname) === normCurrent;
-  }
-  if (ann.url) {
-    try {
-      const u = new URL(ann.url, 'http://localhost');
-      return normalizeRoute(u.pathname) === normCurrent;
-    } catch {
-      return true;
-    }
-  }
-  return true;
-}
-
 export function CommentPins() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
@@ -145,8 +95,6 @@ export function CommentPins() {
 
     window.addEventListener('scroll', handleUpdate, { passive: true });
     window.addEventListener('resize', handleUpdate);
-    window.addEventListener('popstate', handleUpdate);
-    window.addEventListener('hashchange', handleUpdate);
     window.addEventListener('click', handleOutsideClick);
     window.addEventListener('keydown', handleKeyDown);
     const unsub = state.subscribe(handleUpdate);
@@ -154,20 +102,27 @@ export function CommentPins() {
     return () => {
       window.removeEventListener('scroll', handleUpdate);
       window.removeEventListener('resize', handleUpdate);
-      window.removeEventListener('popstate', handleUpdate);
-      window.removeEventListener('hashchange', handleUpdate);
       window.removeEventListener('click', handleOutsideClick);
       window.removeEventListener('keydown', handleKeyDown);
       unsub();
     };
   }, []);
 
-  if (state.annotations.length === 0) return null;
+  const currentPath = state.getCurrentPathname();
+  const prevPathRef = useRef(currentPath);
 
-  const currentPath =
-    typeof window !== 'undefined'
-      ? state.currentPathname || window.location.pathname
-      : '/';
+  useEffect(() => {
+    if (prevPathRef.current !== currentPath) {
+      prevPathRef.current = currentPath;
+      setEditingPinId(null);
+      setHoveredPinId(null);
+      setHoveredPinKey(null);
+      setEditText('');
+    }
+    return observeNextDomCommit(() => setTick((t) => t + 1));
+  }, [currentPath]);
+
+  if (state.annotations.length === 0) return null;
 
   const connectors: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }> = [];
   const targetHighlights: Array<{ id: string; top: number; left: number; width: number; height: number }> = [];
@@ -184,16 +139,30 @@ export function CommentPins() {
   }> = [];
 
   state.annotations.forEach((ann, idx) => {
-    if (!isAnnotationOnRoute(ann, currentPath)) {
-      return;
-    }
     if (ann.targets && ann.targets.length > 1) {
+      const anyTargetHasPathname = ann.targets.some((t) => Boolean(t.pathname));
+      const matchesAnnotationRoute = isAnnotationOnRoute(ann, currentPath);
+      const matchesAnyTarget = anyTargetHasPathname
+        ? ann.targets.some((t) =>
+            t.pathname ? isAnnotationOnRoute({ pathname: t.pathname }, currentPath) : matchesAnnotationRoute
+          )
+        : matchesAnnotationRoute;
+
+      if (!matchesAnyTarget) {
+        return;
+      }
+
       const coords: Array<{ x: number; y: number; tIdx: number }> = [];
       const isAnnActive = hoveredPinId === ann.id || editingPinId === ann.id;
 
       ann.targets.forEach((t, tIdx) => {
+        if (t.pathname && !isAnnotationOnRoute({ pathname: t.pathname }, currentPath)) {
+          return;
+        }
+
         let x = 0;
         let y = 0;
+        let found = false;
         let rect: DOMRect | { top: number; left: number; width: number; height: number } | null = null;
 
         if (t.targetSelector) {
@@ -203,16 +172,18 @@ export function CommentPins() {
               rect = el.getBoundingClientRect();
               x = rect.left + 12;
               y = rect.top + 12;
+              found = true;
             }
           } catch (e) {}
         }
-        if (x === 0 && y === 0 && t.bounds) {
+        if (!found && t.bounds) {
           rect = { top: t.bounds.y, left: t.bounds.x, width: t.bounds.width, height: t.bounds.height };
           x = t.bounds.x + 12;
           y = t.bounds.y + 12;
+          found = true;
         }
 
-        if (x !== 0 || y !== 0) {
+        if (found) {
           coords.push({ x, y, tIdx });
           pinItems.push({
             pinKey: `${ann.id}_${tIdx}`,
@@ -250,8 +221,13 @@ export function CommentPins() {
         }
       }
     } else {
+      if (!isAnnotationOnRoute(ann, currentPath)) {
+        return;
+      }
+
       let x = 0;
       let y = 0;
+      let found = false;
       if (ann.targetSelector) {
         try {
           const el = document.querySelector(ann.targetSelector) as HTMLElement | null;
@@ -259,14 +235,16 @@ export function CommentPins() {
             const rect = el.getBoundingClientRect();
             x = rect.left + 12;
             y = rect.top + 12;
+            found = true;
           }
         } catch (e) {}
       }
-      if (x === 0 && y === 0 && ann.bounds) {
+      if (!found && ann.bounds) {
         x = ann.bounds.x + 12;
         y = ann.bounds.y + 12;
+        found = true;
       }
-      if (x !== 0 || y !== 0) {
+      if (found) {
         pinItems.push({
           pinKey: ann.id,
           ann,
@@ -280,6 +258,10 @@ export function CommentPins() {
       }
     }
   });
+
+  if (pinItems.length === 0 && connectors.length === 0 && targetHighlights.length === 0) {
+    return null;
+  }
 
   return (
     <Fragment>

@@ -147,19 +147,19 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
           break;
         }
         case 'CLASS_CHANGE':
-          lines.push(`- **Classes** on ${loc}:`);
+          lines.push(`- **Classes** on ${loc}${pageTag}:`);
           if (snippet) lines.push(`  - Element: \`${snippet}\``);
           if (m.details?.added?.length) lines.push(`  - Added: \`${m.details.added.join(', ')}\``);
           if (m.details?.removed?.length) lines.push(`  - Removed: \`${m.details.removed.join(', ')}\``);
           break;
         case 'DOM_INSERT':
-          lines.push(`- **Insert Element** after ${loc}: \`${m.after}\``);
+          lines.push(`- **Insert Element** after ${loc}${pageTag}: \`${m.after}\``);
           break;
         case 'DOM_REMOVE':
-          lines.push(`- **Remove Element** on ${loc}: \`${m.before}\``);
+          lines.push(`- **Remove Element** on ${loc}${pageTag}: \`${m.before}\``);
           break;
         case 'DOM_REORDER':
-          lines.push(`- **Reorder Sibling** on ${loc}: Moved from index ${m.before} to index ${m.after}`);
+          lines.push(`- **Reorder Sibling** on ${loc}${pageTag}: Moved from index ${m.before} to index ${m.after}`);
           break;
         case 'THEME_CHANGE':
           lines.push(`- **Global Theme Token** \`${m.property}\`: Set to \`${m.after}\``);
@@ -178,10 +178,11 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
         : a.targetSelector ? `\`${a.targetSelector}\`` : '`Area`';
 
       const snippet = a.htmlSnippet || a.sourceLocation?.htmlSnippet;
+      const annPageTag = a.pathname && a.pathname !== batch.route ? ` [Page: \`${a.pathname}\`]` : '';
 
       if (a.type === 'voice') {
         const targetCount = a.targets ? a.targets.length : 0;
-        lines.push(`- **Voice Walkthrough${targetCount > 0 ? ` on ${targetCount} target${targetCount > 1 ? 's' : ''}` : ''}**: "${a.comment}"`);
+        lines.push(`- **Voice Walkthrough${targetCount > 0 ? ` on ${targetCount} target${targetCount > 1 ? 's' : ''}` : ''}**${annPageTag}: "${a.comment}"`);
         if (a.targets && a.targets.length > 0) {
           lines.push(`  **Referenced Targets:**`);
           a.targets.forEach((t, i) => {
@@ -214,7 +215,7 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
           return t.targetSelector ? `\`${t.targetSelector}\`` : '`Element`';
         });
 
-        lines.push(`- **Comment on ${a.targets.length} elements** (${targetLabels.join(' & ')}): "${a.comment}"`);
+        lines.push(`- **Comment on ${a.targets.length} elements** (${targetLabels.join(' & ')})${annPageTag}: "${a.comment}"`);
         a.targets.forEach((t, i) => {
           const tLoc = t.sourceLocation?.fileName
             ? `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``
@@ -229,10 +230,10 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
           }
         });
       } else if (a.selectedText) {
-        lines.push(`- **Comment on text selection** on ${loc}: "${a.comment}"`);
+        lines.push(`- **Comment on text selection** on ${loc}${annPageTag}: "${a.comment}"`);
         lines.push(`  - Selected text: \`"${a.selectedText}"\``);
       } else {
-        lines.push(`- **Comment** on ${loc}: "${a.comment}"`);
+        lines.push(`- **Comment** on ${loc}${annPageTag}: "${a.comment}"`);
       }
       if (!a.targets || a.targets.length <= 1) {
         if (snippet) {

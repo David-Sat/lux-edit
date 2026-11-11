@@ -2,7 +2,7 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from '../inspector/state.js';
 import { formatBatchSummary } from '@visual-edit/core';
-import { normalizeRoute } from '../inspector/comment-pins.js';
+import { normalizeRoute } from '../inspector/route-utils.js';
 
 export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
@@ -18,10 +18,7 @@ export function EditReviewDrawer() {
 
   if (!state.isDrawerOpen) return null;
 
-  const currentPath =
-    typeof window !== 'undefined'
-      ? state.currentPathname || window.location.pathname
-      : '/';
+  const currentPath = state.getCurrentPathname();
 
   const totalMutations = state.mutations.length;
   const totalAnnotations = state.annotations.length;

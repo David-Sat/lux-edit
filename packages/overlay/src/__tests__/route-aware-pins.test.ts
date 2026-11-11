@@ -1,11 +1,19 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { isAnnotationOnRoute } from '../inspector/comment-pins.js';
+import { h, render } from 'preact';
+import { CommentPins, isAnnotationOnRoute, normalizeRoute } from '../inspector/comment-pins.js';
+import { buildRoutePath, getRouteFromLocation } from '../inspector/route-utils.js';
+import { VoicePins } from '../inspector/voice-pins.js';
+import { EditReviewDrawer } from '../drawer/edit-review-drawer.js';
 import { OverlayStateManager } from '../inspector/state.js';
+
+const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+const flushRender = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
 
 describe('Route-aware Pins & Navigation', () => {
   let state: OverlayStateManager;
   const storageMap = new Map<string, string>();
+  let originalPath = '/';
 
   beforeEach(() => {
     storageMap.clear();
@@ -22,6 +30,9 @@ describe('Route-aware Pins & Navigation', () => {
 
     Object.defineProperty(window, 'localStorage', { value: mockStorage, configurable: true });
     Object.defineProperty(globalThis, 'localStorage', { value: mockStorage, configurable: true });
+
+    originalPath = window.location.pathname + window.location.search + window.location.hash;
+    window.history.replaceState({}, '', '/');
 
     document.body.innerHTML = '';
     (globalThis as any).WebSocket = class {
@@ -44,10 +55,12 @@ describe('Route-aware Pins & Navigation', () => {
   afterEach(() => {
     storageMap.clear();
     delete (globalThis as any).WebSocket;
+    window.history.replaceState({}, '', originalPath || '/');
+    document.body.innerHTML = '';
     vi.restoreAllMocks();
   });
 
-  describe('isAnnotationOnRoute matching helper', () => {
+  describe('normalizeRoute & isAnnotationOnRoute helpers', () => {
     it('matches exact pathnames', () => {
       expect(isAnnotationOnRoute({ pathname: '/dashboard' }, '/dashboard')).toBe(true);
       expect(isAnnotationOnRoute({ pathname: '/about' }, '/about')).toBe(true);
@@ -62,16 +75,32 @@ describe('Route-aware Pins & Navigation', () => {
       expect(isAnnotationOnRoute({ pathname: '/sub' }, '/sub/index.html')).toBe(true);
     });
 
-    it('normalizes clean URLs and .html extensions seamlessly', () => {
+    it('strips query parameters and plain hash anchors before checking .html extensions', () => {
+      expect(normalizeRoute('/about.html?x=1#section')).toBe('/about');
+      expect(normalizeRoute('/index.html?ref=nav#top')).toBe('/');
+      expect(isAnnotationOnRoute({ pathname: '/about.html?x=1' }, '/about')).toBe(true);
+    });
+
+    it('normalizes clean URLs and trailing slashes properly', () => {
       expect(isAnnotationOnRoute({ pathname: '/about.html' }, '/about')).toBe(true);
       expect(isAnnotationOnRoute({ pathname: '/about' }, '/about.html')).toBe(true);
       expect(isAnnotationOnRoute({ pathname: '/features/billing.html' }, '/features/billing')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/dashboard/' }, '/dashboard')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/' }, '')).toBe(true);
     });
 
-    it('normalizes trailing slashes properly', () => {
-      expect(isAnnotationOnRoute({ pathname: '/dashboard/' }, '/dashboard')).toBe(true);
-      expect(isAnnotationOnRoute({ pathname: '/dashboard' }, '/dashboard/')).toBe(true);
-      expect(isAnnotationOnRoute({ pathname: '/' }, '')).toBe(true);
+    it('supports hash-based SPA routes while ignoring plain #anchors', () => {
+      expect(buildRoutePath('/', '#features')).toBe('/');
+      expect(buildRoutePath('/', '#/about')).toBe('/#/about');
+      expect(buildRoutePath('/app/', '#!/users?id=2')).toBe('/app/#!/users');
+
+      expect(normalizeRoute('/#/about?tab=1')).toBe('/#/about');
+      expect(normalizeRoute('/index.html#/about')).toBe('/#/about');
+      expect(isAnnotationOnRoute({ pathname: '/#/home' }, '/#/about')).toBe(false);
+      expect(isAnnotationOnRoute({ pathname: '/#!/about' }, '/#/about')).toBe(true);
+      expect(
+        isAnnotationOnRoute({ url: 'http://localhost:3000/#/about' }, '/#/contact')
+      ).toBe(false);
     });
 
     it('rejects annotations on differing routes', () => {
@@ -100,71 +129,273 @@ describe('Route-aware Pins & Navigation', () => {
     });
   });
 
-  describe('OverlayStateManager route handling', () => {
-    it('updates currentPathname and notifies listeners on handleRouteChange', () => {
+  describe('OverlayStateManager route handling & multi-page isolation', () => {
+    it('updates currentPathname and notifies listeners only when route or targets change', () => {
       const listener = vi.fn();
       state.subscribe(listener);
 
       state.handleRouteChange('/pricing');
       expect(state.currentPathname).toBe('/pricing');
-      expect(listener).toHaveBeenCalled();
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      // Calling again for the same route with no detached targets should be a no-op
+      state.handleRouteChange('/pricing');
+      expect(listener).toHaveBeenCalledTimes(1);
     });
 
-    it('clears active and detached element references when route changes', () => {
-      const button = document.createElement('button');
-      button.textContent = 'Old page button';
-      document.body.appendChild(button);
+    it('unconditionally clears transient selection state on route change even before DOM unmount', () => {
+      const button1 = document.createElement('button');
+      const button2 = document.createElement('button');
+      document.body.appendChild(button1);
+      document.body.appendChild(button2);
 
-      state.setActiveElement(button);
-      state.setCommentTarget(button);
-      expect(state.activeElement).toBe(button);
-      expect(state.commentTargetElement).toBe(button);
+      state.setActiveElement(button1);
+      state.setHoveredElement(button1);
+      state.toggleCommentTarget(button1);
+      state.toggleCommentTarget(button2);
+      expect(state.commentTargetElements.length).toBe(2);
 
-      // Simulate SPA route change where old page DOM elements are removed
-      document.body.removeChild(button);
+      // Simulate pushState microtask running BEFORE SPA framework unmounts old DOM
       state.handleRouteChange('/new-page');
 
       expect(state.currentPathname).toBe('/new-page');
       expect(state.activeElement).toBeNull();
+      expect(state.hoveredElement).toBeNull();
       expect(state.commentTargetElement).toBeNull();
+      expect(state.commentTargetElements).toEqual([]);
     });
 
-    it('isolates annotations across routes in multi-page flow and tracks visited pages', () => {
-      // Simulate page 1: /
-      state.handleRouteChange('/');
-      const homeHeading = document.createElement('h1');
-      homeHeading.id = 'home-title';
-      document.body.appendChild(homeHeading);
-      state.addComment('Make headline bolder', homeHeading);
+    it('stamps pathname on TEXT_EDIT, CLASS_CHANGE, DOM_REMOVE, DOM_INSERT, and DOM_REORDER mutations', () => {
+      state.handleRouteChange('/about');
 
-      // Simulate page 2: /contact
-      document.body.innerHTML = '';
-      state.handleRouteChange('/contact');
-      const contactForm = document.createElement('form');
-      contactForm.id = 'contact-form';
-      document.body.appendChild(contactForm);
-      state.addComment('Add captcha verification', contactForm);
+      const container = document.createElement('div');
+      container.id = 'wrapper';
+      const itemA = document.createElement('p');
+      itemA.id = 'item-a';
+      itemA.textContent = 'First';
+      const itemB = document.createElement('p');
+      itemB.id = 'item-b';
+      itemB.textContent = 'Second';
+      container.appendChild(itemA);
+      container.appendChild(itemB);
+      document.body.appendChild(container);
 
-      expect(state.annotations.length).toBe(2);
+      state.setActiveElement(itemA);
+      state.updateElementText('First Updated');
+      state.addClass('highlighted');
+      state.moveElement('down');
+      state.duplicateElement();
+      state.deleteElement();
 
-      // Verify route-specific filtering
-      const homePins = state.annotations.filter((ann) =>
-        isAnnotationOnRoute(ann, '/')
-      );
-      const contactPins = state.annotations.filter((ann) =>
-        isAnnotationOnRoute(ann, '/contact')
-      );
+      const textMut = state.mutations.find((m) => m.type === 'TEXT_EDIT');
+      const classMut = state.mutations.find((m) => m.type === 'CLASS_CHANGE');
+      const reorderMut = state.mutations.find((m) => m.type === 'DOM_REORDER');
+      const insertMut = state.mutations.find((m) => m.type === 'DOM_INSERT');
+      const removeMut = state.mutations.find((m) => m.type === 'DOM_REMOVE');
 
-      expect(homePins.length).toBe(1);
-      expect(homePins[0].comment).toBe('Make headline bolder');
+      expect(textMut?.pathname).toBe('/about');
+      expect(classMut?.pathname).toBe('/about');
+      expect(reorderMut?.pathname).toBe('/about');
+      expect(insertMut?.pathname).toBe('/about');
+      expect(removeMut?.pathname).toBe('/about');
 
-      expect(contactPins.length).toBe(1);
-      expect(contactPins[0].comment).toBe('Add captcha verification');
-
-      // Batch should collect all annotations and report pages visited
       const batch = state.getBatch();
-      expect(batch.annotations?.length).toBe(2);
-      expect(batch.pagesVisited).toContain('/contact');
+      expect(batch.route).toBe('/about');
+      expect(batch.pagesVisited).toContain('/about');
+    });
+
+    it('preserves mutations with identical selectors across different routes and guards cross-route revert', () => {
+      state.handleRouteChange('/');
+      const homeH1 = document.createElement('h1');
+      homeH1.className = 'hero-title';
+      homeH1.textContent = 'Home Title';
+      document.body.appendChild(homeH1);
+
+      state.setActiveElement(homeH1);
+      state.updateElementText('Home Title Edited');
+      const homeMut = state.mutations.find((m) => m.type === 'TEXT_EDIT' && m.pathname === '/');
+      expect(homeMut).toBeDefined();
+
+      // Navigate to /about which also has h1.hero-title
+      document.body.innerHTML = '';
+      state.handleRouteChange('/about');
+      const aboutH1 = document.createElement('h1');
+      aboutH1.className = 'hero-title';
+      aboutH1.textContent = 'About Title';
+      document.body.appendChild(aboutH1);
+
+      state.setActiveElement(aboutH1);
+      state.updateElementText('About Title Edited');
+
+      const textEdits = state.mutations.filter((m) => m.type === 'TEXT_EDIT');
+      expect(textEdits.length).toBe(2);
+      expect(textEdits.map((m) => m.pathname).sort()).toEqual(['/', '/about']);
+
+      // Reverting the '/' mutation while viewing '/about' must NOT touch aboutH1's DOM
+      state.revertMutation(homeMut!.id);
+      expect(aboutH1.textContent).toBe('About Title Edited');
+      expect(state.mutations.some((m) => m.id === homeMut!.id)).toBe(false);
+      expect(state.mutations.some((m) => m.pathname === '/about')).toBe(true);
+    });
+
+    it('updates route cleanly on hash-router hashchange while ignoring plain anchor hashes', () => {
+      window.history.replaceState({}, '', '/#/home');
+      state.handleRouteChange();
+      expect(state.getCurrentPathname()).toBe('/#/home');
+
+      window.history.replaceState({}, '', '/#/settings');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      expect(state.getCurrentPathname()).toBe('/#/settings');
+
+      // Plain anchor on normal page stays on same route
+      window.history.replaceState({}, '', '/docs');
+      state.handleRouteChange();
+      const listener = vi.fn();
+      state.subscribe(listener);
+      window.history.replaceState({}, '', '/docs#api');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      expect(getRouteFromLocation()).toBe('/docs');
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Component rendering & state cleanup across route changes', () => {
+    it('CommentPins renders only current-route pins and resets editingPinId on navigation', async () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const homeTarget = document.createElement('h1');
+      homeTarget.id = 'home-el';
+      homeTarget.getBoundingClientRect = () =>
+        ({ left: 20, top: 30, width: 100, height: 24, right: 120, bottom: 54, x: 20, y: 30, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(homeTarget);
+
+      state.handleRouteChange('/');
+      state.addComment('Home pin', homeTarget);
+
+      render(h(CommentPins, {}), mount);
+      expect(mount.querySelectorAll('.ve-pin').length).toBe(1);
+
+      // Click pin to enter edit mode
+      (mount.querySelector('.ve-pin') as HTMLElement).click();
+      await flushRender();
+      expect(mount.querySelector('textarea')).not.toBeNull();
+
+      // Navigate to /about with a new pin
+      const aboutTarget = document.createElement('h2');
+      aboutTarget.id = 'about-el';
+      aboutTarget.getBoundingClientRect = () =>
+        ({ left: 40, top: 60, width: 100, height: 24, right: 140, bottom: 84, x: 40, y: 60, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(aboutTarget);
+
+      state.handleRouteChange('/about');
+      state.addComment('About pin', aboutTarget);
+      await flushRender();
+
+      const pins = mount.querySelectorAll('.ve-pin');
+      expect(pins.length).toBe(1);
+      // Editing mode from previous page must be cleared so no textarea stays open and hovering works
+      expect(mount.querySelector('textarea')).toBeNull();
+
+      // Hovering pin on /about should reveal its tooltip (not blocked by stale editingPinId)
+      (pins[0] as HTMLElement).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      await flushRender();
+      expect(mount.textContent).toContain('About pin');
+
+      // Navigating to /empty (no pins) renders null
+      state.handleRouteChange('/empty');
+      await flushRender();
+      expect(mount.querySelectorAll('.ve-pin').length).toBe(0);
+
+      render(null, mount);
+    });
+
+    it('VoicePins filters voiceReviews by url fallback and isolates activeVoicePins by route', () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const el = document.createElement('button');
+      el.id = 'cta';
+      document.body.appendChild(el);
+
+      state.handleRouteChange('/about');
+      // Legacy review missing pathname, only url present
+      state.voiceReviews = [
+        {
+          id: 'vr_home',
+          timestamp: 1,
+          transcript: 'Home walkthrough',
+          annotatedTranscript: 'Home walkthrough',
+          url: 'http://localhost:3000/home',
+          pins: [{ id: 'vp1', order: 1, targetSelector: '#cta', bounds: { x: 10, y: 10, width: 50, height: 20 } }],
+        },
+        {
+          id: 'vr_about',
+          timestamp: 2,
+          transcript: 'About walkthrough',
+          annotatedTranscript: 'About walkthrough',
+          url: 'http://localhost:3000/about',
+          pins: [{ id: 'vp2', order: 1, targetSelector: '#cta', bounds: { x: 20, y: 20, width: 50, height: 20 } }],
+        },
+      ];
+
+      render(h(VoicePins, {}), mount);
+      const renderedPins = mount.querySelectorAll('.ve-voice-pin');
+      expect(renderedPins.length).toBe(1);
+
+      // Active voice recording pins are also route-isolated
+      state.activeTool = 'voice';
+      state.activeVoicePins = [
+        { id: 'ap1', order: 1, targetSelector: '#cta', pathname: '/home', bounds: { x: 10, y: 10, width: 50, height: 20 } },
+        { id: 'ap2', order: 2, targetSelector: '#cta', pathname: '/about', bounds: { x: 20, y: 20, width: 50, height: 20 } },
+      ];
+      render(h(VoicePins, {}), mount);
+      expect(mount.querySelectorAll('.ve-voice-pin').length).toBe(1);
+
+      render(null, mount);
+    });
+
+    it('EditReviewDrawer displays route badges for mutations and annotations', () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      state.handleRouteChange('/about');
+      const heading = document.createElement('h1');
+      heading.id = 'about-h1';
+      heading.textContent = 'About';
+      document.body.appendChild(heading);
+
+      state.setActiveElement(heading);
+      state.updateElementText('About Updated');
+      state.addComment('Refine copy', heading);
+      state.setDrawerOpen(true);
+
+      render(h(EditReviewDrawer, {}), mount);
+      expect(mount.textContent).toContain('/about');
+
+      render(null, mount);
+    });
+  });
+
+  describe('index.ts navigation interception & idempotency', () => {
+    it('intercepts history.pushState and initializes overlay idempotently', async () => {
+      delete (window as any).__LUX_OVERLAY_INITIALIZED__;
+      vi.resetModules();
+      await import('../index.js');
+      const { OverlayStateManager: FreshManager } = await import('../inspector/state.js');
+      const manager = FreshManager.getInstance();
+
+      // Re-evaluating index.ts must not create duplicate roots or double-wrap history
+      vi.resetModules();
+      await import('../index.js');
+
+      const overlays = document.querySelectorAll('visual-edit-overlay#lux-root');
+      expect(overlays.length).toBe(1);
+
+      window.history.pushState({}, '', '/spa-dashboard');
+      await flushMicrotasks();
+
+      expect(manager.currentPathname).toBe('/spa-dashboard');
     });
   });
 });
