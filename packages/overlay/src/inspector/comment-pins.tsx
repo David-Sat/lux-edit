@@ -57,25 +57,52 @@ function EditCommentTextarea({
   );
 }
 
+export function normalizeRoute(path: string): string {
+  let p = (path || '').trim();
+  if (!p || p === '/') return '/';
+
+  // Ensure leading slash
+  if (!p.startsWith('/')) {
+    p = '/' + p;
+  }
+
+  // Remove trailing slashes
+  while (p.length > 1 && p.endsWith('/')) {
+    p = p.slice(0, -1);
+  }
+
+  // Normalize directory index files (/index.html, /index.htm) to directory root
+  if (p === '/index.html' || p === '/index.htm') {
+    return '/';
+  }
+  if (p.endsWith('/index.html')) {
+    p = p.slice(0, -'/index.html'.length) || '/';
+  } else if (p.endsWith('/index.htm')) {
+    p = p.slice(0, -'/index.htm'.length) || '/';
+  } else if (p.endsWith('.html')) {
+    // Normalize clean URL extension (/about.html -> /about)
+    p = p.slice(0, -'.html'.length) || '/';
+  } else if (p.endsWith('.htm')) {
+    p = p.slice(0, -'.htm'.length) || '/';
+  }
+
+  return p || '/';
+}
+
 export function isAnnotationOnRoute(
   ann: { pathname?: string; url?: string },
   currentPath: string
 ): boolean {
   if (!ann.pathname && !ann.url) return true;
-  const normalize = (p: string) => {
-    const trimmed = (p || '').trim();
-    if (!trimmed || trimmed === '/') return '/';
-    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
-  };
-  const normCurrent = normalize(currentPath);
+  const normCurrent = normalizeRoute(currentPath);
 
   if (ann.pathname) {
-    return normalize(ann.pathname) === normCurrent;
+    return normalizeRoute(ann.pathname) === normCurrent;
   }
   if (ann.url) {
     try {
       const u = new URL(ann.url, 'http://localhost');
-      return normalize(u.pathname) === normCurrent;
+      return normalizeRoute(u.pathname) === normCurrent;
     } catch {
       return true;
     }

@@ -54,6 +54,20 @@ describe('Route-aware Pins & Navigation', () => {
       expect(isAnnotationOnRoute({ pathname: '/' }, '/')).toBe(true);
     });
 
+    it('treats root / and /index.html (or index.htm) as equivalent routes', () => {
+      expect(isAnnotationOnRoute({ pathname: '/' }, '/index.html')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/index.html' }, '/')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/index.htm' }, '/')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/sub/index.html' }, '/sub')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/sub' }, '/sub/index.html')).toBe(true);
+    });
+
+    it('normalizes clean URLs and .html extensions seamlessly', () => {
+      expect(isAnnotationOnRoute({ pathname: '/about.html' }, '/about')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/about' }, '/about.html')).toBe(true);
+      expect(isAnnotationOnRoute({ pathname: '/features/billing.html' }, '/features/billing')).toBe(true);
+    });
+
     it('normalizes trailing slashes properly', () => {
       expect(isAnnotationOnRoute({ pathname: '/dashboard/' }, '/dashboard')).toBe(true);
       expect(isAnnotationOnRoute({ pathname: '/dashboard' }, '/dashboard/')).toBe(true);

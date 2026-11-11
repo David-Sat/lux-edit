@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from '../inspector/state.js';
 import { formatBatchSummary } from '@visual-edit/core';
+import { normalizeRoute } from '../inspector/comment-pins.js';
 
 export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
@@ -143,8 +144,8 @@ export function EditReviewDrawer() {
                               fontSize: '10px',
                               padding: '1px 5px',
                               borderRadius: '4px',
-                              background: m.pathname === currentPath ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-                              color: m.pathname === currentPath ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
+                              background: normalizeRoute(m.pathname) === normalizeRoute(currentPath) ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                              color: normalizeRoute(m.pathname) === normalizeRoute(currentPath) ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
                               fontFamily: 'monospace',
                             }}
                             title={`Modified on ${m.pathname}`}
@@ -252,8 +253,8 @@ export function EditReviewDrawer() {
                                 fontSize: '10px',
                                 padding: '1px 5px',
                                 borderRadius: '4px',
-                                background: ann.pathname === currentPath ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-                                color: ann.pathname === currentPath ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
+                                background: normalizeRoute(ann.pathname) === normalizeRoute(currentPath) ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                                color: normalizeRoute(ann.pathname) === normalizeRoute(currentPath) ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
                                 fontFamily: 'monospace',
                               }}
                               title={`Created on ${ann.pathname}`}
