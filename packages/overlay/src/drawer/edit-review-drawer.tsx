@@ -17,6 +17,11 @@ export function EditReviewDrawer() {
 
   if (!state.isDrawerOpen) return null;
 
+  const currentPath =
+    typeof window !== 'undefined'
+      ? state.currentPathname || window.location.pathname
+      : '/';
+
   const totalMutations = state.mutations.length;
   const totalAnnotations = state.annotations.length;
   const totalItems = totalMutations + totalAnnotations;
@@ -125,11 +130,28 @@ export function EditReviewDrawer() {
                 {state.mutations.map((m) => (
                   <div key={m.id} class="ve-mutation-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div class="ve-mut-target">
-                        {m.sourceLocation?.componentName
-                          ? `<${m.sourceLocation.componentName}>`
-                          : m.targetSelector}
-                        {m.property ? ` • ${m.property}` : ''}
+                      <div class="ve-mut-target" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span>
+                          {m.sourceLocation?.componentName
+                            ? `<${m.sourceLocation.componentName}>`
+                            : m.targetSelector}
+                          {m.property ? ` • ${m.property}` : ''}
+                        </span>
+                        {m.pathname && (
+                          <span
+                            style={{
+                              fontSize: '10px',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              background: m.pathname === currentPath ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                              color: m.pathname === currentPath ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
+                              fontFamily: 'monospace',
+                            }}
+                            title={`Modified on ${m.pathname}`}
+                          >
+                            {m.pathname}
+                          </span>
+                        )}
                       </div>
                       <button
                         style={{
@@ -209,7 +231,7 @@ export function EditReviewDrawer() {
                       style={isVoice ? { background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)' } : undefined}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span class="ve-mut-target" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span class="ve-mut-target" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           {isVoice ? (
                             <span style={{ fontSize: '11px', fontWeight: 700, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -224,6 +246,21 @@ export function EditReviewDrawer() {
                               : `Pin #${idx + 1} ${ann.targetSelector ? `• ${ann.targetSelector}` : ''}`
                           )}
                           {!isVoice && ann.selectedText ? ' • [Text Selection]' : ''}
+                          {ann.pathname && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                                background: ann.pathname === currentPath ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+                                color: ann.pathname === currentPath ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
+                                fontFamily: 'monospace',
+                              }}
+                              title={`Created on ${ann.pathname}`}
+                            >
+                              {ann.pathname}
+                            </span>
+                          )}
                         </span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {!isEditing && (

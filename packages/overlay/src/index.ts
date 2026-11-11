@@ -1,5 +1,6 @@
 import { h, render } from 'preact';
 import { OverlayRoot } from './overlay-root.js';
+import { OverlayStateManager } from './inspector/state.js';
 
 class VisualEditOverlayElement extends HTMLElement {
   private shadow: ShadowRoot;
@@ -57,6 +58,13 @@ if (typeof window !== 'undefined') {
     }
   };
 
+  const handleNavigation = () => {
+    mountOverlay();
+    try {
+      OverlayStateManager.getInstance().handleRouteChange();
+    } catch {}
+  };
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mountOverlay);
   } else {
@@ -64,15 +72,16 @@ if (typeof window !== 'undefined') {
   }
 
   // 1. Astro View Transitions & <ClientRouter /> lifecycle events
-  document.addEventListener('astro:after-swap', mountOverlay);
-  document.addEventListener('astro:page-load', mountOverlay);
+  document.addEventListener('astro:after-swap', handleNavigation);
+  document.addEventListener('astro:page-load', handleNavigation);
 
   // 2. Hotwired Turbo / Turbolinks lifecycle events
-  document.addEventListener('turbo:render', mountOverlay);
-  document.addEventListener('turbo:load', mountOverlay);
+  document.addEventListener('turbo:render', handleNavigation);
+  document.addEventListener('turbo:load', handleNavigation);
 
-  // 3. Browser history navigation (popstate)
-  window.addEventListener('popstate', mountOverlay);
+  // 3. Browser history navigation (popstate & hashchange)
+  window.addEventListener('popstate', handleNavigation);
+  window.addEventListener('hashchange', handleNavigation);
 
   // 4. Intercept history.pushState / history.replaceState for React Router, Next.js, Vue Router
   try {
@@ -81,7 +90,7 @@ if (typeof window !== 'undefined') {
       if (typeof orig === 'function') {
         history[type] = function (data: any, unused: string, url?: string | URL | null) {
           const result = orig.call(this, data, unused, url);
-          queueMicrotask(mountOverlay);
+          queueMicrotask(handleNavigation);
           return result;
         };
       }

@@ -82,6 +82,8 @@ export class OverlayStateManager {
     typeof window !== 'undefined' && (window as any).__LUX_VERSION__
       ? (window as any).__LUX_VERSION__
       : '0.13.0';
+  public currentPathname: string =
+    typeof window !== 'undefined' ? window.location.pathname : '/';
   public updateInfo: {
     updateAvailable: boolean;
     currentVersion: string;
@@ -102,6 +104,8 @@ export class OverlayStateManager {
     this.fetchVersionInfo();
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', () => this.clampDockPosition());
+      window.addEventListener('popstate', () => this.handleRouteChange());
+      window.addEventListener('hashchange', () => this.handleRouteChange());
     }
   }
 
@@ -223,6 +227,24 @@ export class OverlayStateManager {
       OverlayStateManager.instance = new OverlayStateManager();
     }
     return OverlayStateManager.instance;
+  }
+
+  public handleRouteChange(newPath?: string): void {
+    const nextPath =
+      newPath || (typeof window !== 'undefined' ? window.location.pathname : '/');
+    this.currentPathname = nextPath;
+
+    // Clean up active selections if elements are detached or belong to previous view
+    if (this.activeElement && (!document.body || !document.body.contains(this.activeElement))) {
+      this.activeElement = null;
+    }
+    if (this.hoveredElement && (!document.body || !document.body.contains(this.hoveredElement))) {
+      this.hoveredElement = null;
+    }
+    if (this.commentTargetElement && (!document.body || !document.body.contains(this.commentTargetElement))) {
+      this.setCommentTarget(null);
+    }
+    this.notify();
   }
 
   public subscribe(fn: () => void): () => void {
@@ -502,7 +524,7 @@ export class OverlayStateManager {
       before: 'initial',
       after: value,
       url: window.location.href,
-      pathname: window.location.pathname,
+      pathname: this.currentPathname || (typeof window !== 'undefined' ? window.location.pathname : '/'),
       pageTitle: document.title,
     });
     this.notify();
@@ -629,7 +651,7 @@ export class OverlayStateManager {
       sourceLocation: primaryLoc,
       htmlSnippet: primaryLoc?.htmlSnippet || (primaryTarget ? primaryTarget.outerHTML.slice(0, 300) : undefined),
       url: window.location.href,
-      pathname: window.location.pathname,
+      pathname: this.currentPathname || (typeof window !== 'undefined' ? window.location.pathname : '/'),
       pageTitle: document.title,
       bounds: primaryBounds,
       selectedText,
@@ -978,7 +1000,7 @@ export class OverlayStateManager {
     const styleDiffs = computeStyleDiff(snapshot.styles, currentStyles, selector, sourceLocation);
     styleDiffs.forEach((m: MutationRecord) => {
       m.url = window.location.href;
-      m.pathname = window.location.pathname;
+      m.pathname = this.currentPathname || (typeof window !== 'undefined' ? window.location.pathname : '/');
       m.pageTitle = document.title;
     });
     this.mutations.push(...styleDiffs);
@@ -989,7 +1011,7 @@ export class OverlayStateManager {
     const classDiffs = computeClassDiff(snapshot.classes, currentClasses, selector, sourceLocation);
     classDiffs.forEach((m: MutationRecord) => {
       m.url = window.location.href;
-      m.pathname = window.location.pathname;
+      m.pathname = this.currentPathname || (typeof window !== 'undefined' ? window.location.pathname : '/');
       m.pageTitle = document.title;
     });
     this.mutations.push(...classDiffs);
@@ -1003,7 +1025,7 @@ export class OverlayStateManager {
     const primarySource = this.activeElement ? resolveSourceLocation(this.activeElement) : this.mutations[0]?.sourceLocation;
 
     const visitedSet = new Set<string>();
-    visitedSet.add(window.location.pathname);
+    visitedSet.add(this.currentPathname || (typeof window !== 'undefined' ? window.location.pathname : '/'));
     this.mutations.forEach((m) => {
       if (m.pathname) visitedSet.add(m.pathname);
     });

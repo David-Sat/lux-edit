@@ -57,6 +57,32 @@ function EditCommentTextarea({
   );
 }
 
+export function isAnnotationOnRoute(
+  ann: { pathname?: string; url?: string },
+  currentPath: string
+): boolean {
+  if (!ann.pathname && !ann.url) return true;
+  const normalize = (p: string) => {
+    const trimmed = (p || '').trim();
+    if (!trimmed || trimmed === '/') return '/';
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+  };
+  const normCurrent = normalize(currentPath);
+
+  if (ann.pathname) {
+    return normalize(ann.pathname) === normCurrent;
+  }
+  if (ann.url) {
+    try {
+      const u = new URL(ann.url, 'http://localhost');
+      return normalize(u.pathname) === normCurrent;
+    } catch {
+      return true;
+    }
+  }
+  return true;
+}
+
 export function CommentPins() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
@@ -92,6 +118,8 @@ export function CommentPins() {
 
     window.addEventListener('scroll', handleUpdate, { passive: true });
     window.addEventListener('resize', handleUpdate);
+    window.addEventListener('popstate', handleUpdate);
+    window.addEventListener('hashchange', handleUpdate);
     window.addEventListener('click', handleOutsideClick);
     window.addEventListener('keydown', handleKeyDown);
     const unsub = state.subscribe(handleUpdate);
@@ -99,6 +127,8 @@ export function CommentPins() {
     return () => {
       window.removeEventListener('scroll', handleUpdate);
       window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('popstate', handleUpdate);
+      window.removeEventListener('hashchange', handleUpdate);
       window.removeEventListener('click', handleOutsideClick);
       window.removeEventListener('keydown', handleKeyDown);
       unsub();
@@ -106,6 +136,11 @@ export function CommentPins() {
   }, []);
 
   if (state.annotations.length === 0) return null;
+
+  const currentPath =
+    typeof window !== 'undefined'
+      ? state.currentPathname || window.location.pathname
+      : '/';
 
   const connectors: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }> = [];
   const targetHighlights: Array<{ id: string; top: number; left: number; width: number; height: number }> = [];
@@ -122,6 +157,9 @@ export function CommentPins() {
   }> = [];
 
   state.annotations.forEach((ann, idx) => {
+    if (!isAnnotationOnRoute(ann, currentPath)) {
+      return;
+    }
     if (ann.targets && ann.targets.length > 1) {
       const coords: Array<{ x: number; y: number; tIdx: number }> = [];
       const isAnnActive = hoveredPinId === ann.id || editingPinId === ann.id;

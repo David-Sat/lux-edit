@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { VoiceTargetPin } from '@visual-edit/core';
+import { isAnnotationOnRoute } from './comment-pins.js';
 
 export function VoicePins() {
   const state = OverlayStateManager.getInstance();
@@ -12,21 +13,32 @@ export function VoicePins() {
     const handleUpdate = () => setTick((t) => t + 1);
     window.addEventListener('scroll', handleUpdate, { passive: true });
     window.addEventListener('resize', handleUpdate);
+    window.addEventListener('popstate', handleUpdate);
+    window.addEventListener('hashchange', handleUpdate);
     const unsub = state.subscribe(handleUpdate);
 
     return () => {
       window.removeEventListener('scroll', handleUpdate);
       window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('popstate', handleUpdate);
+      window.removeEventListener('hashchange', handleUpdate);
       unsub();
     };
   }, []);
+
+  const currentPath =
+    typeof window !== 'undefined'
+      ? state.currentPathname || window.location.pathname
+      : '/';
 
   const allPins: VoiceTargetPin[] = [];
   if (state.activeTool === 'voice' && state.activeVoicePins.length > 0) {
     allPins.push(...state.activeVoicePins);
   } else if (state.voiceReviews.length > 0) {
     state.voiceReviews.forEach((vr) => {
-      allPins.push(...vr.pins);
+      if (!vr.pathname || isAnnotationOnRoute({ pathname: vr.pathname, url: vr.url }, currentPath)) {
+        allPins.push(...vr.pins);
+      }
     });
   }
 
