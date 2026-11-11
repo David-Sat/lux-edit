@@ -263,25 +263,37 @@ export class EventStore {
       return this.hasSessionContent(s);
     };
 
+    const markFetched = (s: VisualEditBatch): VisualEditBatch => {
+      s.lastFetchedAt = Date.now();
+      this.saveToDisk();
+      return s;
+    };
+
     if (options?.activeSessionIds && options.activeSessionIds.length > 0) {
       const activeSet = new Set(options.activeSessionIds);
       for (const s of sessions) {
         if (activeSet.has(s.id) && isCandidate(s)) {
-          return s;
+          return markFetched(s);
         }
       }
     }
 
     for (const s of sessions) {
       if (isCandidate(s)) {
-        return s;
+        return markFetched(s);
       }
     }
 
     return null;
   }
 
-  public markPendingSessionsImplemented(options?: { port?: number; serverUrl?: string; sessionId?: string; appId?: string }): void {
+  public markPendingSessionsImplemented(options?: {
+    port?: number;
+    serverUrl?: string;
+    sessionId?: string;
+    appId?: string;
+    onlyIfOlderThanReviewTurn?: boolean;
+  }): void {
     this.loadFromDisk();
     let changed = false;
     for (const session of this.sessions.values()) {
@@ -296,6 +308,31 @@ export class EventStore {
       }
       if (session.status !== 'implemented' && session.status !== 'resolved') {
         if (this.hasSessionContent(session)) {
+          if (options?.onlyIfOlderThanReviewTurn) {
+            // Draft sessions never fetched by an agent turn must never be auto-resolved
+            if (session.status === 'draft' && !session.lastFetchedAt) {
+              continue;
+            }
+
+            // The review turn cutoff is when the agent fetched the review,
+            // or when the review was explicitly submitted if not yet fetched.
+            const turnCutoff = session.lastFetchedAt ?? (session.status === 'submitted' ? session.timestamp : 0);
+            if (!turnCutoff) {
+              continue;
+            }
+
+            // Check if any comments or voice walkthroughs were added after the turn cutoff
+            const latestContentTime = Math.max(
+              session.timestamp || 0,
+              ...(session.annotations?.map((a) => a.timestamp) || []),
+              ...(session.voiceReviews?.map((v) => v.timestamp) || [])
+            );
+            if (latestContentTime > turnCutoff) {
+              // User has added new comments during or after the agent's turn; preserve as pending!
+              continue;
+            }
+          }
+
           session.status = 'implemented';
           changed = true;
           this.notify('STATUS_CHANGE', session.id, { status: 'implemented', replies: session.replies || [] });

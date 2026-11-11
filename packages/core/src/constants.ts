@@ -17,6 +17,7 @@ export const API_ROUTES = {
 export const STORAGE_KEYS = {
   DRAFT_PREFIX: 'lux_draft_',
   DOCK_POSITION: 'lux_dock_position',
+  COMPOSER_DRAFT: 'lux_composer_draft',
   LEGACY_ACTIVE_DRAFT: 'visual_edit_active_draft',
   LEGACY_APP_DRAFT_PREFIX: 'visual_edit_draft_',
 } as const;
