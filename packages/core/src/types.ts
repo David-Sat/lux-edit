@@ -132,6 +132,7 @@ export interface VisualEditBatch {
   afterSnippet?: string;
   claim?: AgentClaim;
   replies?: AgentReply[];
+  lastFetchedAt?: number;
 }
 
 export interface SessionSummary {

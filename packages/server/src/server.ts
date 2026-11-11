@@ -141,7 +141,11 @@ export class VisualEditServer {
         if (this.reloadDebounce) clearTimeout(this.reloadDebounce);
         this.reloadDebounce = setTimeout(() => {
           console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
-          this.eventStore.markPendingSessionsImplemented({ port: this.options.port, appId: this.appId });
+          this.eventStore.markPendingSessionsImplemented({
+            port: this.options.port,
+            appId: this.appId,
+            onlyIfOlderThanReviewTurn: true,
+          });
           this.wsHub.broadcast({
             type: 'RELOAD_PAGE',
             payload: { file: filename || watchTarget },

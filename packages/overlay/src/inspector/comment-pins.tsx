@@ -58,6 +58,63 @@ function EditCommentTextarea({
   );
 }
 
+function locateElementOrBounds(
+  targetSelector?: string,
+  sourceLoc?: any,
+  bounds?: { x: number; y: number; width?: number; height?: number }
+): { x: number; y: number; rect: DOMRect | { top: number; left: number; width: number; height: number } | null } {
+  const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
+  const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
+
+  // 1. Try exact targetSelector
+  if (targetSelector) {
+    try {
+      const el = document.querySelector(targetSelector) as HTMLElement | null;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + 12, y: r.top + 12, rect: r };
+      }
+    } catch {}
+  }
+
+  // 2. Try ID if known
+  if (sourceLoc?.id) {
+    try {
+      const el = document.getElementById(sourceLoc.id);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + 12, y: r.top + 12, rect: r };
+      }
+    } catch {}
+  }
+
+  // 3. Try XPath if known
+  if (sourceLoc?.xpath) {
+    try {
+      const result = document.evaluate(sourceLoc.xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+      if (result.singleNodeValue instanceof HTMLElement) {
+        const r = result.singleNodeValue.getBoundingClientRect();
+        return { x: r.left + 12, y: r.top + 12, rect: r };
+      }
+    } catch {}
+  }
+
+  // 4. Fallback to stored document bounds
+  if (bounds) {
+    const vpLeft = bounds.x - scrollX;
+    const vpTop = bounds.y - scrollY;
+    const width = bounds.width || 0;
+    const height = bounds.height || 0;
+    return {
+      x: vpLeft + 12,
+      y: vpTop + 12,
+      rect: { top: vpTop, left: vpLeft, width, height },
+    };
+  }
+
+  return { x: 0, y: 0, rect: null };
+}
+
 export function CommentPins() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
@@ -160,28 +217,8 @@ export function CommentPins() {
           return;
         }
 
-        let x = 0;
-        let y = 0;
-        let found = false;
-        let rect: DOMRect | { top: number; left: number; width: number; height: number } | null = null;
-
-        if (t.targetSelector) {
-          try {
-            const el = document.querySelector(t.targetSelector) as HTMLElement | null;
-            if (el) {
-              rect = el.getBoundingClientRect();
-              x = rect.left + 12;
-              y = rect.top + 12;
-              found = true;
-            }
-          } catch (e) {}
-        }
-        if (!found && t.bounds) {
-          rect = { top: t.bounds.y, left: t.bounds.x, width: t.bounds.width, height: t.bounds.height };
-          x = t.bounds.x + 12;
-          y = t.bounds.y + 12;
-          found = true;
-        }
+        const { x, y, rect } = locateElementOrBounds(t.targetSelector, t.sourceLocation, t.bounds);
+        const found = rect !== null || x !== 0 || y !== 0;
 
         if (found) {
           coords.push({ x, y, tIdx });
@@ -229,25 +266,8 @@ export function CommentPins() {
         return;
       }
 
-      let x = 0;
-      let y = 0;
-      let found = false;
-      if (ann.targetSelector) {
-        try {
-          const el = document.querySelector(ann.targetSelector) as HTMLElement | null;
-          if (el) {
-            const rect = el.getBoundingClientRect();
-            x = rect.left + 12;
-            y = rect.top + 12;
-            found = true;
-          }
-        } catch (e) {}
-      }
-      if (!found && ann.bounds) {
-        x = ann.bounds.x + 12;
-        y = ann.bounds.y + 12;
-        found = true;
-      }
+      const { x, y } = locateElementOrBounds(ann.targetSelector, ann.sourceLocation, ann.bounds);
+      const found = x !== 0 || y !== 0;
       if (found) {
         pinItems.push({
           pinKey: ann.id,

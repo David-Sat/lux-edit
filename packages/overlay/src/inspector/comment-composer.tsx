@@ -52,7 +52,7 @@ export function CommentComposer() {
     };
 
     updatePos();
-    setCommentText('');
+    setCommentText(state.commentDraftText || '');
     setTimeout(() => textareaRef.current?.focus(), 50);
 
     window.addEventListener('scroll', updatePos, { passive: true });
@@ -169,7 +169,9 @@ export function CommentComposer() {
         placeholder="Type feedback, instruction, or relationship note..."
         value={commentText}
         onInput={(e) => {
-          setCommentText((e.target as HTMLTextAreaElement).value);
+          const val = (e.target as HTMLTextAreaElement).value;
+          setCommentText(val);
+          state.setCommentDraftText(val);
           adjustHeight();
         }}
         onKeyDown={handleKeyDown}
@@ -177,7 +179,9 @@ export function CommentComposer() {
 
       <div class="ve-comment-footer">
         <span class="ve-hint">
-          {isMulti ? (
+          {state.pendingPageReload ? (
+            <span style={{ color: '#38bdf8', fontWeight: 600 }}>● Update ready • will refresh on save</span>
+          ) : isMulti ? (
             <span><strong>Shift+Click</strong> more to add/remove</span>
           ) : (
             <span><strong>Shift+Click</strong> to link more</span>
