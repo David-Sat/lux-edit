@@ -253,6 +253,84 @@ describe('Diff Utilities', () => {
     expect(summary).toContain('- **[Target 2]**: `src/Pricing.tsx:45` (`<Card>`)');
     expect(summary).toContain('  - Element: `<div class="card">Pro</div>`');
   });
+
+  it('omits redundant [Page: ...] tags for equivalent routes with query strings or index.html', () => {
+    const batch: VisualEditBatch = {
+      id: 'batch_route_norm',
+      timestamp: Date.now(),
+      route: '/about.html?tab=team',
+      status: 'submitted',
+      mutations: [
+        {
+          id: 'm_same',
+          type: 'TEXT_EDIT',
+          targetSelector: '#title',
+          pathname: '/about',
+          before: 'Old',
+          after: 'New',
+        },
+        {
+          id: 'm_other',
+          type: 'TEXT_EDIT',
+          targetSelector: '#home-title',
+          pathname: '/index.html',
+          before: 'Home',
+          after: 'Home Updated',
+        },
+      ],
+      annotations: [
+        {
+          id: 'a_same',
+          timestamp: Date.now(),
+          type: 'element',
+          targetSelector: '#cta',
+          pathname: '/about',
+          comment: 'Tighten spacing',
+        },
+        {
+          id: 'a_other',
+          timestamp: Date.now(),
+          type: 'element',
+          targetSelector: '#hero',
+          pathname: '/pricing',
+          comment: 'Clarify tier',
+        },
+      ],
+    };
+
+    const summary = formatBatchSummary(batch);
+    expect(summary).not.toContain('[Page: `/about`]');
+    expect(summary).toContain('[Page: `/index.html`]');
+    expect(summary).toContain('[Page: `/pricing`]');
+  });
+
+  it('includes per-target [Page: ...] tags on cross-route voice walkthrough annotations', () => {
+    const batch: VisualEditBatch = {
+      id: 'batch_voice_cross_route',
+      timestamp: Date.now(),
+      route: '/about',
+      status: 'submitted',
+      mutations: [],
+      annotations: [
+        {
+          id: 'v_cross_1',
+          timestamp: Date.now(),
+          type: 'voice',
+          pathname: '/about',
+          comment: 'Compare [Target 1] with [Target 2]',
+          targets: [
+            { targetSelector: '#home-cta', pathname: '/home' },
+            { targetSelector: '#about-cta', pathname: '/about' },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatBatchSummary(batch);
+    expect(summary).toContain('- **[Target 1]**: (`#home-cta`) [Page: `/home`]');
+    expect(summary).toContain('- **[Target 2]**: (`#about-cta`)');
+    expect(summary).not.toContain('#about-cta`) [Page:');
+  });
 });
 
 

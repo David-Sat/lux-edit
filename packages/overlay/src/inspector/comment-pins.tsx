@@ -1,9 +1,7 @@
 import { h, Fragment } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
-import { normalizeRoute, isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
-
-export { normalizeRoute, isAnnotationOnRoute };
+import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
 
 function EditCommentTextarea({
   value,
@@ -110,6 +108,7 @@ export function CommentPins() {
 
   const currentPath = state.getCurrentPathname();
   const prevPathRef = useRef(currentPath);
+  const hasAnnotations = state.annotations.length > 0;
 
   useEffect(() => {
     if (prevPathRef.current !== currentPath) {
@@ -119,8 +118,9 @@ export function CommentPins() {
       setHoveredPinKey(null);
       setEditText('');
     }
+    if (!hasAnnotations) return;
     return observeNextDomCommit(() => setTick((t) => t + 1));
-  }, [currentPath]);
+  }, [currentPath, hasAnnotations]);
 
   if (state.annotations.length === 0) return null;
 
@@ -142,10 +142,10 @@ export function CommentPins() {
     if (ann.targets && ann.targets.length > 1) {
       const anyTargetHasPathname = ann.targets.some((t) => Boolean(t.pathname));
       const matchesAnnotationRoute = isAnnotationOnRoute(ann, currentPath);
+      const matchesTarget = (t: NonNullable<typeof ann.targets>[number]) =>
+        t.pathname ? isAnnotationOnRoute({ pathname: t.pathname }, currentPath) : matchesAnnotationRoute;
       const matchesAnyTarget = anyTargetHasPathname
-        ? ann.targets.some((t) =>
-            t.pathname ? isAnnotationOnRoute({ pathname: t.pathname }, currentPath) : matchesAnnotationRoute
-          )
+        ? ann.targets.some(matchesTarget)
         : matchesAnnotationRoute;
 
       if (!matchesAnyTarget) {
@@ -156,7 +156,7 @@ export function CommentPins() {
       const isAnnActive = hoveredPinId === ann.id || editingPinId === ann.id;
 
       ann.targets.forEach((t, tIdx) => {
-        if (t.pathname && !isAnnotationOnRoute({ pathname: t.pathname }, currentPath)) {
+        if (!matchesTarget(t)) {
           return;
         }
 
@@ -221,7 +221,11 @@ export function CommentPins() {
         }
       }
     } else {
-      if (!isAnnotationOnRoute(ann, currentPath)) {
+      const singleRouteTarget =
+        ann.targets?.length === 1 && ann.targets[0].pathname
+          ? { pathname: ann.targets[0].pathname }
+          : ann;
+      if (!isAnnotationOnRoute(singleRouteTarget, currentPath)) {
         return;
       }
 

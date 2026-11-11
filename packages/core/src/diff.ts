@@ -1,5 +1,6 @@
 import { MutationRecord, SourceLocation, VisualEditBatch, VoiceTargetPin } from './types.js';
 import { mapStyleToTailwind } from './tailwind-mapper.js';
+import { normalizeRoute } from './route.js';
 
 let mutationCounter = 0;
 function genMutationId(): string {
@@ -120,6 +121,10 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
     lines.push(`**Primary Target**: \`${fileRef}\`${compRef}`);
   }
 
+  const normBatchRoute = normalizeRoute(batch.route);
+  const formatPageTag = (pathname?: string): string =>
+    pathname && normalizeRoute(pathname) !== normBatchRoute ? ` [Page: \`${pathname}\`]` : '';
+
   if (batch.mutations.length > 0) {
     lines.push(`\n**Visual Modifications (${batch.mutations.length} edits)**:`);
 
@@ -130,7 +135,7 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
         ? `\`<${m.sourceLocation.componentName}>\``
         : `\`${m.targetSelector}\``;
 
-      const pageTag = m.pathname && m.pathname !== batch.route ? ` [Page: \`${m.pathname}\`]` : '';
+      const pageTag = formatPageTag(m.pathname);
       const snippet = m.htmlSnippet || m.sourceLocation?.htmlSnippet;
 
       switch (m.type) {
@@ -178,7 +183,7 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
         : a.targetSelector ? `\`${a.targetSelector}\`` : '`Area`';
 
       const snippet = a.htmlSnippet || a.sourceLocation?.htmlSnippet;
-      const annPageTag = a.pathname && a.pathname !== batch.route ? ` [Page: \`${a.pathname}\`]` : '';
+      const annPageTag = formatPageTag(a.pathname);
 
       if (a.type === 'voice') {
         const targetCount = a.targets ? a.targets.length : 0;
@@ -195,7 +200,8 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
               ? `(\`${t.targetSelector}\`)`
               : '';
             const targetHeading = [tLoc, comp].filter(Boolean).join(' ');
-            lines.push(`  - **[Target ${i + 1}]**${targetHeading ? `: ${targetHeading}` : ''}`);
+            const targetPageTag = formatPageTag(t.pathname);
+            lines.push(`  - **[Target ${i + 1}]**${targetHeading ? `: ${targetHeading}` : ''}${targetPageTag}`);
             const tSnippet = t.htmlSnippet || t.sourceLocation?.htmlSnippet;
             if (tSnippet) {
               const clean = tSnippet.replace(/\s+/g, ' ').trim();

@@ -4,6 +4,33 @@ import { OverlayStateManager } from '../inspector/state.js';
 import { formatBatchSummary } from '@visual-edit/core';
 import { normalizeRoute } from '../inspector/route-utils.js';
 
+function RouteBadge({
+  pathname,
+  currentPath,
+  prefix,
+}: {
+  pathname: string;
+  currentPath: string;
+  prefix: string;
+}) {
+  const isCurrent = normalizeRoute(pathname) === normalizeRoute(currentPath);
+  return (
+    <span
+      style={{
+        fontSize: '10px',
+        padding: '1px 5px',
+        borderRadius: '4px',
+        background: isCurrent ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+        color: isCurrent ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
+        fontFamily: 'monospace',
+      }}
+      title={`${prefix} ${pathname}`}
+    >
+      {pathname}
+    </span>
+  );
+}
+
 export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
@@ -135,21 +162,7 @@ export function EditReviewDrawer() {
                             : m.targetSelector}
                           {m.property ? ` • ${m.property}` : ''}
                         </span>
-                        {m.pathname && (
-                          <span
-                            style={{
-                              fontSize: '10px',
-                              padding: '1px 5px',
-                              borderRadius: '4px',
-                              background: normalizeRoute(m.pathname) === normalizeRoute(currentPath) ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-                              color: normalizeRoute(m.pathname) === normalizeRoute(currentPath) ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
-                              fontFamily: 'monospace',
-                            }}
-                            title={`Modified on ${m.pathname}`}
-                          >
-                            {m.pathname}
-                          </span>
-                        )}
+                        {m.pathname && <RouteBadge pathname={m.pathname} currentPath={currentPath} prefix="Modified on" />}
                       </div>
                       <button
                         style={{
@@ -244,21 +257,7 @@ export function EditReviewDrawer() {
                               : `Pin #${idx + 1} ${ann.targetSelector ? `• ${ann.targetSelector}` : ''}`
                           )}
                           {!isVoice && ann.selectedText ? ' • [Text Selection]' : ''}
-                          {ann.pathname && (
-                            <span
-                              style={{
-                                fontSize: '10px',
-                                padding: '1px 5px',
-                                borderRadius: '4px',
-                                background: normalizeRoute(ann.pathname) === normalizeRoute(currentPath) ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-                                color: normalizeRoute(ann.pathname) === normalizeRoute(currentPath) ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
-                                fontFamily: 'monospace',
-                              }}
-                              title={`Created on ${ann.pathname}`}
-                            >
-                              {ann.pathname}
-                            </span>
-                          )}
+                          {ann.pathname && <RouteBadge pathname={ann.pathname} currentPath={currentPath} prefix="Created on" />}
                         </span>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           {!isEditing && (

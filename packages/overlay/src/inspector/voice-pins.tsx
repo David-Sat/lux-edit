@@ -23,11 +23,14 @@ export function VoicePins() {
   }, []);
 
   const currentPath = state.getCurrentPathname();
+  const hasVoicePins =
+    (state.activeTool === 'voice' && state.activeVoicePins.length > 0) || state.voiceReviews.length > 0;
 
   useEffect(() => {
     setHoveredPinId(null);
+    if (!hasVoicePins) return;
     return observeNextDomCommit(() => setTick((t) => t + 1));
-  }, [currentPath]);
+  }, [currentPath, hasVoicePins]);
 
   const allPins: VoiceTargetPin[] = [];
   if (state.activeTool === 'voice' && state.activeVoicePins.length > 0) {
@@ -38,9 +41,15 @@ export function VoicePins() {
     });
   } else if (state.voiceReviews.length > 0) {
     state.voiceReviews.forEach((vr) => {
-      if (isAnnotationOnRoute({ pathname: vr.pathname, url: vr.url }, currentPath)) {
-        allPins.push(...vr.pins);
-      }
+      const matchesReviewRoute = isAnnotationOnRoute({ pathname: vr.pathname, url: vr.url }, currentPath);
+      vr.pins.forEach((pin) => {
+        const matchesPin = pin.pathname
+          ? isAnnotationOnRoute({ pathname: pin.pathname }, currentPath)
+          : matchesReviewRoute;
+        if (matchesPin) {
+          allPins.push(pin);
+        }
+      });
     });
   }
 

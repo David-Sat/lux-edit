@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { h, render } from 'preact';
-import { CommentPins, isAnnotationOnRoute, normalizeRoute } from '../inspector/comment-pins.js';
-import { buildRoutePath, getRouteFromLocation } from '../inspector/route-utils.js';
+import { CommentPins } from '../inspector/comment-pins.js';
+import {
+  buildRoutePath,
+  getRouteFromLocation,
+  isAnnotationOnRoute,
+  normalizeRoute,
+} from '../inspector/route-utils.js';
 import { VoicePins } from '../inspector/voice-pins.js';
 import { EditReviewDrawer } from '../drawer/edit-review-drawer.js';
 import { OverlayStateManager } from '../inspector/state.js';
@@ -238,24 +243,27 @@ describe('Route-aware Pins & Navigation', () => {
       expect(state.mutations.some((m) => m.pathname === '/about')).toBe(true);
     });
 
-    it('updates route cleanly on hash-router hashchange while ignoring plain anchor hashes', () => {
-      window.history.replaceState({}, '', '/#/home');
-      state.handleRouteChange();
-      expect(state.getCurrentPathname()).toBe('/#/home');
+    it('flushes activeElement mutations under previous route before switching currentPathname and ignores equivalent route normalization', () => {
+      state.handleRouteChange('/about');
+      const heading = document.createElement('h1');
+      heading.id = 'about-heading';
+      heading.textContent = 'Original';
+      document.body.appendChild(heading);
 
-      window.history.replaceState({}, '', '/#/settings');
-      window.dispatchEvent(new HashChangeEvent('hashchange'));
-      expect(state.getCurrentPathname()).toBe('/#/settings');
+      state.setActiveElement(heading);
+      heading.textContent = 'Modified Before Nav';
 
-      // Plain anchor on normal page stays on same route
-      window.history.replaceState({}, '', '/docs');
-      state.handleRouteChange();
-      const listener = vi.fn();
-      state.subscribe(listener);
-      window.history.replaceState({}, '', '/docs#api');
-      window.dispatchEvent(new HashChangeEvent('hashchange'));
-      expect(getRouteFromLocation()).toBe('/docs');
-      expect(listener).not.toHaveBeenCalled();
+      // Equivalent route (/about -> /about/) must NOT clear activeElement
+      state.handleRouteChange('/about/');
+      expect(state.activeElement).toBe(heading);
+
+      // Real route change must flush mutations under /about/ before switching to /contact
+      state.handleRouteChange('/contact');
+      expect(state.currentPathname).toBe('/contact');
+      expect(state.activeElement).toBeNull();
+      const textMuts = state.mutations.filter((m) => m.targetSelector === '#about-heading');
+      expect(textMuts.length).toBe(1);
+      expect(textMuts[0].pathname).toBe('/about/');
     });
   });
 
@@ -352,6 +360,122 @@ describe('Route-aware Pins & Navigation', () => {
       render(h(VoicePins, {}), mount);
       expect(mount.querySelectorAll('.ve-voice-pin').length).toBe(1);
 
+      // Saved voiceReviews with mixed pin pathnames filter per pin
+      state.activeTool = 'none';
+      state.activeVoicePins = [];
+      state.voiceReviews = [
+        {
+          id: 'vr_mixed',
+          timestamp: 3,
+          transcript: 'Cross-page walkthrough',
+          annotatedTranscript: 'Cross-page walkthrough',
+          pathname: '/home',
+          pins: [
+            { id: 'mp1', order: 1, targetSelector: '#cta', pathname: '/home', bounds: { x: 10, y: 10, width: 50, height: 20 } },
+            { id: 'mp2', order: 2, targetSelector: '#cta', pathname: '/about', bounds: { x: 20, y: 20, width: 50, height: 20 } },
+          ],
+        },
+      ];
+      render(h(VoicePins, {}), mount);
+      const mixedPinsOnAbout = mount.querySelectorAll('.ve-voice-pin');
+      expect(mixedPinsOnAbout.length).toBe(1);
+      expect(mixedPinsOnAbout[0].textContent).toContain('Target 2');
+
+      render(null, mount);
+    });
+
+    it('keeps single-pin voice annotation on pin route when stopped after navigating away', async () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const el = document.createElement('button');
+      el.id = 'home-cta';
+      el.getBoundingClientRect = () =>
+        ({ left: 10, top: 20, width: 80, height: 30, right: 90, bottom: 50, x: 10, y: 20, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(el);
+
+      state.handleRouteChange('/home');
+      state.startVoiceRecording();
+      state.recordVoicePin(el);
+
+      // User navigates to /about before hitting Stop
+      state.handleRouteChange('/about');
+      await state.stopVoiceRecording();
+
+      expect(state.annotations.length).toBe(1);
+      expect(state.annotations[0].pathname).toBe('/home');
+
+      render(h(CommentPins, {}), mount);
+      expect(mount.querySelectorAll('.ve-pin').length).toBe(0);
+
+      state.handleRouteChange('/home');
+      await flushRender();
+      expect(mount.querySelectorAll('.ve-pin').length).toBe(1);
+
+      render(null, mount);
+    });
+
+    it('includes cross-route voice target pathnames in batch.pagesVisited deduplicated by normalized route', async () => {
+      const elA = document.createElement('button');
+      elA.id = 'home-btn';
+      const elB = document.createElement('button');
+      elB.id = 'about-btn';
+      document.body.appendChild(elA);
+      document.body.appendChild(elB);
+
+      state.handleRouteChange('/home');
+      state.startVoiceRecording();
+      state.recordVoicePin(elA);
+
+      state.handleRouteChange('/about/');
+      state.recordVoicePin(elB);
+      state.handleRouteChange('/about');
+      await state.stopVoiceRecording();
+
+      const batch = state.getBatch();
+      expect(batch.pagesVisited).toContain('/home');
+      expect(batch.pagesVisited?.filter((p) => normalizeRoute(p) === '/about').length).toBe(1);
+    });
+
+    it('CommentPins multi-target fallback does not leak targets missing pathname onto other routes', async () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const elA = document.createElement('div');
+      elA.id = 'el-a';
+      elA.getBoundingClientRect = () =>
+        ({ left: 10, top: 10, width: 40, height: 20, right: 50, bottom: 30, x: 10, y: 10, toJSON: () => {} } as DOMRect);
+      const elB = document.createElement('div');
+      elB.id = 'el-b';
+      elB.getBoundingClientRect = () =>
+        ({ left: 60, top: 10, width: 40, height: 20, right: 100, bottom: 30, x: 60, y: 10, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(elA);
+      document.body.appendChild(elB);
+
+      state.annotations = [
+        {
+          id: 'ann_mixed_targets',
+          timestamp: 1,
+          type: 'multi',
+          pathname: '/about',
+          comment: 'Mixed target paths',
+          targets: [
+            { targetSelector: '#el-a', pathname: '/home' },
+            { targetSelector: '#el-b' },
+          ],
+        },
+      ];
+
+      state.handleRouteChange('/home');
+      render(h(CommentPins, {}), mount);
+      expect(mount.querySelectorAll('.ve-pin').length).toBe(1);
+      expect(mount.querySelector('.ve-pin')?.textContent).toContain('1A');
+
+      state.handleRouteChange('/about');
+      await flushRender();
+      expect(mount.querySelectorAll('.ve-pin').length).toBe(1);
+      expect(mount.querySelector('.ve-pin')?.textContent).toContain('1B');
+
       render(null, mount);
     });
 
@@ -396,6 +520,26 @@ describe('Route-aware Pins & Navigation', () => {
       await flushMicrotasks();
 
       expect(manager.currentPathname).toBe('/spa-dashboard');
+
+      // Hash-router hashchange updates route, while plain anchor hashes are ignored
+      window.history.replaceState({}, '', '/#/home');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      expect(manager.getCurrentPathname()).toBe('/#/home');
+
+      window.history.replaceState({}, '', '/#/settings');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      expect(manager.getCurrentPathname()).toBe('/#/settings');
+
+      window.history.replaceState({}, '', '/docs');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      expect(manager.getCurrentPathname()).toBe('/docs');
+
+      const listener = vi.fn();
+      manager.subscribe(listener);
+      window.history.replaceState({}, '', '/docs#api');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      expect(getRouteFromLocation()).toBe('/docs');
+      expect(listener).not.toHaveBeenCalled();
     });
   });
 });

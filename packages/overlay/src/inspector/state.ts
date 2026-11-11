@@ -110,16 +110,6 @@ export class OverlayStateManager {
       const resizeHandler = () => OverlayStateManager.instance?.clampDockPosition();
       (OverlayStateManager as any)._resizeHandler = resizeHandler;
       window.addEventListener('resize', resizeHandler);
-
-      const prevRouteHandler = (OverlayStateManager as any)._routeHandler;
-      if (prevRouteHandler) {
-        window.removeEventListener('popstate', prevRouteHandler);
-        window.removeEventListener('hashchange', prevRouteHandler);
-      }
-      const routeHandler = () => OverlayStateManager.instance?.handleRouteChange();
-      (OverlayStateManager as any)._routeHandler = routeHandler;
-      window.addEventListener('popstate', routeHandler);
-      window.addEventListener('hashchange', routeHandler);
     }
   }
 
@@ -258,16 +248,20 @@ export class OverlayStateManager {
   public handleRouteChange(newPath?: string): void {
     const prevPath = this.currentPathname;
     const nextPath = newPath || getRouteFromLocation();
-    const routeChanged = nextPath !== prevPath;
-    this.currentPathname = nextPath;
+    const routeChanged = normalizeRoute(nextPath) !== normalizeRoute(prevPath);
 
     let didClear = false;
     const isDetached = (el: HTMLElement | null) =>
       !!el && (typeof document === 'undefined' || !document.body || !document.body.contains(el));
 
-    // When the route actually changed, unconditionally clear transient selections so stale
-    // pre-commit DOM references do not survive microtask timing races.
+    // When the route actually changed, flush any pending activeElement mutations under the
+    // previous route BEFORE updating currentPathname, then clear transient selections so
+    // stale pre-commit DOM references do not survive microtask timing races.
     if (routeChanged) {
+      if (this.activeElement && typeof document !== 'undefined' && document.body?.contains(this.activeElement)) {
+        this.syncMutationsForElement(this.activeElement);
+      }
+      this.currentPathname = nextPath;
       if (
         this.activeElement ||
         this.hoveredElement ||
@@ -285,6 +279,7 @@ export class OverlayStateManager {
       this.commentTargetSelectedText = undefined;
       this.commentTargetBounds = undefined;
     } else {
+      this.currentPathname = nextPath;
       if (isDetached(this.activeElement)) {
         this.activeElement = null;
         didClear = true;
@@ -420,6 +415,18 @@ export class OverlayStateManager {
       const review = await VoiceRecorder.getInstance().stop(currentRoute);
       if (review) {
         const primaryPin = review.pins[0];
+        const pinRoutes = Array.from(
+          new Set(
+            review.pins
+              .map((p) => p.pathname)
+              .filter((p): p is string => Boolean(p))
+              .map((p) => normalizeRoute(p))
+          )
+        );
+        const resolvedPathname =
+          pinRoutes.length === 1
+            ? review.pins.find((p) => p.pathname)?.pathname || currentRoute
+            : review.pathname || primaryPin?.pathname || currentRoute;
         const annotation: CommentAnnotation = {
           id: review.id,
           timestamp: review.timestamp,
@@ -430,7 +437,7 @@ export class OverlayStateManager {
           htmlSnippet: primaryPin?.htmlSnippet,
           bounds: primaryPin?.bounds,
           url: review.url,
-          pathname: review.pathname || primaryPin?.pathname || currentRoute,
+          pathname: resolvedPathname,
           pageTitle: review.pageTitle,
           targets: review.pins.map((p) => ({
             targetSelector: p.targetSelector,
@@ -1115,16 +1122,24 @@ export class OverlayStateManager {
 
     const primarySource = this.activeElement ? resolveSourceLocation(this.activeElement) : this.mutations[0]?.sourceLocation;
 
-    const visitedSet = new Set<string>();
-    visitedSet.add(currentRoute);
-    this.mutations.forEach((m) => {
-      if (m.pathname) visitedSet.add(m.pathname);
-    });
+    const visitedByNorm = new Map<string, string>();
+    const addVisited = (p?: string) => {
+      if (!p) return;
+      const norm = normalizeRoute(p);
+      if (!visitedByNorm.has(norm)) {
+        visitedByNorm.set(norm, p);
+      }
+    };
+
+    addVisited(currentRoute);
+    this.mutations.forEach((m) => addVisited(m.pathname));
     this.annotations.forEach((a) => {
-      if (a.pathname) visitedSet.add(a.pathname);
+      addVisited(a.pathname);
+      a.targets?.forEach((t) => addVisited(t.pathname));
     });
     this.voiceReviews.forEach((v) => {
-      if (v.pathname) visitedSet.add(v.pathname);
+      addVisited(v.pathname);
+      v.pins?.forEach((p) => addVisited(p.pathname));
     });
 
     return {
@@ -1133,7 +1148,7 @@ export class OverlayStateManager {
       route: routeWithSearch,
       url: pageMeta.url,
       pageTitle: pageMeta.pageTitle,
-      pagesVisited: Array.from(visitedSet),
+      pagesVisited: Array.from(visitedByNorm.values()),
       appId: typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined,
       status: this.sessionStatus,
       userPrompt: this.userPrompt,
