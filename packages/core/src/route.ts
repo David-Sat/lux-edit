@@ -35,12 +35,24 @@ export function normalizeRoute(path: string): string {
   const raw = (path || '').trim();
   if (!raw) return '/';
 
-  // Preserve hash-router paths (`#/...` or `#!/...`), stripping query strings
-  const hashRouterMatch = raw.match(/^(.*?)(#!?\/.*)$/);
-  if (hashRouterMatch) {
-    const baseRaw = hashRouterMatch[1].split('?')[0];
-    const hashRaw = hashRouterMatch[2].split('?')[0];
-    const hashPathRaw = hashRaw.startsWith('#!/') ? hashRaw.slice(2) : hashRaw.slice(1);
+  // Preserve hash-router paths (`#/...` or `#!/...`), stripping query strings without polynomial regex
+  const hashBangIdx = raw.indexOf('#!/');
+  const hashIdx = raw.indexOf('#/');
+  let splitIdx = -1;
+  let prefixLen = 0;
+
+  if (hashBangIdx !== -1 && (hashIdx === -1 || hashBangIdx <= hashIdx)) {
+    splitIdx = hashBangIdx;
+    prefixLen = 2;
+  } else if (hashIdx !== -1) {
+    splitIdx = hashIdx;
+    prefixLen = 1;
+  }
+
+  if (splitIdx !== -1) {
+    const baseRaw = raw.slice(0, splitIdx).split('?')[0];
+    const hashRaw = raw.slice(splitIdx).split('?')[0];
+    const hashPathRaw = hashRaw.slice(prefixLen);
     const normBase = normalizeSinglePath(baseRaw);
     const normHash = normalizeSinglePath(hashPathRaw);
     return normBase === '/' ? `/#${normHash}` : `${normBase}/#${normHash}`;
