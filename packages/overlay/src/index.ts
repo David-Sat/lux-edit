@@ -1,5 +1,6 @@
 import { h, render } from 'preact';
 import { OverlayRoot } from './overlay-root.js';
+import { OverlayStateManager } from './inspector/state.js';
 
 class VisualEditOverlayElement extends HTMLElement {
   private shadow: ShadowRoot;
@@ -33,86 +34,106 @@ if (typeof window !== 'undefined') {
     customElements.define('visual-edit-overlay', VisualEditOverlayElement);
   }
 
-  let overlayInstance: HTMLElement | null = null;
+  const luxWin = window as any;
+  if (!luxWin.__LUX_OVERLAY_INITIALIZED__) {
+    luxWin.__LUX_OVERLAY_INITIALIZED__ = true;
 
-  const getOrCreateOverlay = (): HTMLElement => {
-    if (!overlayInstance) {
-      overlayInstance = document.createElement('visual-edit-overlay');
-      overlayInstance.id = 'lux-root';
-      // Declarative framework persistence attributes
-      overlayInstance.setAttribute('data-astro-transition-persist', 'lux-overlay');
-      overlayInstance.setAttribute('data-astro-rerun', 'false');
-      overlayInstance.setAttribute('data-turbo-permanent', '');
-      overlayInstance.setAttribute('data-swup-persist', 'lux-overlay');
-    }
-    return overlayInstance;
-  };
+    let overlayInstance: HTMLElement | null = null;
 
-  const mountOverlay = () => {
-    if (!document.body) return;
-    const overlayEl = getOrCreateOverlay();
-    if (!overlayEl.isConnected || !document.body.contains(overlayEl)) {
-      document.body.appendChild(overlayEl);
-      console.log('[lux] Live User eXperience Overlay mounted.');
-    }
-  };
+    const getOrCreateOverlay = (): HTMLElement => {
+      if (!overlayInstance) {
+        const existing = document.getElementById('lux-root');
+        if (existing && existing.tagName.toLowerCase() === 'visual-edit-overlay') {
+          overlayInstance = existing;
+        } else {
+          overlayInstance = document.createElement('visual-edit-overlay');
+          overlayInstance.id = 'lux-root';
+          // Declarative framework persistence attributes
+          overlayInstance.setAttribute('data-astro-transition-persist', 'lux-overlay');
+          overlayInstance.setAttribute('data-astro-rerun', 'false');
+          overlayInstance.setAttribute('data-turbo-permanent', '');
+          overlayInstance.setAttribute('data-swup-persist', 'lux-overlay');
+        }
+      }
+      return overlayInstance;
+    };
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountOverlay);
-  } else {
-    mountOverlay();
-  }
-
-  // 1. Astro View Transitions & <ClientRouter /> lifecycle events
-  document.addEventListener('astro:after-swap', mountOverlay);
-  document.addEventListener('astro:page-load', mountOverlay);
-
-  // 2. Hotwired Turbo / Turbolinks lifecycle events
-  document.addEventListener('turbo:render', mountOverlay);
-  document.addEventListener('turbo:load', mountOverlay);
-
-  // 3. Browser history navigation (popstate)
-  window.addEventListener('popstate', mountOverlay);
-
-  // 4. Intercept history.pushState / history.replaceState for React Router, Next.js, Vue Router
-  try {
-    const wrapHistoryMethod = (type: 'pushState' | 'replaceState') => {
-      const orig = history[type];
-      if (typeof orig === 'function') {
-        history[type] = function (data: any, unused: string, url?: string | URL | null) {
-          const result = orig.call(this, data, unused, url);
-          queueMicrotask(mountOverlay);
-          return result;
-        };
+    const mountOverlay = () => {
+      if (!document.body) return;
+      const overlayEl = getOrCreateOverlay();
+      if (!overlayEl.isConnected || !document.body.contains(overlayEl)) {
+        document.body.appendChild(overlayEl);
+        console.log('[lux] Live User eXperience Overlay mounted.');
       }
     };
-    wrapHistoryMethod('pushState');
-    wrapHistoryMethod('replaceState');
-  } catch (e) {}
 
-  // 5. MutationObserver fallback to re-attach if body is replaced or cleared
-  try {
-    const observer = new MutationObserver(() => {
-      if (document.body && overlayInstance && !overlayInstance.isConnected) {
-        mountOverlay();
-      }
-    });
-
-    const observeBody = () => {
-      if (document.documentElement) {
-        observer.observe(document.documentElement, { childList: true });
-      }
-      if (document.body) {
-        observer.observe(document.body, { childList: true });
-      }
+    const handleNavigation = () => {
+      mountOverlay();
+      try {
+        OverlayStateManager.getInstance().handleRouteChange();
+      } catch {}
     };
 
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', observeBody);
+      document.addEventListener('DOMContentLoaded', mountOverlay);
     } else {
-      observeBody();
+      mountOverlay();
     }
-  } catch (e) {}
+
+    // 1. Astro View Transitions & <ClientRouter /> lifecycle events
+    document.addEventListener('astro:after-swap', handleNavigation);
+    document.addEventListener('astro:page-load', handleNavigation);
+
+    // 2. Hotwired Turbo / Turbolinks lifecycle events
+    document.addEventListener('turbo:render', handleNavigation);
+    document.addEventListener('turbo:load', handleNavigation);
+
+    // 3. Browser history navigation (popstate & hashchange)
+    window.addEventListener('popstate', handleNavigation);
+    window.addEventListener('hashchange', handleNavigation);
+
+    // 4. Intercept history.pushState / history.replaceState for React Router, Next.js, Vue Router
+    try {
+      const wrapHistoryMethod = (type: 'pushState' | 'replaceState') => {
+        const orig = history[type];
+        if (typeof orig === 'function' && !(orig as any).__luxPatched) {
+          const wrapped = function (this: History, ...args: [any, string, (string | URL | null)?]) {
+            const result = orig.apply(this, args);
+            queueMicrotask(handleNavigation);
+            return result;
+          };
+          (wrapped as any).__luxPatched = true;
+          history[type] = wrapped;
+        }
+      };
+      wrapHistoryMethod('pushState');
+      wrapHistoryMethod('replaceState');
+    } catch (e) {}
+
+    // 5. MutationObserver fallback to re-attach if body is replaced or cleared
+    try {
+      const observer = new MutationObserver(() => {
+        if (document.body && overlayInstance && !overlayInstance.isConnected) {
+          mountOverlay();
+        }
+      });
+
+      const observeBody = () => {
+        if (document.documentElement) {
+          observer.observe(document.documentElement, { childList: true });
+        }
+        if (document.body) {
+          observer.observe(document.body, { childList: true });
+        }
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', observeBody);
+      } else {
+        observeBody();
+      }
+    } catch (e) {}
+  }
 }
 
 export { VisualEditOverlayElement };

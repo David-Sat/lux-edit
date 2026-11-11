@@ -1,4 +1,5 @@
 import { VoiceTargetPin, VoiceReviewWalkthrough, formatVoiceTargetTag, SourceLocation } from '@visual-edit/core';
+import { getRouteFromLocation } from './route-utils.js';
 
 export interface VoiceRecorderState {
   isRecording: boolean;
@@ -214,6 +215,7 @@ export class VoiceRecorder {
     sourceLocation?: SourceLocation;
     htmlSnippet?: string;
     bounds?: { x: number; y: number; width: number; height: number };
+    pathname?: string;
   }): VoiceTargetPin {
     const order = this.pins.length + 1;
     const pin: VoiceTargetPin = {
@@ -224,6 +226,7 @@ export class VoiceRecorder {
       htmlSnippet: target.htmlSnippet,
       bounds: target.bounds,
       timestampMs: this.startTime > 0 ? Math.round(performance.now() - this.startTime) : 0,
+      pathname: target.pathname || getRouteFromLocation(),
     };
 
     this.pins.push(pin);
@@ -270,7 +273,7 @@ export class VoiceRecorder {
     return result;
   }
 
-  public async stop(): Promise<VoiceReviewWalkthrough | null> {
+  public async stop(pathnameOverride?: string): Promise<VoiceReviewWalkthrough | null> {
     if (!this.isRecording) return null;
     this.isRecording = false;
     this.isReady = false;
@@ -321,7 +324,7 @@ export class VoiceRecorder {
       annotatedTranscript: finalAnnotated || finalRawTranscript,
       pins: [...this.pins],
       url: typeof window !== 'undefined' ? window.location.href : undefined,
-      pathname: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      pathname: pathnameOverride || getRouteFromLocation(),
       pageTitle: typeof document !== 'undefined' ? document.title : undefined,
     };
 

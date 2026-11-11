@@ -1,6 +1,7 @@
 import { h, Fragment } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
+import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
 
 function EditCommentTextarea({
   value,
@@ -162,6 +163,22 @@ export function CommentPins() {
     };
   }, []);
 
+  const currentPath = state.getCurrentPathname();
+  const prevPathRef = useRef(currentPath);
+  const hasAnnotations = state.annotations.length > 0;
+
+  useEffect(() => {
+    if (prevPathRef.current !== currentPath) {
+      prevPathRef.current = currentPath;
+      setEditingPinId(null);
+      setHoveredPinId(null);
+      setHoveredPinKey(null);
+      setEditText('');
+    }
+    if (!hasAnnotations) return;
+    return observeNextDomCommit(() => setTick((t) => t + 1));
+  }, [currentPath, hasAnnotations]);
+
   if (state.annotations.length === 0) return null;
 
   const connectors: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }> = [];
@@ -180,13 +197,30 @@ export function CommentPins() {
 
   state.annotations.forEach((ann, idx) => {
     if (ann.targets && ann.targets.length > 1) {
+      const anyTargetHasPathname = ann.targets.some((t) => Boolean(t.pathname));
+      const matchesAnnotationRoute = isAnnotationOnRoute(ann, currentPath);
+      const matchesTarget = (t: NonNullable<typeof ann.targets>[number]) =>
+        t.pathname ? isAnnotationOnRoute({ pathname: t.pathname }, currentPath) : matchesAnnotationRoute;
+      const matchesAnyTarget = anyTargetHasPathname
+        ? ann.targets.some(matchesTarget)
+        : matchesAnnotationRoute;
+
+      if (!matchesAnyTarget) {
+        return;
+      }
+
       const coords: Array<{ x: number; y: number; tIdx: number }> = [];
       const isAnnActive = hoveredPinId === ann.id || editingPinId === ann.id;
 
       ann.targets.forEach((t, tIdx) => {
-        const { x, y, rect } = locateElementOrBounds(t.targetSelector, t.sourceLocation, t.bounds);
+        if (!matchesTarget(t)) {
+          return;
+        }
 
-        if (x !== 0 || y !== 0) {
+        const { x, y, rect } = locateElementOrBounds(t.targetSelector, t.sourceLocation, t.bounds);
+        const found = rect !== null || x !== 0 || y !== 0;
+
+        if (found) {
           coords.push({ x, y, tIdx });
           pinItems.push({
             pinKey: `${ann.id}_${tIdx}`,
@@ -224,8 +258,17 @@ export function CommentPins() {
         }
       }
     } else {
+      const singleRouteTarget =
+        ann.targets?.length === 1 && ann.targets[0].pathname
+          ? { pathname: ann.targets[0].pathname }
+          : ann;
+      if (!isAnnotationOnRoute(singleRouteTarget, currentPath)) {
+        return;
+      }
+
       const { x, y } = locateElementOrBounds(ann.targetSelector, ann.sourceLocation, ann.bounds);
-      if (x !== 0 || y !== 0) {
+      const found = x !== 0 || y !== 0;
+      if (found) {
         pinItems.push({
           pinKey: ann.id,
           ann,
@@ -239,6 +282,10 @@ export function CommentPins() {
       }
     }
   });
+
+  if (pinItems.length === 0 && connectors.length === 0 && targetHighlights.length === 0) {
+    return null;
+  }
 
   return (
     <Fragment>

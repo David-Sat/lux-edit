@@ -44,6 +44,7 @@ export interface AnnotationTarget {
   sourceLocation?: SourceLocation;
   bounds?: { x: number; y: number; width: number; height: number };
   htmlSnippet?: string;
+  pathname?: string;
 }
 
 export interface CommentAnnotation {
@@ -98,6 +99,7 @@ export interface VoiceTargetPin {
   htmlSnippet?: string;
   bounds?: { x: number; y: number; width: number; height: number };
   timestampMs?: number;
+  pathname?: string;
 }
 
 export interface VoiceReviewWalkthrough {

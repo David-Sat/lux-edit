@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { VoiceTargetPin } from '@visual-edit/core';
+import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
 
 export function VoicePins() {
   const state = OverlayStateManager.getInstance();
@@ -21,12 +22,34 @@ export function VoicePins() {
     };
   }, []);
 
+  const currentPath = state.getCurrentPathname();
+  const hasVoicePins =
+    (state.activeTool === 'voice' && state.activeVoicePins.length > 0) || state.voiceReviews.length > 0;
+
+  useEffect(() => {
+    setHoveredPinId(null);
+    if (!hasVoicePins) return;
+    return observeNextDomCommit(() => setTick((t) => t + 1));
+  }, [currentPath, hasVoicePins]);
+
   const allPins: VoiceTargetPin[] = [];
   if (state.activeTool === 'voice' && state.activeVoicePins.length > 0) {
-    allPins.push(...state.activeVoicePins);
+    state.activeVoicePins.forEach((pin) => {
+      if (!pin.pathname || isAnnotationOnRoute({ pathname: pin.pathname }, currentPath)) {
+        allPins.push(pin);
+      }
+    });
   } else if (state.voiceReviews.length > 0) {
     state.voiceReviews.forEach((vr) => {
-      allPins.push(...vr.pins);
+      const matchesReviewRoute = isAnnotationOnRoute({ pathname: vr.pathname, url: vr.url }, currentPath);
+      vr.pins.forEach((pin) => {
+        const matchesPin = pin.pathname
+          ? isAnnotationOnRoute({ pathname: pin.pathname }, currentPath)
+          : matchesReviewRoute;
+        if (matchesPin) {
+          allPins.push(pin);
+        }
+      });
     });
   }
 

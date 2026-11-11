@@ -15,6 +15,7 @@ import {
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
 import { VoiceRecorder } from './voice-recorder.js';
+import { getRouteFromLocation, isAnnotationOnRoute, normalizeRoute } from './route-utils.js';
 
 export type { DockPosition };
 
@@ -84,6 +85,7 @@ export class OverlayStateManager {
     typeof window !== 'undefined' && (window as any).__LUX_VERSION__
       ? (window as any).__LUX_VERSION__
       : '0.13.0';
+  public currentPathname: string = getRouteFromLocation();
   public updateInfo: {
     updateAvailable: boolean;
     currentVersion: string;
@@ -103,7 +105,13 @@ export class OverlayStateManager {
     this.initWebSocket();
     this.fetchVersionInfo();
     if (typeof window !== 'undefined') {
-      window.addEventListener('resize', () => this.clampDockPosition());
+      const prevResizeHandler = (OverlayStateManager as any)._resizeHandler;
+      if (prevResizeHandler) {
+        window.removeEventListener('resize', prevResizeHandler);
+      }
+      const resizeHandler = () => OverlayStateManager.instance?.clampDockPosition();
+      (OverlayStateManager as any)._resizeHandler = resizeHandler;
+      window.addEventListener('resize', resizeHandler);
     }
   }
 
@@ -236,6 +244,84 @@ export class OverlayStateManager {
     return OverlayStateManager.instance;
   }
 
+  public getCurrentPathname(): string {
+    return this.currentPathname || getRouteFromLocation();
+  }
+
+  private getPageMetadata(): { url: string; pathname: string; pageTitle: string } {
+    return {
+      url: typeof window !== 'undefined' && window.location ? window.location.href : '',
+      pathname: this.getCurrentPathname(),
+      pageTitle: typeof document !== 'undefined' ? document.title : '',
+    };
+  }
+
+  public handleRouteChange(newPath?: string): void {
+    const prevPath = this.currentPathname;
+    const nextPath = newPath || getRouteFromLocation();
+    const routeChanged = normalizeRoute(nextPath) !== normalizeRoute(prevPath);
+
+    let didClear = false;
+    const isDetached = (el: HTMLElement | null) =>
+      !!el && (typeof document === 'undefined' || !document.body || !document.body.contains(el));
+
+    // When the route actually changed, flush any pending activeElement mutations under the
+    // previous route BEFORE updating currentPathname, then clear transient selections so
+    // stale pre-commit DOM references do not survive microtask timing races.
+    if (routeChanged) {
+      if (this.activeElement && typeof document !== 'undefined' && document.body?.contains(this.activeElement)) {
+        this.syncMutationsForElement(this.activeElement);
+      }
+      this.currentPathname = nextPath;
+      if (
+        this.activeElement ||
+        this.hoveredElement ||
+        this.commentTargetElement ||
+        this.commentTargetElements.length > 0 ||
+        this.commentTargetSelectedText !== undefined ||
+        this.commentTargetBounds !== undefined
+      ) {
+        didClear = true;
+      }
+      this.activeElement = null;
+      this.hoveredElement = null;
+      this.commentTargetElement = null;
+      this.commentTargetElements = [];
+      this.commentTargetSelectedText = undefined;
+      this.commentTargetBounds = undefined;
+    } else {
+      this.currentPathname = nextPath;
+      if (isDetached(this.activeElement)) {
+        this.activeElement = null;
+        didClear = true;
+      }
+      if (isDetached(this.hoveredElement)) {
+        this.hoveredElement = null;
+        didClear = true;
+      }
+      if (this.commentTargetElements.length > 0) {
+        const remaining = this.commentTargetElements.filter((el) => !isDetached(el));
+        if (remaining.length !== this.commentTargetElements.length) {
+          this.commentTargetElements = remaining;
+          didClear = true;
+        }
+      }
+      if (isDetached(this.commentTargetElement)) {
+        this.commentTargetElement =
+          this.commentTargetElements[this.commentTargetElements.length - 1] ?? null;
+        if (!this.commentTargetElement) {
+          this.commentTargetSelectedText = undefined;
+          this.commentTargetBounds = undefined;
+        }
+        didClear = true;
+      }
+    }
+
+    if (routeChanged || didClear) {
+      this.notify();
+    }
+  }
+
   public subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -336,9 +422,22 @@ export class OverlayStateManager {
     this.isStoppingVoice = true;
     this.notify();
     try {
-      const review = await VoiceRecorder.getInstance().stop();
+      const currentRoute = this.getCurrentPathname();
+      const review = await VoiceRecorder.getInstance().stop(currentRoute);
       if (review) {
         const primaryPin = review.pins[0];
+        const pinRoutes = Array.from(
+          new Set(
+            review.pins
+              .map((p) => p.pathname)
+              .filter((p): p is string => Boolean(p))
+              .map((p) => normalizeRoute(p))
+          )
+        );
+        const resolvedPathname =
+          pinRoutes.length === 1
+            ? review.pins.find((p) => p.pathname)?.pathname || currentRoute
+            : review.pathname || primaryPin?.pathname || currentRoute;
         const annotation: CommentAnnotation = {
           id: review.id,
           timestamp: review.timestamp,
@@ -349,13 +448,14 @@ export class OverlayStateManager {
           htmlSnippet: primaryPin?.htmlSnippet,
           bounds: primaryPin?.bounds,
           url: review.url,
-          pathname: review.pathname,
+          pathname: resolvedPathname,
           pageTitle: review.pageTitle,
           targets: review.pins.map((p) => ({
             targetSelector: p.targetSelector,
             sourceLocation: p.sourceLocation,
             htmlSnippet: p.htmlSnippet,
             bounds: p.bounds,
+            pathname: p.pathname,
           })),
         };
         this.annotations.push(annotation);
@@ -401,6 +501,7 @@ export class OverlayStateManager {
       sourceLocation,
       htmlSnippet: snippet,
       bounds,
+      pathname: this.getCurrentPathname(),
     });
 
     this.activeVoicePins = [...this.activeVoicePins, pin];
@@ -512,9 +613,7 @@ export class OverlayStateManager {
       property: token,
       before: 'initial',
       after: value,
-      url: window.location.href,
-      pathname: window.location.pathname,
-      pageTitle: document.title,
+      ...this.getPageMetadata(),
     });
     this.notify();
   }
@@ -678,6 +777,7 @@ export class OverlayStateManager {
               height: Math.round(b.height),
             },
             htmlSnippet: loc.htmlSnippet || targetEl.outerHTML.slice(0, 300),
+            pathname: this.getCurrentPathname(),
           };
         })
       : undefined;
@@ -690,9 +790,7 @@ export class OverlayStateManager {
       targetSelector: primaryLoc?.selector,
       sourceLocation: primaryLoc,
       htmlSnippet: primaryLoc?.htmlSnippet || (primaryTarget ? primaryTarget.outerHTML.slice(0, 300) : undefined),
-      url: window.location.href,
-      pathname: window.location.pathname,
-      pageTitle: document.title,
+      ...this.getPageMetadata(),
       bounds: primaryBounds,
       selectedText,
       comment: comment.trim(),
@@ -824,6 +922,7 @@ export class OverlayStateManager {
       sourceLocation,
       before: outerHtml,
       after: '',
+      ...this.getPageMetadata(),
     });
     this.setActiveElement(null);
     this.notify();
@@ -848,6 +947,7 @@ export class OverlayStateManager {
       sourceLocation,
       before: '',
       after: clone.outerHTML,
+      ...this.getPageMetadata(),
     });
     this.setActiveElement(clone);
     this.notify();
@@ -890,7 +990,11 @@ export class OverlayStateManager {
     }
 
     let targetEl: HTMLElement | null = null;
-    if (mutation.targetSelector) {
+    const isMutationOnCurrentRoute =
+      !mutation.pathname ||
+      isAnnotationOnRoute({ pathname: mutation.pathname, url: mutation.url }, this.getCurrentPathname());
+
+    if (mutation.targetSelector && isMutationOnCurrentRoute && typeof document !== 'undefined') {
       try {
         targetEl = document.querySelector(mutation.targetSelector) as HTMLElement | null;
       } catch (e) {}
@@ -1003,6 +1107,7 @@ export class OverlayStateManager {
       sourceLocation,
       before: `${beforeIndex}`,
       after: `${afterIndex}`,
+      ...this.getPageMetadata(),
     });
     this.notify();
   }
@@ -1013,13 +1118,27 @@ export class OverlayStateManager {
 
     const sourceLocation = resolveSourceLocation(el);
     const selector = sourceLocation.selector;
+    const pageMeta = this.getPageMetadata();
+    const currentNormRoute = normalizeRoute(pageMeta.pathname);
 
-    this.mutations = this.mutations.filter(
-      (m) => m.targetSelector !== selector && m.type !== 'DOM_REMOVE' && m.type !== 'DOM_REORDER'
-    );
+    this.mutations = this.mutations.filter((m) => {
+      if (
+        m.type === 'DOM_REMOVE' ||
+        m.type === 'DOM_REORDER' ||
+        m.type === 'DOM_INSERT' ||
+        m.type === 'THEME_CHANGE'
+      ) {
+        return true;
+      }
+      const sameRoute = !m.pathname || normalizeRoute(m.pathname) === currentNormRoute;
+      return !(m.targetSelector === selector && sameRoute);
+    });
 
     const textDiff = computeTextDiff(snapshot.text, el.innerText || '', selector, sourceLocation);
-    if (textDiff) this.mutations.push(textDiff);
+    if (textDiff) {
+      Object.assign(textDiff, pageMeta);
+      this.mutations.push(textDiff);
+    }
 
     const currentComputed = window.getComputedStyle(el);
     const currentStyles: Record<string, string> = {
@@ -1049,9 +1168,7 @@ export class OverlayStateManager {
 
     const styleDiffs = computeStyleDiff(snapshot.styles, currentStyles, selector, sourceLocation);
     styleDiffs.forEach((m: MutationRecord) => {
-      m.url = window.location.href;
-      m.pathname = window.location.pathname;
-      m.pageTitle = document.title;
+      Object.assign(m, pageMeta);
     });
     this.mutations.push(...styleDiffs);
 
@@ -1060,39 +1177,50 @@ export class OverlayStateManager {
       : [];
     const classDiffs = computeClassDiff(snapshot.classes, currentClasses, selector, sourceLocation);
     classDiffs.forEach((m: MutationRecord) => {
-      m.url = window.location.href;
-      m.pathname = window.location.pathname;
-      m.pageTitle = document.title;
+      Object.assign(m, pageMeta);
     });
     this.mutations.push(...classDiffs);
   }
 
   public getBatch(): VisualEditBatch {
-    if (this.activeElement) {
+    if (this.activeElement && typeof document !== 'undefined' && document.body?.contains(this.activeElement)) {
       this.syncMutationsForElement(this.activeElement);
     }
 
+    const currentRoute = this.getCurrentPathname();
+    const search = typeof window !== 'undefined' && window.location ? window.location.search : '';
+    const routeWithSearch = currentRoute.includes('?') ? currentRoute : `${currentRoute}${search}`;
+    const pageMeta = this.getPageMetadata();
+
     const primarySource = this.activeElement ? resolveSourceLocation(this.activeElement) : this.mutations[0]?.sourceLocation;
 
-    const visitedSet = new Set<string>();
-    visitedSet.add(window.location.pathname);
-    this.mutations.forEach((m) => {
-      if (m.pathname) visitedSet.add(m.pathname);
-    });
+    const visitedByNorm = new Map<string, string>();
+    const addVisited = (p?: string) => {
+      if (!p) return;
+      const norm = normalizeRoute(p);
+      if (!visitedByNorm.has(norm)) {
+        visitedByNorm.set(norm, p);
+      }
+    };
+
+    addVisited(currentRoute);
+    this.mutations.forEach((m) => addVisited(m.pathname));
     this.annotations.forEach((a) => {
-      if (a.pathname) visitedSet.add(a.pathname);
+      addVisited(a.pathname);
+      a.targets?.forEach((t) => addVisited(t.pathname));
     });
     this.voiceReviews.forEach((v) => {
-      if (v.pathname) visitedSet.add(v.pathname);
+      addVisited(v.pathname);
+      v.pins?.forEach((p) => addVisited(p.pathname));
     });
 
     return {
       id: this.sessionId,
       timestamp: Date.now(),
-      route: window.location.pathname + window.location.search,
-      url: window.location.href,
-      pageTitle: document.title,
-      pagesVisited: Array.from(visitedSet),
+      route: routeWithSearch,
+      url: pageMeta.url,
+      pageTitle: pageMeta.pageTitle,
+      pagesVisited: Array.from(visitedByNorm.values()),
       appId: typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined,
       status: this.sessionStatus,
       userPrompt: this.userPrompt,
