@@ -42,8 +42,14 @@ export interface ElementSnapshot {
   originalStyleAttr?: string | null;
 }
 
+function isWebSocketOpen(ws: WebSocket | null): ws is WebSocket {
+  if (!ws) return false;
+  const openState = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1;
+  return ws.readyState === openState;
+}
+
 export class OverlayStateManager {
-  private static instance: OverlayStateManager;
+  private static instance?: OverlayStateManager;
 
   public activeTool: ActiveTool = 'none';
   public isDockMenuOpen = false;
@@ -98,6 +104,7 @@ export class OverlayStateManager {
   private listeners = new Set<() => void>();
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
+  private reconnectTimer: any = null;
 
   private constructor() {
     this.captureInitialTheme();
@@ -244,6 +251,35 @@ export class OverlayStateManager {
     return OverlayStateManager.instance;
   }
 
+  public static resetInstance(): void {
+    if (OverlayStateManager.instance) {
+      OverlayStateManager.instance.destroy();
+      OverlayStateManager.instance = undefined;
+    }
+  }
+
+  public destroy(): void {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.onclose = null;
+        this.ws.onerror = null;
+        this.ws.onmessage = null;
+        this.ws.onopen = null;
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+    this.listeners.clear();
+  }
+
   public getCurrentPathname(): string {
     return this.currentPathname || getRouteFromLocation();
   }
@@ -360,7 +396,7 @@ export class OverlayStateManager {
       return;
     }
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (isWebSocketOpen(this.ws)) {
       this.ws.send(JSON.stringify({ type: 'SYNC_SESSION', payload: batch }));
     } else {
       try {
@@ -1237,7 +1273,7 @@ export class OverlayStateManager {
     this.sessionStatus = 'submitted';
     batch.status = 'submitted';
 
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (isWebSocketOpen(this.ws)) {
       this.ws.send(JSON.stringify({ type: 'SUBMIT_BATCH', payload: batch }));
     } else {
       await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
@@ -1252,6 +1288,7 @@ export class OverlayStateManager {
 
   private initWebSocket(): void {
     try {
+      if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}${BASE_PATH_PREFIX}${API_ROUTES.WS}`;
       this.ws = new WebSocket(wsUrl);
@@ -1304,7 +1341,7 @@ export class OverlayStateManager {
         if (this.reconnectAttempts < 10) {
           this.reconnectAttempts++;
           const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 15000);
-          setTimeout(() => this.initWebSocket(), delay);
+          this.reconnectTimer = setTimeout(() => this.initWebSocket(), delay);
         }
       };
     } catch {
