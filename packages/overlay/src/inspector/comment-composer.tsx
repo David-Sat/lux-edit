@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
+import { captureVisualSnapshot } from './visual-capture.js';
 
 export function CommentComposer() {
   const state = OverlayStateManager.getInstance();
@@ -16,6 +17,7 @@ export function CommentComposer() {
   }, []);
 
   const target = state.commentTargetElement;
+  const hasScreenshot = Boolean(state.commentPendingScreenshot);
 
   useEffect(() => {
     if (!target || !popoverRef.current) return;
@@ -82,7 +84,7 @@ export function CommentComposer() {
   }, [commentText]);
 
   const handleSave = () => {
-    if (commentText.trim()) {
+    if (commentText.trim() || hasScreenshot) {
       state.addComment(commentText);
       setCommentText('');
     }
@@ -111,19 +113,33 @@ export function CommentComposer() {
       <div class="ve-comment-header" style={{ flexDirection: isMulti ? 'column' : 'row', alignItems: isMulti ? 'stretch' : 'center', gap: isMulti ? '6px' : '0' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            {isMulti ? (
+            {hasScreenshot ? (
+              <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                Screenshot: <strong style={{ color: '#fbbf24' }}>{tagLabel}</strong>
+              </span>
+            ) : isMulti ? (
               <span style={{ fontWeight: 600, color: 'var(--ve-text-primary)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
                 Comment on <strong style={{ color: 'var(--ve-accent-text, #38bdf8)' }}>{targets.length} elements</strong>
               </span>
             ) : selectedText ? (
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
                 Comment on <strong style={{ color: 'var(--ve-amber-text, #d97706)' }}>"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
               </span>
             ) : (
               <span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
                 Comment on <strong style={{ color: 'var(--ve-accent-text, #0284c7)' }}>{tagLabel}</strong>
               </span>
             )}
@@ -163,10 +179,54 @@ export function CommentComposer() {
         )}
       </div>
 
+      {hasScreenshot && (
+        <div style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.16)', background: 'rgba(0, 0, 0, 0.45)' }}>
+          <img
+            src={state.commentPendingScreenshot}
+            alt="Screenshot capture"
+            style={{
+              display: 'block',
+              width: '100%',
+              maxHeight: '120px',
+              objectFit: 'contain',
+              background: '#090d16',
+            }}
+          />
+          <button
+            type="button"
+            style={{
+              position: 'absolute',
+              top: '4px',
+              right: '4px',
+              background: 'rgba(0, 0, 0, 0.7)',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              color: '#fff',
+              borderRadius: '50%',
+              width: '18px',
+              height: '18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '11px',
+              lineHeight: 1,
+            }}
+            onClick={() => state.setPendingScreenshot(undefined)}
+            title="Detach screenshot"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <textarea
         ref={textareaRef}
         class="ve-comment-textarea"
-        placeholder="Type feedback, instruction, or relationship note..."
+        placeholder={
+          hasScreenshot
+            ? 'Describe what to change, fix, or note about this screenshot...'
+            : 'Type feedback, instruction, or relationship note...'
+        }
         value={commentText}
         onInput={(e) => {
           const val = (e.target as HTMLTextAreaElement).value;
@@ -177,23 +237,64 @@ export function CommentComposer() {
         onKeyDown={handleKeyDown}
       />
 
-      <div class="ve-comment-footer">
-        <span class="ve-hint">
-          {state.pendingPageReload ? (
-            <span style={{ color: '#38bdf8', fontWeight: 600 }}>● Update ready • will refresh on save</span>
-          ) : isMulti ? (
-            <span><strong>Shift+Click</strong> more to add/remove</span>
-          ) : (
-            <span><strong>Shift+Click</strong> to link more</span>
+      <div class="ve-comment-footer" style={{ gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}>
+          {!hasScreenshot && target && (
+            <button
+              type="button"
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.18)',
+                borderRadius: '6px',
+                color: 'var(--ve-text-secondary)',
+                fontSize: '11px',
+                padding: '3px 8px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                whiteSpace: 'nowrap',
+              }}
+              onClick={async () => {
+                const loc = resolveSourceLocation(target);
+                const selector = loc.selector || (target.id ? `#${target.id}` : target.tagName.toLowerCase());
+                const snap = await captureVisualSnapshot({
+                  selector,
+                  resolution: 'draft',
+                  includeOverlay: false,
+                });
+                if (snap && snap.success && snap.imageBase64) {
+                  state.setPendingScreenshot(snap.imageBase64);
+                }
+              }}
+              title="Attach screenshot of element"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              <span>Snap Visual</span>
+            </button>
           )}
-        </span>
+          <span class="ve-hint" style={{ fontSize: '10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {state.pendingPageReload ? (
+              <span style={{ color: '#38bdf8', fontWeight: 600 }}>● Update ready • will refresh on save</span>
+            ) : hasScreenshot ? (
+              <span><strong>Enter</strong> to attach</span>
+            ) : isMulti ? (
+              <span><strong>Shift+Click</strong> more to add/remove</span>
+            ) : (
+              <span><strong>Shift+Click</strong> to link more</span>
+            )}
+          </span>
+        </div>
         <button
           class="ve-btn primary"
-          style={{ padding: '5px 12px', fontSize: '11px' }}
+          style={{ padding: '5px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
           onClick={handleSave}
-          disabled={!commentText.trim()}
+          disabled={!commentText.trim() && !hasScreenshot}
         >
-          {isMulti ? `Add Pins (${targets.length})` : 'Add Pin'}
+          {hasScreenshot ? 'Add Screenshot' : isMulti ? `Add Pins (${targets.length})` : 'Add Pin'}
         </button>
       </div>
     </div>

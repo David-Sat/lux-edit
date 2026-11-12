@@ -1,7 +1,18 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'node:http';
 import { EventStore } from './event-store.js';
-import { WebSocketMessage, API_ROUTES } from '@visual-edit/core';
+import {
+  WebSocketMessage,
+  VisualCaptureRequest,
+  VisualCaptureResponse,
+  ViewportPreset,
+  API_ROUTES,
+} from '@visual-edit/core';
+
+interface PendingCapture {
+  resolve: (res: VisualCaptureResponse) => void;
+  timer: NodeJS.Timeout;
+}
 
 export class WebSocketHub {
   private wss: WebSocketServer;
@@ -10,6 +21,7 @@ export class WebSocketHub {
   private appId?: string;
   private clients = new Set<WebSocket>();
   private clientSessionMap = new Map<WebSocket, string>();
+  private pendingCaptures = new Map<string, PendingCapture>();
   private unsubscribeStore?: () => void;
 
   constructor(server: Server, eventStore: EventStore, basePath: string = '', appId?: string) {
@@ -51,6 +63,23 @@ export class WebSocketHub {
       });
 
       try {
+        // Send current agent hook lease status & review mode
+        ws.send(
+          JSON.stringify({
+            type: 'AGENT_STATUS',
+            payload: this.eventStore.getHookLeaseStatus(),
+          })
+        );
+
+        // Send active pending variant sets if any exist
+        const activeVariants = this.eventStore.getVariantSets().filter((s) => s.status === 'pending');
+        ws.send(
+          JSON.stringify({
+            type: 'SYNC_VARIANTS',
+            payload: activeVariants,
+          })
+        );
+
         const latestSessions = this.eventStore.listSessions();
         if (latestSessions.length > 0) {
           const latest = latestSessions[latestSessions.length - 1];
@@ -77,6 +106,42 @@ export class WebSocketHub {
             this.handleIncomingBatch(ws, msg.payload, true);
           } else if (msg.type === 'SYNC_SESSION') {
             this.handleIncomingBatch(ws, msg.payload, false);
+          } else if (msg.type === 'SET_REVIEW_MODE') {
+            const mode = msg.payload?.reviewMode || msg.payload?.mode;
+            if (mode === 'live' || mode === 'batch') {
+              this.eventStore.setReviewMode(mode);
+            }
+          } else if (msg.type === 'DECIDE_VARIANT') {
+            const chosenId = msg.payload?.selectedVariantId || msg.payload?.chosenVariantId;
+            if (msg.payload?.setId && chosenId) {
+              this.eventStore.recordVariantDecision({
+                setId: msg.payload.setId,
+                selectedVariantId: chosenId,
+                userNote: msg.payload.userNote,
+                targetHash: msg.payload.targetHash,
+                sessionId: msg.sessionId || msg.payload.sessionId,
+              });
+            }
+          } else if (msg.type === 'DISMISS_VARIANT' || msg.type === 'DELETE_VARIANT_DECISION') {
+            if (msg.payload?.setId) {
+              this.eventStore.deleteVariantSet(msg.payload.setId, msg.sessionId || msg.payload.sessionId);
+            }
+          } else if (msg.type === 'REVERT_VARIANT_DECISION') {
+            if (msg.payload?.setId) {
+              this.eventStore.revertVariantDecision(msg.payload.setId, msg.sessionId || msg.payload.sessionId);
+            }
+          } else if (msg.type === 'END_LIVE_REVIEW') {
+            this.eventStore.endLiveReview();
+          } else if (msg.type === 'CAPTURE_RESPONSE') {
+            const res = msg.payload as VisualCaptureResponse;
+            if (res && res.requestId) {
+              const pending = this.pendingCaptures.get(res.requestId);
+              if (pending) {
+                clearTimeout(pending.timer);
+                this.pendingCaptures.delete(res.requestId);
+                pending.resolve(res);
+              }
+            }
           }
         } catch (err) {
           console.error('[lux] Failed to handle WS message:', err);
@@ -101,14 +166,73 @@ export class WebSocketHub {
     if (payload?.id) {
       this.clientSessionMap.set(ws, payload.id);
     }
-    this.eventStore.saveBatch(payload);
-    if (markSubmitted && payload?.id) {
+    const effectiveMode = payload?.reviewMode || this.eventStore.getReviewMode();
+    const isLive = effectiveMode === 'live';
+    if ((markSubmitted || isLive) && payload) {
+      payload.status = 'submitted';
+    } else if (payload) {
+      payload.status = payload.status || 'draft';
+    }
+    this.eventStore.saveBatch(payload, { forceSubmit: markSubmitted || isLive });
+    if ((markSubmitted || isLive) && payload?.id) {
       this.broadcast({
         type: 'STATUS_CHANGE',
         sessionId: payload.id,
         payload: { status: 'submitted' },
       });
     }
+  }
+
+  public requestVisualCapture(
+    options: {
+      selector?: string;
+      viewport?: ViewportPreset;
+      resolution?: 'draft' | 'full';
+      includeOverlay?: boolean;
+    },
+    timeoutMs: number = 12000
+  ): Promise<VisualCaptureResponse> {
+    const openClients = Array.from(this.clients).filter((c) => c.readyState === WebSocket.OPEN);
+    if (openClients.length === 0) {
+      return Promise.resolve({
+        requestId: `cap_err_${Date.now()}`,
+        success: false,
+        error: 'No active browser tab is connected to the lux review server. Open the review URL in your browser first.',
+        capturedAt: Date.now(),
+      });
+    }
+
+    const requestId = `cap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const reqPayload: VisualCaptureRequest = {
+      requestId,
+      selector: options.selector,
+      viewport: options.viewport,
+      resolution: options.resolution || 'draft',
+      includeOverlay: options.includeOverlay ?? false,
+    };
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingCaptures.delete(requestId);
+        resolve({
+          requestId,
+          success: false,
+          error: `Visual capture timed out after ${timeoutMs}ms waiting for browser response.`,
+          capturedAt: Date.now(),
+        });
+      }, timeoutMs);
+
+      this.pendingCaptures.set(requestId, { resolve, timer });
+
+      // Send capture request to the most recently connected active client
+      const targetClient = openClients[openClients.length - 1];
+      targetClient.send(
+        JSON.stringify({
+          type: 'CAPTURE_REQUEST',
+          payload: reqPayload,
+        })
+      );
+    });
   }
 
   public getActiveSessionIds(): string[] {
@@ -133,6 +257,10 @@ export class WebSocketHub {
       this.unsubscribeStore();
       this.unsubscribeStore = undefined;
     }
+    for (const pending of this.pendingCaptures.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.pendingCaptures.clear();
     for (const client of this.clients) {
       try {
         client.close();

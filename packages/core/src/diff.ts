@@ -1,6 +1,7 @@
 import { MutationRecord, SourceLocation, VisualEditBatch, VoiceTargetPin } from './types.js';
 import { mapStyleToTailwind } from './tailwind-mapper.js';
 import { normalizeRoute } from './route.js';
+import { computeBatchRevisionHash, computeTargetHash } from './hash.js';
 
 let mutationCounter = 0;
 function genMutationId(): string {
@@ -26,6 +27,12 @@ export function computeTextDiff(
     htmlSnippet: htmlSnippet || sourceLocation?.htmlSnippet,
     before,
     after,
+    targetHash: computeTargetHash({
+      selector: targetSelector,
+      sourceLocation,
+      text: after,
+      htmlSnippet: htmlSnippet || sourceLocation?.htmlSnippet,
+    }),
     details: {
       charDelta: after.length - before.length,
     },
@@ -41,6 +48,12 @@ export function computeStyleDiff(
 ): MutationRecord[] {
   const mutations: MutationRecord[] = [];
   const allProps = new Set([...Object.keys(originalStyles), ...Object.keys(currentStyles)]);
+  const targetHash = computeTargetHash({
+    selector: targetSelector,
+    sourceLocation,
+    styles: currentStyles,
+    htmlSnippet: htmlSnippet || sourceLocation?.htmlSnippet,
+  });
 
   for (const prop of allProps) {
     const before = (originalStyles[prop] || '').trim();
@@ -58,6 +71,7 @@ export function computeStyleDiff(
         before,
         after,
         tailwindSuggestion,
+        targetHash,
       });
     }
   }
@@ -89,6 +103,12 @@ export function computeClassDiff(
       htmlSnippet: htmlSnippet || sourceLocation?.htmlSnippet,
       before: originalClasses.join(' '),
       after: currentClasses.join(' '),
+      targetHash: computeTargetHash({
+        selector: targetSelector,
+        sourceLocation,
+        classes: currentClasses,
+        htmlSnippet: htmlSnippet || sourceLocation?.htmlSnippet,
+      }),
       details: {
         added,
         removed,
@@ -101,11 +121,25 @@ export function computeClassDiff(
 
 export function formatBatchSummary(batch: VisualEditBatch): string {
   const lines: string[] = [];
+  const revHash = batch.revisionHash || computeBatchRevisionHash(batch);
   lines.push(`### Visual Edit Batch: ${batch.id}`);
   lines.push(`**Route**: \`${batch.route}\`${batch.pageTitle ? ` ("${batch.pageTitle}")` : ''}`);
   if (batch.url) {
     lines.push(`**URL**: \`${batch.url}\``);
   }
+  const metaParts: string[] = [`Revision Hash: \`${revHash}\``];
+  if (batch.reviewMode) {
+    metaParts.push(`Mode: \`${batch.reviewMode}\``);
+  }
+  if (typeof batch.latestCursor === 'number') {
+    metaParts.push(`Cursor: \`${batch.latestCursor}\``);
+  }
+  lines.push(`**Metadata**: ${metaParts.join(' • ')}`);
+
+  if (batch.stale) {
+    lines.push(`> [!WARNING]\n> **Stale State Warning**: ${batch.staleReason || 'The browser DOM was modified after this snapshot was taken. Re-verify before overwriting.'}`);
+  }
+
   if (batch.pagesVisited && batch.pagesVisited.length > 1) {
     lines.push(`**Pages Edited**: ${batch.pagesVisited.map((p) => `\`${p}\``).join(', ')}`);
   }
@@ -125,7 +159,7 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
   const formatPageTag = (pathname?: string): string =>
     pathname && normalizeRoute(pathname) !== normBatchRoute ? ` [Page: \`${pathname}\`]` : '';
 
-  if (batch.mutations.length > 0) {
+  if (batch.mutations && batch.mutations.length > 0) {
     lines.push(`\n**Visual Modifications (${batch.mutations.length} edits)**:`);
 
     for (const m of batch.mutations) {
@@ -136,23 +170,24 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
         : `\`${m.targetSelector}\``;
 
       const pageTag = formatPageTag(m.pathname);
+      const hashTag = m.targetHash ? ` *(hash: \`${m.targetHash}\`)*` : '';
       const snippet = m.htmlSnippet || m.sourceLocation?.htmlSnippet;
 
       switch (m.type) {
         case 'TEXT_EDIT':
-          lines.push(`- **Text Change** on ${loc}${pageTag}:`);
+          lines.push(`- **Text Change** on ${loc}${pageTag}${hashTag}:`);
           if (snippet) lines.push(`  - Element: \`${snippet}\``);
           lines.push(`  - Before: \`"${m.before}"\``);
           lines.push(`  - After:  \`"${m.after}"\``);
           break;
         case 'STYLE_CHANGE': {
           const tw = m.tailwindSuggestion ? ` *(Tailwind suggestion: \`${m.tailwindSuggestion}\`)*` : '';
-          lines.push(`- **Style** \`${m.property}\` on ${loc}${pageTag}: \`${m.before}\` ➔ \`${m.after}\`${tw}`);
+          lines.push(`- **Style** \`${m.property}\` on ${loc}${pageTag}: \`${m.before}\` -> \`${m.after}\`${tw}${hashTag}`);
           if (snippet) lines.push(`  - Element: \`${snippet}\``);
           break;
         }
         case 'CLASS_CHANGE':
-          lines.push(`- **Classes** on ${loc}${pageTag}:`);
+          lines.push(`- **Classes** on ${loc}${pageTag}${hashTag}:`);
           if (snippet) lines.push(`  - Element: \`${snippet}\``);
           if (m.details?.added?.length) lines.push(`  - Added: \`${m.details.added.join(', ')}\``);
           if (m.details?.removed?.length) lines.push(`  - Removed: \`${m.details.removed.join(', ')}\``);
@@ -186,29 +221,39 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
       const annPageTag = formatPageTag(a.pathname);
 
       if (a.type === 'voice') {
-        const targetCount = a.targets ? a.targets.length : 0;
-        lines.push(`- **Voice Walkthrough${targetCount > 0 ? ` on ${targetCount} target${targetCount > 1 ? 's' : ''}` : ''}**${annPageTag}: "${a.comment}"`);
-        if (a.targets && a.targets.length > 0) {
-          lines.push(`  **Referenced Targets:**`);
-          a.targets.forEach((t, i) => {
-            const tLoc = t.sourceLocation?.fileName
-              ? `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``
-              : '';
-            const comp = t.sourceLocation?.componentName
-              ? `(\`<${t.sourceLocation.componentName}>\`)`
-              : t.targetSelector
-              ? `(\`${t.targetSelector}\`)`
-              : '';
-            const targetHeading = [tLoc, comp].filter(Boolean).join(' ');
-            const targetPageTag = formatPageTag(t.pathname);
-            lines.push(`  - **[Target ${i + 1}]**${targetHeading ? `: ${targetHeading}` : ''}${targetPageTag}`);
-            const tSnippet = t.htmlSnippet || t.sourceLocation?.htmlSnippet;
-            if (tSnippet) {
-              const clean = tSnippet.replace(/\s+/g, ' ').trim();
-              const snippetClean = clean.length > 80 ? clean.slice(0, 77) + '...' : clean;
-              lines.push(`    - Element: \`${snippetClean}\``);
-            }
-          });
+        if (a.voiceSections && a.voiceSections.length > 0) {
+          lines.push(`- **Sectioned Voice Walkthrough (${a.voiceSections.length} section${a.voiceSections.length > 1 ? 's' : ''})**${annPageTag}:`);
+          for (const sec of a.voiceSections) {
+            const secTargets = sec.targets.length > 0
+              ? sec.targets.map((t) => `\`${t.sourceLocation?.fileName ? `${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}` : t.targetSelector}\``).join(' & ')
+              : '`General Page`';
+            lines.push(`  - **[Section ${sec.order}]** (${secTargets}): "${sec.transcript}"`);
+          }
+        } else {
+          const targetCount = a.targets ? a.targets.length : 0;
+          lines.push(`- **Voice Walkthrough${targetCount > 0 ? ` on ${targetCount} target${targetCount > 1 ? 's' : ''}` : ''}**${annPageTag}: "${a.comment}"`);
+          if (a.targets && a.targets.length > 0) {
+            lines.push(`  **Referenced Targets:**`);
+            a.targets.forEach((t, i) => {
+              const tLoc = t.sourceLocation?.fileName
+                ? `\`${t.sourceLocation.fileName}:${t.sourceLocation.lineNumber || 1}\``
+                : '';
+              const comp = t.sourceLocation?.componentName
+                ? `(\`<${t.sourceLocation.componentName}>\`)`
+                : t.targetSelector
+                ? `(\`${t.targetSelector}\`)`
+                : '';
+              const targetHeading = [tLoc, comp].filter(Boolean).join(' ');
+              const targetPageTag = formatPageTag(t.pathname);
+              lines.push(`  - **[Target ${i + 1}]**${targetHeading ? `: ${targetHeading}` : ''}${targetPageTag}`);
+              const tSnippet = t.htmlSnippet || t.sourceLocation?.htmlSnippet;
+              if (tSnippet) {
+                const clean = tSnippet.replace(/\s+/g, ' ').trim();
+                const snippetClean = clean.length > 80 ? clean.slice(0, 77) + '...' : clean;
+                lines.push(`    - Element: \`${snippetClean}\``);
+              }
+            });
+          }
         }
       } else if (a.targets && a.targets.length > 1) {
         const targetLabels = a.targets.map((t) => {
@@ -257,7 +302,16 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
       if (meta) {
         lines.push(`- *(${meta})*`);
       }
-      lines.push(`> "${v.annotatedTranscript || v.transcript}"`);
+      if (v.sections && v.sections.length > 0) {
+        for (const sec of v.sections) {
+          const secTargets = sec.targets.length > 0
+            ? sec.targets.map((t) => `\`${t.targetSelector}\``).join(' & ')
+            : '`General Page`';
+          lines.push(`  - **[Section ${sec.order}]** (${secTargets}): "${sec.transcript}"`);
+        }
+      } else {
+        lines.push(`> "${v.annotatedTranscript || v.transcript}"`);
+      }
 
       if (v.pins && v.pins.length > 0) {
         lines.push(`\n**Referenced Targets:**`);
@@ -282,10 +336,26 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
     }
   }
 
+  if (batch.variantDecisions && batch.variantDecisions.length > 0) {
+    lines.push(`\n**Approved Component Variants (${batch.variantDecisions.length} decision${batch.variantDecisions.length > 1 ? 's' : ''})**:`);
+    for (const d of batch.variantDecisions) {
+      lines.push(`- **Target \`${d.targetSelector}\`** (${d.label || d.setId}): Selected **${d.variantName}** (\`${d.selectedVariantId}\`)`);
+      if (d.rationale) lines.push(`  - Rationale: ${d.rationale}`);
+      if (d.userNote) lines.push(`  - User Note: "${d.userNote}"`);
+      if (d.variant.classes?.add?.length) lines.push(`  - Classes to Add: \`${d.variant.classes.add.join(' ')}\``);
+      if (d.variant.classes?.remove?.length) lines.push(`  - Classes to Remove: \`${d.variant.classes.remove.join(' ')}\``);
+      if (d.variant.styles && Object.keys(d.variant.styles).length > 0) {
+        lines.push(`  - Styles: \`${JSON.stringify(d.variant.styles)}\``);
+      }
+      if (d.variant.html) {
+        lines.push(`  - Replacement HTML: \`${d.variant.html.slice(0, 240)}${d.variant.html.length > 240 ? '...' : ''}\``);
+      }
+    }
+  }
+
   return lines.join('\n');
 }
 
 export function formatVoiceTargetTag(pin: VoiceTargetPin): string {
   return `[Target ${pin.order}]`;
 }
-

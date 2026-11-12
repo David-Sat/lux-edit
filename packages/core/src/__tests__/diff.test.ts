@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeTextDiff, computeStyleDiff, computeClassDiff, formatBatchSummary } from '../diff.js';
+import { fnv1aHash, computeTargetHash, computeBatchRevisionHash } from '../hash.js';
 import { VisualEditBatch } from '../types.js';
 
 describe('Diff Utilities', () => {
@@ -330,6 +331,101 @@ describe('Diff Utilities', () => {
     expect(summary).toContain('- **[Target 1]**: (`#home-cta`) [Page: `/home`]');
     expect(summary).toContain('- **[Target 2]**: (`#about-cta`)');
     expect(summary).not.toContain('#about-cta`) [Page:');
+  });
+
+  it('computes deterministic FNV-1a target and batch revision hashes', () => {
+    const h1 = fnv1aHash('button.cta|Get Started');
+    const h2 = fnv1aHash('button.cta|Get Started');
+    const h3 = fnv1aHash('button.cta|Cancel');
+    expect(h1).toBe(h2);
+    expect(h1).not.toBe(h3);
+    expect(h1).toMatch(/^h_[0-9a-f]{16}$/);
+
+    const targetHash = computeTargetHash({
+      selector: 'button.cta',
+      text: 'Get Started',
+      styles: { padding: '16px', color: '#fff' },
+    });
+    expect(targetHash).toMatch(/^h_[0-9a-f]{16}$/);
+
+    const batchA: VisualEditBatch = {
+      id: 'b1',
+      timestamp: 1000,
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm1', type: 'TEXT_EDIT', targetSelector: 'h1', before: 'A', after: 'B' }],
+    };
+    const batchB: VisualEditBatch = {
+      ...batchA,
+      mutations: [{ id: 'm1', type: 'TEXT_EDIT', targetSelector: 'h1', before: 'A', after: 'C' }],
+    };
+    expect(computeBatchRevisionHash(batchA)).not.toBe(computeBatchRevisionHash(batchB));
+  });
+
+  it('formats voiceSections, variantDecisions, and stale markers in batch summary', () => {
+    const batch: VisualEditBatch = {
+      id: 'batch_modern_1',
+      timestamp: Date.now(),
+      route: '/dashboard',
+      status: 'submitted',
+      reviewMode: 'live',
+      revisionHash: 'abcdef0123456789',
+      latestCursor: 7,
+      stale: true,
+      staleReason: 'The target element was updated by another change',
+      mutations: [
+        {
+          id: 'm_stale',
+          type: 'TEXT_EDIT',
+          targetSelector: 'h2.title',
+          before: 'Old',
+          after: 'New',
+        },
+      ],
+      annotations: [
+        {
+          id: 'ann_sec',
+          timestamp: Date.now(),
+          type: 'voice',
+          comment: 'Full voice text',
+          voiceSections: [
+            {
+              id: 's1',
+              order: 1,
+              targets: [{ targetSelector: '#card-1' }, { targetSelector: '#card-2' }],
+              transcript: 'Match the height of these two cards',
+              timestampMs: 2500,
+            },
+          ],
+        },
+      ],
+      variantDecisions: [
+        {
+          id: 'vdec_1',
+          setId: 'vset_1',
+          targetSelector: '.hero-cta',
+          selectedVariantId: 'var_2',
+          variantName: 'Glassmorphic Pill',
+          userNote: 'Love the blur effect',
+          timestamp: Date.now(),
+          variant: {
+            id: 'var_2',
+            name: 'Glassmorphic Pill',
+            rationale: 'Modern blur',
+          },
+        },
+      ],
+    };
+
+    const summary = formatBatchSummary(batch);
+    expect(summary).toContain('Revision Hash: `abcdef0123456789`');
+    expect(summary).toContain('Mode: `live`');
+    expect(summary).toContain('Cursor: `7`');
+    expect(summary).toContain('Stale State Warning');
+    expect(summary).toContain('**[Section 1]** (`#card-1` & `#card-2`): "Match the height of these two cards"');
+    expect(summary).toContain('Approved Component Variants');
+    expect(summary).toContain('Selected **Glassmorphic Pill** (`var_2`)');
+    expect(summary).toContain('Love the blur effect');
   });
 });
 

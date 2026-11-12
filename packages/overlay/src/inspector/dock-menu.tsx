@@ -140,7 +140,11 @@ export function DockMenu() {
     };
   }, []);
 
-  const totalCount = state.mutations.length + state.annotations.length + state.voiceReviews.length;
+  const totalCount =
+    state.mutations.length +
+    state.annotations.length +
+    state.voiceReviews.length +
+    state.variantDecisions.length;
   if (state.activeTool === 'voice') {
     const minutes = Math.floor(voiceState.durationMs / 60000);
     const seconds = Math.floor((voiceState.durationMs % 60000) / 1000);
@@ -227,7 +231,7 @@ export function DockMenu() {
             ? 'Connecting mic...'
             : liveText
             ? `"${liveText}"`
-            : 'Listening... speak & click elements'}
+            : 'Speak & click (Shift+click to group)'}
         </span>
         {voiceState.pins.length > 0 && (
           <span
@@ -241,53 +245,42 @@ export function DockMenu() {
               border: '1px solid rgba(239, 68, 68, 0.4)',
               flexShrink: 0,
             }}
+            title={`${voiceState.sections?.length || 1} section(s), ${voiceState.pins.length} target(s)`}
           >
-            {voiceState.pins.length} target{voiceState.pins.length > 1 ? 's' : ''}
+            {voiceState.sections && voiceState.sections.length > 0
+              ? `${voiceState.sections.length} sec • ${voiceState.pins.length} tgt`
+              : `${voiceState.pins.length} target${voiceState.pins.length > 1 ? 's' : ''}`}
           </span>
         )}
         <button
-          class="ve-dock-item"
-          style={{
-            background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-            color: '#ffffff',
-            borderRadius: '14px',
-            padding: '3px 10px',
-            fontSize: '11px',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            border: 'none',
-            cursor: state.isStoppingVoice ? 'default' : 'pointer',
-            opacity: state.isStoppingVoice ? 0.75 : 1,
-            pointerEvents: state.isStoppingVoice ? 'none' : 'auto',
-          }}
+          class={`ve-voice-done-btn ${state.isStoppingVoice ? 've-finishing' : ''}`}
           onClick={() => state.stopVoiceRecording()}
           disabled={state.isStoppingVoice}
           title="Finish Recording (R / Esc)"
         >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="5" y="5" width="14" height="14" rx="2" />
-          </svg>
-          <span>{state.isStoppingVoice ? 'Finishing...' : 'Done'}</span>
+          {state.isStoppingVoice ? (
+            <>
+              <svg class="ve-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" />
+              </svg>
+              <span>Finishing...</span>
+            </>
+          ) : (
+            <>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2" />
+              </svg>
+              <span>Done</span>
+            </>
+          )}
         </button>
         <button
-          class="ve-dock-item"
-          style={{
-            background: 'transparent',
-            color: '#94a3b8',
-            borderRadius: '50%',
-            padding: '4px',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          class="ve-voice-cancel-btn"
           onClick={() => state.cancelVoiceRecording()}
           title="Cancel Recording"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -333,6 +326,8 @@ export function DockMenu() {
     );
   }
 
+  const isLive = state.reviewMode === 'live';
+
   return (
     <div
       class={`ve-dock-menu ${isDragging ? 've-dragging' : ''}`}
@@ -371,6 +366,43 @@ export function DockMenu() {
         </svg>
       </div>
       <button
+        class={`ve-dock-item ${isLive ? 've-active' : ''}`}
+        onClick={() => state.setReviewMode(isLive ? 'batch' : 'live')}
+        title={
+          isLive
+            ? 'Live Mode Active: Feedback streams immediately to agent (Click to switch to Batch Mode)'
+            : 'Batch Mode Active: Hold changes until Submit Review (Click to switch to Live Mode)'
+        }
+        style={{
+          fontSize: '10px',
+          fontWeight: 700,
+          padding: '0 8px',
+          borderRadius: '12px',
+          width: 'auto',
+          height: '28px',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          background: isLive ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.08)',
+          border: isLive ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(255, 255, 255, 0.14)',
+          color: isLive ? '#34d399' : '#cbd5e1',
+        }}
+      >
+        {isLive && (
+          <span
+            style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: '#10b981',
+              boxShadow: '0 0 6px #10b981',
+              flexShrink: 0,
+            }}
+          />
+        )}
+        <span>{isLive ? 'Live' : 'Batch'}</span>
+      </button>
+      <button
         class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'edit' ? 'none' : 'edit')}
         title="Visual Edit Mode (V)"
@@ -401,16 +433,13 @@ export function DockMenu() {
         </svg>
       </button>
       <button
-        class={`ve-dock-item ${state.isThemePanelOpen ? 've-active' : ''}`}
-        onClick={() => state.setThemePanelOpen(!state.isThemePanelOpen)}
-        title="App Theme & Design Tokens"
+        class={`ve-dock-item ${state.activeTool === 'screenshot' ? 've-active' : ''}`}
+        onClick={() => state.setTool(state.activeTool === 'screenshot' ? 'none' : 'screenshot')}
+        title="Capture Visual Screenshot (S)"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
-          <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
-          <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
-          <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
         </svg>
       </button>
       <button

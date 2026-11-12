@@ -8,7 +8,7 @@ description: In-browser visual inspection, teardown, discussion, and explanation
 > [!IMPORTANT]
 > **External Sources Only:** `lux-web` is strictly for inspecting, discussing, and tearing down **external, third-party websites, online articles, and design references** on the internet where there is no local codebase to modify. If the user wants to visually edit, review, or modify an application or website hosted by themselves (e.g., `localhost`, dev servers, or local files), use `/lux` instead.
 
-`lux-web` proxies live external websites, online articles, and public web apps through lux's in-browser overlay, allowing users to drop comment pins, highlight phrases, and discuss the design, architecture, or content directly with an AI coding agent.
+`lux-web` proxies live external websites, online articles, and public web apps through lux's in-browser overlay, allowing users to drop comment pins, highlight phrases, record multi-target voice walkthroughs, and discuss the design, architecture, or content directly with an AI coding agent.
 
 ## Workflow for `/lux-web`
 
@@ -26,17 +26,18 @@ When the user runs `/lux-web` or asks to inspect/discuss an external URL:
 4. Tell the user:
    "The lux web review server is running at `http://127.0.0.1:<port>` targeting `<url>`.
    - Press **C** to drop comment pins on specific elements (headers, cards, buttons) or highlight text to comment on exact passages.
+   - Press **R** to record a sectioned voice walkthrough while clicking across elements.
    - Press **V** to inspect computed styles, layout rules, and DOM elements.
-   - When finished, click **Submit Review** in the bottom drawer, then run `/lux-web` (or ask me to review)!"
+   - Use **Live Mode** for instant streaming or **Batch Mode** and click **Submit Review** when ready!"
 
 ### 2. Reviewing Comments & In-Browser Discussion
 
-When the user asks to review, or runs `/lux-web`:
+When the user asks to review, runs `/lux-web`, or when woken by a lifecycle hook:
 
-1. Call `lux_get_pending_review` (or probe the live server API `http://127.0.0.1:<port>/__visual_edit__/api/pending`).
+1. Call `lux_get_pending_review` (and optionally `lux_capture_visual` to see the exact visual rendering of the pinned component).
 2. **Crucial distinction from local `/lux`:**
    - **DO NOT attempt to find or edit local files** for external websites.
-   - Treat the user's pins, selectors, and style edits as grounds for **technical analysis, design explanation, or content discussion**:
-     - **For UI / Design Teardowns:** Explain the layout technique (Flexbox/Grid), CSS properties (transforms, shadows, backdrop-filters, custom properties), or interactive patterns. Provide clean, modular code snippets (e.g., React + Tailwind or CSS) showing how the user can replicate the effect in their own project.
+   - Treat the user's pins, selectors, voice sections, and style edits as grounds for **technical analysis, design explanation, or content discussion**:
+     - **For UI / Design Teardowns:** Explain the layout technique (Flexbox/Grid), CSS properties (transforms, shadows, backdrop-filters, custom properties), or interactive patterns. Provide clean, modular code snippets (e.g., React + Tailwind or CSS) showing how the user can replicate the effect in their own project, or use `lux_propose_variants` to preview live variations in the browser.
      - **For Articles & Documentation:** Address the user's questions, break down complex concepts, summarize highlighted text, or clarify difficult equations/theorems based on the pinned DOM context.
-3. Respond in structured markdown referencing each pinned element's selector and text snippet.
+3. Call `lux_resolve_review` with your summary reply so it is recorded in the review drawer, and respond in structured markdown referencing each pinned element's selector and text snippet.

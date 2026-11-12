@@ -61,7 +61,6 @@ describe('OverlayStateManager', () => {
       expect(state.activeTool).toBe('none');
       expect(state.isDockMenuOpen).toBe(false);
       expect(state.isDrawerOpen).toBe(false);
-      expect(state.isThemePanelOpen).toBe(false);
       expect(state.mutations).toEqual([]);
       expect(state.annotations).toEqual([]);
     });
@@ -107,21 +106,66 @@ describe('OverlayStateManager', () => {
     });
   });
 
-  describe('theme tokens and mutations', () => {
-    it('updates theme tokens and creates THEME_CHANGE mutation', () => {
-      state.updateThemeToken('primary', '#10b981');
-      expect(state.themeTokens.primary).toBe('#10b981');
+  describe('screenshot capture and tool selection', () => {
+    it('selects screenshot tool and captures element screenshot', async () => {
+      state.setTool('screenshot');
+      expect(state.activeTool).toBe('screenshot');
 
-      const themeMutations = state.mutations.filter((m) => m.type === 'THEME_CHANGE');
-      expect(themeMutations.length).toBe(1);
-      expect(themeMutations[0].property).toBe('primary');
-      expect(themeMutations[0].after).toBe('#10b981');
+      const card = document.createElement('div');
+      card.id = 'hero-card';
+      document.body.appendChild(card);
 
-      // Updating again replaces previous mutation for same token
-      state.updateThemeToken('primary', '#3b82f6');
-      const updated = state.mutations.filter((m) => m.type === 'THEME_CHANGE');
-      expect(updated.length).toBe(1);
-      expect(updated[0].after).toBe('#3b82f6');
+      await state.captureElementScreenshot(card, 'Check padding on hero card');
+
+      expect(state.annotations.length).toBe(1);
+      const ann = state.annotations[0];
+      expect(ann.type).toBe('screenshot');
+      expect(ann.comment).toBe('Check padding on hero card');
+      expect(ann.targetSelector).toBe('#hero-card');
+      expect(ann.screenshot).toBeDefined();
+      expect(state.isDrawerOpen).toBe(true);
+
+      document.body.removeChild(card);
+    });
+
+    it('snaps element to composer with attached screenshot and custom user comment', async () => {
+      const banner = document.createElement('div');
+      banner.id = 'promo-banner';
+      document.body.appendChild(banner);
+
+      await state.snapElementToComposer(banner);
+      expect(state.commentTargetElement).toBe(banner);
+      expect(state.commentPendingScreenshot).toBeDefined();
+
+      state.addComment('The gradient colors do not match the brand guidelines.');
+
+      expect(state.annotations.length).toBe(1);
+      const ann = state.annotations[0];
+      expect(ann.type).toBe('screenshot');
+      expect(ann.comment).toBe('The gradient colors do not match the brand guidelines.');
+      expect(ann.screenshot).toBeDefined();
+      expect(state.commentTargetElement).toBeNull();
+      expect(state.commentPendingScreenshot).toBeUndefined();
+
+      document.body.removeChild(banner);
+    });
+
+    it('allows attaching screenshot on a normal comment pin and detaching it', () => {
+      const btn = document.createElement('button');
+      btn.id = 'submit-btn';
+      document.body.appendChild(btn);
+
+      state.setCommentTarget(btn);
+      expect(state.commentPendingScreenshot).toBeUndefined();
+
+      state.setPendingScreenshot('data:image/png;base64,mockpngdata');
+      expect(state.commentPendingScreenshot).toBe('data:image/png;base64,mockpngdata');
+
+      // Detach screenshot
+      state.setPendingScreenshot(undefined);
+      expect(state.commentPendingScreenshot).toBeUndefined();
+
+      document.body.removeChild(btn);
     });
   });
 
@@ -161,6 +205,40 @@ describe('OverlayStateManager', () => {
       expect(state.annotations.length).toBe(1);
       expect(state.annotations[0].type).toBe('multi');
       expect(state.annotations[0].targets?.length).toBe(2);
+    });
+
+    it('deleting a voice transcript annotation also deletes from voiceReviews and activeVoicePins', () => {
+      const reviewId = 'voice_test_123';
+      state.annotations.push({
+        id: reviewId,
+        timestamp: Date.now(),
+        type: 'voice',
+        comment: 'Voice walkthrough transcript',
+        targetSelector: '#feature-card',
+      });
+      state.voiceReviews.push({
+        id: reviewId,
+        timestamp: Date.now(),
+        durationMs: 5000,
+        transcript: 'Voice walkthrough transcript',
+        annotatedTranscript: 'Voice walkthrough transcript',
+        pins: [{
+          id: 'pin_1',
+          order: 1,
+          targetSelector: '#feature-card',
+          timestampMs: 1000,
+        }],
+        sections: [],
+      });
+
+      expect(state.annotations.length).toBe(1);
+      expect(state.voiceReviews.length).toBe(1);
+
+      state.deleteAnnotation(reviewId);
+
+      expect(state.annotations.length).toBe(0);
+      expect(state.voiceReviews.length).toBe(0);
+      expect(state.activeVoicePins.length).toBe(0);
     });
   });
 
@@ -210,7 +288,6 @@ describe('OverlayStateManager', () => {
 
       state.setActiveElement(heading);
       state.updateElementText('New Welcome Header');
-      state.updateThemeToken('accent', '#f59e0b');
 
       expect(state.mutations.length).toBeGreaterThan(0);
 
@@ -257,6 +334,26 @@ describe('OverlayStateManager', () => {
       expect(newInstance.userPrompt).toBe('Recovered prompt from previous tab');
       expect(newInstance.annotations.length).toBe(1);
       expect(newInstance.annotations[0].comment).toBe('Recovered pin');
+    });
+
+    it('prunes orphaned voice reviews from localStorage on load if annotation was deleted', () => {
+      const draftBatch = {
+        id: 'recovered_session_43',
+        status: 'draft',
+        mutations: [],
+        annotations: [], // User deleted the voice annotation
+        voiceReviews: [{
+          id: 'orphaned_voice_1',
+          pins: [{ id: 'p1', order: 1, targetSelector: '#btn' }],
+        }],
+      };
+      window.localStorage.setItem('lux_draft_default', JSON.stringify(draftBatch));
+
+      (OverlayStateManager as any).instance = undefined;
+      const newInstance = OverlayStateManager.getInstance();
+
+      expect(newInstance.annotations.length).toBe(0);
+      expect(newInstance.voiceReviews.length).toBe(0);
     });
   });
 
@@ -397,6 +494,92 @@ describe('OverlayStateManager', () => {
       OverlayStateManager.resetInstance();
       expect((state as any).syncTimer).toBeNull();
       expect((state as any).ws).toBeNull();
+    });
+  });
+
+  describe('Live vs. Batch Review Mode, Component Variants, and Verification Halo', () => {
+    it('switches reviewMode and immediately submits discrete comments in Live Mode', () => {
+      state.setReviewMode('live');
+      expect(state.reviewMode).toBe('live');
+      expect(window.localStorage.getItem('lux_review_mode')).toBe('live');
+
+      const btn = document.createElement('button');
+      btn.id = 'live-btn';
+      document.body.appendChild(btn);
+
+      state.addComment('Stream this immediately', btn);
+      expect(state.sessionStatus).toBe('submitted');
+    });
+
+    it('maintains draft status during batch mode edits and flips back to draft on new changes after submit', async () => {
+      state.setReviewMode('batch');
+      expect(state.reviewMode).toBe('batch');
+      expect(state.sessionStatus).toBe('draft');
+
+      const btn = document.createElement('button');
+      btn.id = 'batch-btn';
+      document.body.appendChild(btn);
+
+      state.addComment('First batch item', btn);
+      expect(state.sessionStatus).toBe('draft');
+
+      await state.submitBatch();
+      expect(state.sessionStatus).toBe('submitted');
+
+      // Adding new comment resets status to draft
+      state.addComment('Second batch item', btn);
+      expect(state.sessionStatus).toBe('draft');
+    });
+
+    it('previews and decides component variants in the live DOM and reverts cleanly', () => {
+      const card = document.createElement('div');
+      card.id = 'var-card';
+      card.className = 'card base';
+      card.textContent = 'Original Text';
+      document.body.appendChild(card);
+
+      state.variantSets = [
+        {
+          id: 'vset_test',
+          targetSelector: '#var-card',
+          label: 'Card Variants',
+          createdAt: Date.now(),
+          status: 'pending',
+          variants: [
+            {
+              id: 'var_1',
+              name: 'Emerald Variant',
+              rationale: 'Emerald design',
+              styles: { 'background-color': 'rgb(16, 185, 129)' },
+              classes: { add: ['emerald-glow'], remove: ['base'] },
+              text: 'Emerald Text',
+            },
+          ],
+        },
+      ];
+
+      // Preview variant 1
+      state.previewVariant('vset_test', 'var_1');
+      expect(card.textContent).toBe('Emerald Text');
+      expect(card.classList.contains('emerald-glow')).toBe(true);
+      expect(card.classList.contains('base')).toBe(false);
+
+      // Preview Original (null)
+      state.previewVariant('vset_test', null);
+      expect(card.textContent).toBe('Original Text');
+      expect(card.classList.contains('base')).toBe(true);
+      expect(card.classList.contains('emerald-glow')).toBe(false);
+
+      // Decide variant 1
+      state.decideVariant('vset_test', 'var_1', 'Picked emerald');
+      expect(state.variantDecisions).toHaveLength(1);
+      expect(state.variantDecisions[0].variantName).toBe('Emerald Variant');
+    });
+
+    it('triggers verification halo targets', () => {
+      state.triggerVerificationHalo([{ selector: '#var-card', label: 'Implemented', timestamp: Date.now() }]);
+      expect(state.verificationTargets).toHaveLength(1);
+      expect(state.verificationTargets[0].selector).toBe('#var-card');
     });
   });
 });

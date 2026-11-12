@@ -83,8 +83,7 @@ export const OVERLAY_STYLES = `
 .ve-comment-popover,
 .ve-pin,
 .ve-pin-tooltip,
-.ve-drawer,
-.ve-theme-panel {
+.ve-drawer {
   pointer-events: auto !important;
 }
 
@@ -94,7 +93,6 @@ export const OVERLAY_STYLES = `
 .ve-dock-menu,
 .ve-comment-popover,
 .ve-toolbar,
-.ve-theme-panel,
 .ve-drawer {
   background: var(--ve-glass-bg);
   border: 1px solid var(--ve-glass-border);
@@ -193,6 +191,30 @@ export const OVERLAY_STYLES = `
   }
 }
 
+@keyframes ve-shutter-flash {
+  0% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+@keyframes veSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ve-spin {
+  animation: veSpin 0.9s linear infinite;
+}
+
 /* Canvas Highlight Overlays & Target Badges */
 .ve-highlight-box {
   position: fixed;
@@ -208,6 +230,12 @@ export const OVERLAY_STYLES = `
     border: 2px dashed rgba(255, 255, 255, 0.9);
     background-color: rgba(255, 255, 255, 0.08);
     box-shadow: 0 0 18px rgba(255, 255, 255, 0.3);
+  }
+
+  &.ve-screenshot-mode {
+    border: 2px solid #f59e0b;
+    background-color: rgba(245, 158, 11, 0.12);
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
   }
 
   &.ve-active {
@@ -497,6 +525,81 @@ export const OVERLAY_STYLES = `
     background: rgba(255, 255, 255, 0.15);
     color: #ffffff;
     transform: none;
+  }
+}
+
+/* Voice Walkthrough Dock Bar */
+.ve-dock-recording {
+  border-radius: 26px;
+  min-inline-size: 280px;
+}
+
+.ve-voice-done-btn {
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  border-radius: 14px;
+  padding-block: 0;
+  padding-inline: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 2px 8px rgba(220, 38, 38, 0.35);
+  transition: all var(--ve-transition-fast);
+  flex-shrink: 0;
+  inline-size: auto;
+  block-size: 28px;
+  min-inline-size: 64px;
+  white-space: nowrap;
+  font-family: inherit;
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(180deg, #f87171 0%, #ef4444 100%);
+    box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.6), 0 4px 12px rgba(239, 68, 68, 0.45);
+    transform: scale(1.02);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &.ve-finishing {
+    background: rgba(239, 68, 68, 0.65);
+    border-color: rgba(255, 255, 255, 0.2);
+    min-inline-size: 92px;
+    cursor: default;
+    pointer-events: none;
+    box-shadow: none;
+  }
+}
+
+.ve-voice-cancel-btn {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ve-text-muted, #94a3b8);
+  border-radius: 50%;
+  inline-size: 26px;
+  block-size: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--ve-transition-fast);
+  flex-shrink: 0;
+
+  &:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
   }
 }
 
@@ -1052,26 +1155,6 @@ export const OVERLAY_STYLES = `
   opacity: 0.85;
 }
 
-/* Theme Drawer & Settings Panel */
-.ve-theme-panel {
-  position: fixed;
-  inset-block-end: 78px;
-  inset-inline-end: 20px;
-  inline-size: 380px;
-  max-inline-size: calc(100vw - 40px);
-  max-block-size: calc(100vh - 100px);
-  border-radius: 22px;
-  z-index: var(--ve-z-panel);
-  display: flex;
-  flex-direction: column;
-  animation: veSlideUp 0.16s ease-out;
-  transition:
-    inset-inline-start 0.28s var(--ve-ease-spring),
-    inset-inline-end 0.28s var(--ve-ease-spring),
-    inset-block-start 0.28s var(--ve-ease-spring),
-    inset-block-end 0.28s var(--ve-ease-spring);
-}
-
 /* Edit Review Drawer */
 .ve-drawer {
   position: fixed;
@@ -1092,27 +1175,23 @@ export const OVERLAY_STYLES = `
     inset-block-end 0.28s var(--ve-ease-spring);
 }
 
-.ve-dock-right .ve-drawer,
-.ve-dock-right .ve-theme-panel {
+.ve-dock-right .ve-drawer {
   inset-inline-end: 20px;
   inset-inline-start: auto;
 }
 
-.ve-dock-left .ve-drawer,
-.ve-dock-left .ve-theme-panel {
+.ve-dock-left .ve-drawer {
   inset-inline-start: 20px;
   inset-inline-end: auto;
 }
 
-.ve-dock-bottom .ve-drawer,
-.ve-dock-bottom .ve-theme-panel {
+.ve-dock-bottom .ve-drawer {
   inset-block-end: var(--ve-panel-offset-y, 78px);
   inset-block-start: auto;
   max-block-size: calc(100vh - var(--ve-panel-offset-y, 78px) - 20px);
 }
 
-.ve-dock-top .ve-drawer,
-.ve-dock-top .ve-theme-panel {
+.ve-dock-top .ve-drawer {
   inset-block-start: var(--ve-panel-offset-y, 78px);
   inset-block-end: auto;
   max-block-size: calc(100vh - var(--ve-panel-offset-y, 78px) - 20px);

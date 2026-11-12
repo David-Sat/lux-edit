@@ -424,5 +424,85 @@ describe('MCP Server Tools & Prompts', () => {
     const text = (res.content as any)[0].text;
     expect(text).toContain('marked as resolved');
   });
+
+  it('proposes component variants via lux_propose_variants and rejects stale expectedHash', async () => {
+    const varDir = path.resolve(process.cwd(), '.test-mcp-store-variants');
+    if (fs.existsSync(varDir)) {
+      fs.rmSync(varDir, { recursive: true, force: true });
+    }
+    const store = EventStore.getInstance(varDir);
+    store.saveBatch({
+      id: 'var_batch_1',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm1', type: 'TEXT_EDIT', targetSelector: '.cta', before: 'A', after: 'B' }],
+    });
+    const saved = store.getSession('var_batch_1')!;
+
+    // 1. Stale expectedHash should return isError: true
+    const conflictRes = await client.callTool({
+      name: 'lux_propose_variants',
+      arguments: {
+        workspaceDir: varDir,
+        targetSelector: '.cta',
+        expectedHash: 'deadbeef00000000',
+        variants: [
+          { name: 'V1', styles: { color: 'red' }, rationale: 'Option 1' },
+          { name: 'V2', styles: { color: 'blue' }, rationale: 'Option 2' },
+        ],
+      },
+    });
+    expect(conflictRes.isError).toBe(true);
+    expect((conflictRes.content as any)[0].text).toContain('Stale revision conflict');
+
+    // 2. Valid expectedHash should register variants
+    const okRes = await client.callTool({
+      name: 'lux_propose_variants',
+      arguments: {
+        workspaceDir: varDir,
+        targetSelector: '.cta',
+        expectedHash: saved.revisionHash,
+        variants: [
+          { name: 'Solid Indigo', styles: { 'background-color': '#4f46e5' }, rationale: 'High contrast' },
+          { name: 'Glass Pill', styles: { 'backdrop-filter': 'blur(8px)' }, rationale: 'Modern aesthetic' },
+        ],
+      },
+    });
+    expect(okRes.isError).toBeFalsy();
+    expect((okRes.content as any)[0].text).toContain('Proposed 2 variants for `.cta`');
+    expect(store.getVariantSets()).toHaveLength(1);
+
+    fs.rmSync(varDir, { recursive: true, force: true });
+  });
+
+  it('rejects stale expectedHash in lux_resolve_review', async () => {
+    const staleDir = path.resolve(process.cwd(), '.test-mcp-store-stale');
+    if (fs.existsSync(staleDir)) {
+      fs.rmSync(staleDir, { recursive: true, force: true });
+    }
+    const store = EventStore.getInstance(staleDir);
+    store.saveBatch({
+      id: 'stale_batch_1',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm1', type: 'TEXT_EDIT', targetSelector: 'h1', before: 'Old', after: 'New' }],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_resolve_review',
+      arguments: {
+        workspaceDir: staleDir,
+        sessionId: 'stale_batch_1',
+        status: 'implemented',
+        expectedHash: '0000111122223333',
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content as any)[0].text).toContain('Stale revision conflict');
+
+    fs.rmSync(staleDir, { recursive: true, force: true });
+  });
 });
 

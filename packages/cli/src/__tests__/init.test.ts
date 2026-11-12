@@ -94,6 +94,7 @@ describe('lux init and multi-agent configuration', () => {
 
       // Antigravity & universal Agent Plugin specification
       expect(fs.existsSync(path.join(pluginDir, 'plugin.json'))).toBe(true);
+      expect(fs.existsSync(path.join(pluginDir, 'hooks.json'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'mcp_config.json'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'skills', 'lux', 'SKILL.md'))).toBe(true);
       expect(fs.existsSync(path.join(pluginDir, 'skills', 'lux-web', 'SKILL.md'))).toBe(true);

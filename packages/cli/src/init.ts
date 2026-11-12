@@ -2,10 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
+import {
+  getAntigravityHooksContent,
+  mergeHarnessHooksConfig,
+  removeHarnessHooksConfig,
+} from './hooks.js';
 
 export const SKILL_CONTENT = `---
 name: lux
-description: In-browser visual review and UI editing with lux for local projects, dev servers (localhost/127.0.0.1), and static HTML files where code changes will be applied directly to the user's codebase. Use when the user wants to visually edit or review their own app, or runs /lux. Do NOT use for external third-party websites or online articles (use /lux-web instead).
+description: In-browser visual review, live/batch UI editing, visual screenshot verification, and component variant exploration with lux for local projects, dev servers (localhost/127.0.0.1), and static HTML files where code changes will be applied directly to the user's codebase. Use when the user wants to visually edit or review their own app, or runs /lux. Do NOT use for external third-party websites or online articles (use /lux-web instead).
 ---
 
 # lux visual review and UI editing
@@ -13,11 +18,17 @@ description: In-browser visual review and UI editing with lux for local projects
 > [!NOTE]
 > **User-Hosted Apps Only:** \`lux\` is for reviewing and visually modifying the user's own codebase (running local dev servers like \`http://localhost:3000\` or local files). For exploring or tearing down external, third-party websites and online articles, use \`/lux-web\`.
 
-lux runs an in-browser visual editing overlay on running web apps, dev servers, and static HTML files.
+lux runs an in-browser visual editing overlay on running web apps, dev servers, and static HTML files with **Live Streaming Mode**, **Batch Review Mode**, **Multi-Target Voice Walkthroughs**, **Visual Capture (\`lux_capture_visual\`)**, and **Component Variants (\`lux_propose_variants\`)**.
 
 ## Workflow for \`/lux\`
 
-When the user runs \`/lux\`, or asks to review visual edits and comments:
+When the user runs \`/lux\`, asks to review visual edits/comments, or when woken automatically by a lifecycle hook:
+
+### 0. Absolute Priority & Action Directives
+> [!IMPORTANT]
+> - **Visual Feedback Takes Absolute Precedence:** When woken by a \`[LUX VISUAL REVIEW INTERRUPTION]\` or when visual reviews exist, you must address the visual feedback immediately. Do NOT continue prior conversation topics or old test discussions until the visual review is fulfilled.
+> - **Never Fake-Resolve:** Never call \`lux_resolve_review\` or mark a review resolved as a no-op or dismissal. Every review must either result in applied code edits in the source files, or proposed component variants.
+> - **Variant Requests:** If any comment, transcript, or prompt mentions "options", "variants", "choices", "alternatives", or "different designs", you MUST call \`lux_propose_variants\` with 2–4 options so the user can preview them live in the browser. Do NOT make a single arbitrary code edit.
 
 ### 1. Check for pending review
 Call \`lux_get_pending_review\`. Always pass \`workspaceDir\` with the absolute path of your current workspace root:
@@ -31,13 +42,17 @@ Call \`lux_get_pending_review\`. Always pass \`workspaceDir\` with the absolute 
 }
 \`\`\`
 
-Passing \`workspaceDir\` ensures lux finds \`.visual-edit/sessions.jsonl\` even when your IDE starts the MCP server from a global plugin folder.
+Passing \`workspaceDir\` ensures lux finds \`.visual-edit/sessions.jsonl\` and connects to the active server even when started from a global plugin folder.
 
-### 2. When comments or edits exist
-1. Read the returned annotations and style mutations.
-2. Find the relevant component files in the project (React/JSX/TSX, HTML, Tailwind classes, or CSS).
-3. Apply the requested code edits directly to the codebase.
-4. Save the files. The file watcher detects changes, resolves the active review, and reloads the browser.
+### 2. When comments, voice sections, variant decisions, or edits exist
+1. Read the returned mutations, pinned comments, sectioned voice walkthroughs, and approved component variants. Note the \`revisionHash\` and \`nextCursor\`.
+2. If the user asks you to explore multiple visual designs for an element, call \`lux_propose_variants\` with 2–4 named options so the user can toggle and pick one live in the browser.
+3. Find the relevant component files in the project (React/JSX/TSX, Vue, Svelte, HTML, Tailwind classes, or CSS) and apply the requested code edits directly.
+4. Optionally call \`lux_capture_visual\` to visually inspect the rendered pixels and verify there are no layout overflow issues.
+5. Call \`lux_resolve_review\` (passing \`expectedHash\` and \`modifiedSelectors\`) or save the source files so the browser highlights the updated elements with a Green Verification Halo.
+6. **Seamless Live & Batch Wakeup:**
+   - **In Claude Code / Codex:** Lifecycle hooks (\`PostToolUse\` + \`Stop\`) automatically hold and wake you when the user submits new Live or Batch feedback—simply finish your turn.
+   - **In Antigravity:** To avoid locking the Antigravity chat in \`"Working"\` state while still waking immediately on browser edits, launch \`npx lux-edit hook wait\` via \`run_command\` with \`WaitMsBeforeAsync: 500\` and \`IsDaemon: false\`, then immediately finish your turn.
 
 ### 3. When no pending edits are found
 Do not restart or kill the lux server if it is already running. Restarting drops active browser sessions and clears pinned comments.
@@ -45,8 +60,9 @@ Do not restart or kill the lux server if it is already running. Restarting drops
 Check whether a review server is already running on port 4320:
 
 - **If the server is running:**
-  Tell the user:
-  "The lux review server is running at \`http://127.0.0.1:4320\`. No submitted comments or edits were found. Save your comment pins or click Submit Review in the drawer, then run \`/lux\` again."
+  1. In Antigravity, if no background waiter is active yet, start \`npx lux-edit hook wait\` (\`WaitMsBeforeAsync: 500, IsDaemon: false\`) so browser submissions wake you automatically while leaving the chat input free.
+  2. Tell the user:
+     "The lux review server is running at \`http://127.0.0.1:4320\`. Switch between **Live** and **Batch** mode in the dock, press **V** to edit styles, **C** to drop comment pins, or **R** for multi-target voice dictation."
 
 - **If the server is not running:**
   1. Find the running dev server URL (e.g. \`http://localhost:3000\`, \`http://localhost:5173\`) or static HTML file (e.g. \`./index.html\`).
@@ -54,8 +70,9 @@ Check whether a review server is already running on port 4320:
      \`\`\`bash
      lux <url-or-file> --port 4320
      \`\`\`
-  3. Tell the user:
-     "Open \`http://127.0.0.1:4320\` in your browser. Press C to drop comment pins, R to record a voice walkthrough, or V to adjust styles. When finished, run \`/lux\` again and I will apply your changes to the code."
+  3. In Antigravity, also start the background review waiter (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) so browser feedback wakes you automatically.
+  4. Tell the user:
+     "Open \`http://127.0.0.1:4320\` in your browser. Press C to drop comment pins, R to record a sectioned voice walkthrough, or V to adjust styles. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."
 `;
 
 export const SKILL_WEB_CONTENT = `---
@@ -68,7 +85,7 @@ description: In-browser visual inspection, teardown, discussion, and explanation
 > [!IMPORTANT]
 > **External Sources Only:** \`lux-web\` is strictly for inspecting, discussing, and tearing down **external, third-party websites, online articles, and design references** on the internet where there is no local codebase to modify. If the user wants to visually edit, review, or modify an application or website hosted by themselves (e.g., \`localhost\`, dev servers, or local files), use \`/lux\` instead.
 
-\`lux-web\` proxies live external websites, online articles, and public web apps through lux's in-browser overlay, allowing users to drop comment pins, highlight phrases, and discuss the design, architecture, or content directly with an AI coding agent.
+\`lux-web\` proxies live external websites, online articles, and public web apps through lux's in-browser overlay, allowing users to drop comment pins, highlight phrases, record multi-target voice walkthroughs, and discuss the design, architecture, or content directly with an AI coding agent.
 
 ## Workflow for \`/lux-web\`
 
@@ -86,21 +103,21 @@ When the user runs \`/lux-web\` or asks to inspect/discuss an external URL:
 4. Tell the user:
    "The lux web review server is running at \`http://127.0.0.1:<port>\` targeting \`<url>\`.
    - Press **C** to drop comment pins on specific elements (headers, cards, buttons) or highlight text to comment on exact passages.
-   - Press **R** to record a voice walkthrough explaining the design or architecture.
+   - Press **R** to record a sectioned voice walkthrough while clicking across elements.
    - Press **V** to inspect computed styles, layout rules, and DOM elements.
-   - When finished, click **Submit Review** in the bottom drawer, then run \`/lux-web\` (or ask me to review)!"
+   - Use **Live Mode** for instant streaming or **Batch Mode** and click **Submit Review** when ready!"
 
 ### 2. Reviewing Comments & In-Browser Discussion
 
-When the user asks to review, or runs \`/lux-web\`:
+When the user asks to review, runs \`/lux-web\`, or when woken by a lifecycle hook:
 
-1. Call \`lux_get_pending_review\` (or probe the live server API \`http://127.0.0.1:<port>/__visual_edit__/api/pending\`).
+1. Call \`lux_get_pending_review\` (and optionally \`lux_capture_visual\` to see the exact visual rendering of the pinned component).
 2. **Crucial distinction from local \`/lux\`:**
    - **DO NOT attempt to find or edit local files** for external websites.
-   - Treat the user's pins, selectors, and style edits as grounds for **technical analysis, design explanation, or content discussion**:
-     - **For UI / Design Teardowns:** Explain the layout technique (Flexbox/Grid), CSS properties (transforms, shadows, backdrop-filters, custom properties), or interactive patterns. Provide clean, modular code snippets (e.g., React + Tailwind or CSS) showing how the user can replicate the effect in their own project.
+   - Treat the user's pins, selectors, voice sections, and style edits as grounds for **technical analysis, design explanation, or content discussion**:
+     - **For UI / Design Teardowns:** Explain the layout technique (Flexbox/Grid), CSS properties (transforms, shadows, backdrop-filters, custom properties), or interactive patterns. Provide clean, modular code snippets (e.g., React + Tailwind or CSS) showing how the user can replicate the effect in their own project, or use \`lux_propose_variants\` to preview live variations in the browser.
      - **For Articles & Documentation:** Address the user's questions, break down complex concepts, summarize highlighted text, or clarify difficult equations/theorems based on the pinned DOM context.
-3. Respond in structured markdown referencing each pinned element's selector and text snippet.
+3. Call \`lux_resolve_review\` with your summary reply so it is recorded in the review drawer, and respond in structured markdown referencing each pinned element's selector and text snippet.
 `;
 
 declare const __PACKAGE_VERSION__: string | undefined;
@@ -190,7 +207,7 @@ export function getMcpConfigContent(autoUpdate: boolean = false) {
 export const CLAUDE_DOT_MCP_CONTENT = getClaudeDotMcpContent(false);
 export const MCP_CONFIG_CONTENT = getMcpConfigContent(false);
 
-// Helper to write a self-contained Agent Plugin bundle (Claude Code .claude-plugin + Antigravity plugin.json + skills/lux & lux-web)
+// Helper to write a self-contained Agent Plugin bundle (Claude Code .claude-plugin + Antigravity plugin.json + hooks.json + skills/lux & lux-web)
 export function writePluginBundle(
   pluginDir: string,
   dryRun: boolean = false,
@@ -204,6 +221,7 @@ export function writePluginBundle(
 
       const claudeDotMcp = getClaudeDotMcpContent(autoUpdate);
       const mcpConfig = getMcpConfigContent(autoUpdate);
+      const agyHooks = getAntigravityHooksContent(autoUpdate);
 
       // Claude Code official plugin layout
       fs.writeFileSync(
@@ -219,7 +237,7 @@ export function writePluginBundle(
         JSON.stringify(mcpConfig, null, 2) + '\n'
       );
 
-      // Antigravity & Agent Plugin specification
+      // Antigravity & Agent Plugin specification (with native root hooks.json)
       fs.writeFileSync(
         path.join(pluginDir, 'plugin.json'),
         JSON.stringify(PLUGIN_MANIFEST, null, 2) + '\n'
@@ -227,6 +245,10 @@ export function writePluginBundle(
       fs.writeFileSync(
         path.join(pluginDir, 'mcp_config.json'),
         JSON.stringify(mcpConfig, null, 2) + '\n'
+      );
+      fs.writeFileSync(
+        path.join(pluginDir, 'hooks.json'),
+        JSON.stringify(agyHooks, null, 2) + '\n'
       );
 
       // Skills
@@ -261,6 +283,7 @@ export function removePluginBundle(pluginDir: string, dryRun: boolean = false): 
 export type AgentHarnessKey =
   | 'antigravity'
   | 'claude'
+  | 'codex'
   | 'cursor'
   | 'windsurf'
   | 'desktop'
@@ -463,14 +486,33 @@ export const AGENT_HARNESSES: AgentHarnessSpec[] = [
       path.join(home, '.claude', 'mcp.json'),
     ],
     postInstall: (home, dryRun, autoUpdate) => {
+      mergeHarnessHooksConfig(path.join(home, '.claude', 'settings.json'), 'claude-code', dryRun, autoUpdate);
       if (!dryRun && home === os.homedir()) {
         registerClaudeCodeMcpViaCli(autoUpdate);
       }
     },
     postUninstall: (home, dryRun) => {
+      removeHarnessHooksConfig(path.join(home, '.claude', 'settings.json'), dryRun);
       if (!dryRun && home === os.homedir()) {
         deregisterClaudeCodeMcpViaCli();
       }
+    },
+  },
+  {
+    key: 'codex',
+    name: 'OpenAI Codex',
+    aliases: ['openai-codex'],
+    isDetected: (home) => fs.existsSync(path.join(home, '.codex')),
+    skillsStrategy: 'flat',
+    skillsPaths: (home) => [
+      { path: path.join(home, '.codex', 'skills', 'lux', 'SKILL.md'), content: SKILL_CONTENT },
+      { path: path.join(home, '.codex', 'skills', 'lux-web', 'SKILL.md'), content: SKILL_WEB_CONTENT },
+    ],
+    postInstall: (home, dryRun, autoUpdate) => {
+      mergeHarnessHooksConfig(path.join(home, '.codex', 'hooks.json'), 'codex', dryRun, autoUpdate);
+    },
+    postUninstall: (home, dryRun) => {
+      removeHarnessHooksConfig(path.join(home, '.codex', 'hooks.json'), dryRun);
     },
   },
   {
@@ -560,7 +602,7 @@ export const AGENT_HARNESSES: AgentHarnessSpec[] = [
       if (platform === 'win32') {
         return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Zed', 'settings.json');
       }
-      return path.join(home, '.config', 'zed', 'settings.json');
+      return path.join(home, '.config/zed/settings.json');
     },
     mcpMerger: mergeZedConfig,
     mcpRemover: removeZedConfig,
@@ -622,12 +664,12 @@ export function installHarness(
     if (spec.skillsStrategy === 'bundle' && spec.bundlePath) {
       const bPath = spec.bundlePath(home, platform);
       if (writePluginBundle(bPath, dryRun, autoUpdate)) {
-        log(`✓ ${spec.name === 'Google Antigravity' ? 'Antigravity' : spec.name} plugin:     ${bPath} (Skills + MCP)`);
+        log(`[ok] ${spec.name === 'Google Antigravity' ? 'Antigravity' : spec.name} plugin:     ${bPath} (Skills + MCP + Hooks)`);
       }
     } else if (spec.skillsStrategy === 'flat' && spec.skillsPaths) {
       for (const s of spec.skillsPaths(home, platform)) {
         if (writeSkillFile(s.path, dryRun, s.content)) {
-          log(`✓ ${spec.name} skill:     ${s.path}`);
+          log(`[ok] ${spec.name} skill:     ${s.path}`);
         }
       }
     }
@@ -638,20 +680,20 @@ export function installHarness(
       const merger = spec.mcpMerger || mergeMcpConfig;
       if (merger(mPath, dryRun, autoUpdate)) {
         if (spec.key === 'claude') {
-          log(`✓ Claude Code MCP:        ${mPath}`);
+          log(`[ok] Claude Code MCP:        ${mPath}`);
         } else {
-          log(`✓ ${spec.name.padEnd(16)}:    ${mPath}`);
+          log(`[ok] ${spec.name.padEnd(16)}:    ${mPath}`);
         }
       }
     }
 
-    // 4. Post-install hook (e.g. CLI delegation)
+    // 4. Post-install hook (e.g. CLI delegation & lifecycle hooks)
     if (spec.postInstall) {
       spec.postInstall(home, dryRun, autoUpdate);
     }
     return true;
   } catch (err: any) {
-    log(`✗ Failed to install ${spec.name}: ${err.message}`);
+    log(`[error] Failed to install ${spec.name}: ${err.message}`);
     return false;
   }
 }
@@ -667,12 +709,12 @@ export function uninstallHarness(
     if (spec.skillsStrategy === 'bundle' && spec.bundlePath) {
       const bPath = spec.bundlePath(home, platform);
       if (removePluginBundle(bPath, dryRun)) {
-        log(`✓ Removed ${spec.name === 'Google Antigravity' ? 'Antigravity' : spec.name} plugin: ${bPath}`);
+        log(`[ok] Removed ${spec.name === 'Google Antigravity' ? 'Antigravity' : spec.name} plugin: ${bPath}`);
       }
     } else if (spec.skillsStrategy === 'flat' && spec.skillsPaths) {
       for (const s of spec.skillsPaths(home, platform)) {
         if (removeSkillFile(s.path, dryRun)) {
-          log(`✓ Removed ${spec.name} skill: ${s.path}`);
+          log(`[ok] Removed ${spec.name} skill: ${s.path}`);
         }
       }
     }
@@ -682,9 +724,9 @@ export function uninstallHarness(
       const remover = spec.mcpRemover || removeMcpConfig;
       if (remover(mPath, dryRun)) {
         if (spec.key === 'claude') {
-          log(`✓ Removed Claude Code MCP:   ${mPath}`);
+          log(`[ok] Removed Claude Code MCP:   ${mPath}`);
         } else {
-          log(`✓ Removed ${spec.name.padEnd(16)}: ${mPath}`);
+          log(`[ok] Removed ${spec.name.padEnd(16)}: ${mPath}`);
         }
       }
     }
@@ -706,7 +748,7 @@ export function uninstallHarness(
     }
     return true;
   } catch (err: any) {
-    log(`✗ Failed to uninstall ${spec.name}: ${err.message}`);
+    log(`[error] Failed to uninstall ${spec.name}: ${err.message}`);
     return false;
   }
 }
@@ -885,22 +927,22 @@ export function installCustomPath(
     const resolvedPath = path.resolve(targetPath);
     if (resolvedPath.endsWith('.json')) {
       if (mergeMcpConfig(resolvedPath, dryRun, autoUpdate)) {
-        log(`✓ Configured custom MCP file: ${resolvedPath}`);
+        log(`[ok] Configured custom MCP file: ${resolvedPath}`);
         return true;
       }
     } else {
       const mcpPath = path.join(resolvedPath, 'mcp.json');
       const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
       if (mergeMcpConfig(mcpPath, dryRun, autoUpdate)) {
-        log(`✓ Created custom MCP config:  ${mcpPath}`);
+        log(`[ok] Created custom MCP config:  ${mcpPath}`);
       }
       if (writeSkillFile(skillPath, dryRun)) {
-        log(`✓ Created custom skill file:  ${skillPath}`);
+        log(`[ok] Created custom skill file:  ${skillPath}`);
       }
       return true;
     }
   } catch (err: any) {
-    log(`✗ Failed to configure custom path ${targetPath}: ${err.message}`);
+    log(`[error] Failed to configure custom path ${targetPath}: ${err.message}`);
   }
   return false;
 }
@@ -915,7 +957,7 @@ export function uninstallCustomPath(
     const resolvedPath = path.resolve(targetPath);
     if (resolvedPath.endsWith('.json')) {
       if (removeMcpConfig(resolvedPath, dryRun)) {
-        log(`✓ Removed lux from custom file: ${resolvedPath}`);
+        log(`[ok] Removed lux from custom file: ${resolvedPath}`);
         return true;
       }
     } else {
@@ -923,11 +965,11 @@ export function uninstallCustomPath(
       const skillPath = path.join(resolvedPath, 'skills', 'lux', 'SKILL.md');
       removeMcpConfig(mcpPath, dryRun);
       removeSkillFile(skillPath, dryRun);
-      log(`✓ Cleaned custom directory:     ${resolvedPath}`);
+      log(`[ok] Cleaned custom directory:     ${resolvedPath}`);
       return true;
     }
   } catch (err: any) {
-    log(`✗ Failed to uninstall from custom path ${targetPath}: ${err.message}`);
+    log(`[error] Failed to uninstall from custom path ${targetPath}: ${err.message}`);
   }
   return false;
 }
@@ -1004,7 +1046,7 @@ export async function runInit(options: InitOptions = {}) {
   const log = options.logger || console.log;
 
   if (autoUpdate) {
-    log('⚡ Auto-update enabled: MCP configs will run lux-edit@latest');
+    log('[auto-update] Auto-update enabled: MCP configs will run lux-edit@latest');
   }
 
   // 1. Custom Path Mode
@@ -1017,7 +1059,6 @@ export async function runInit(options: InitOptions = {}) {
   // 2. Global Agent Installation Mode
   if (isGlobal) {
     log('\nInstalling lux globally across user agent environments\n');
-    const paths = getAgentConfigPaths(home);
 
     const agentCandidates = AGENT_HARNESSES.map((harness) => ({
       key: harness.key,
@@ -1076,29 +1117,32 @@ export async function runInit(options: InitOptions = {}) {
         JSON.stringify(getClaudeDotMcpContent(autoUpdate), null, 2) + '\n'
       );
     }
-    log(`✓ Created Claude plugin:  ${path.join(claudePluginDir, 'plugin.json')}`);
+    log(`[ok] Created Claude plugin:  ${path.join(claudePluginDir, 'plugin.json')}`);
 
-    // 2. Write standard plugin.json (Antigravity & Agent Plugin specification)
+    // 2. Write standard plugin.json & hooks.json (Antigravity & Agent Plugin specification)
     const pluginManifestPath = path.join(cwd, 'plugin.json');
+    const pluginHooksPath = path.join(cwd, 'hooks.json');
     if (!dryRun) {
       fs.writeFileSync(pluginManifestPath, JSON.stringify(PLUGIN_MANIFEST, null, 2) + '\n');
+      fs.writeFileSync(pluginHooksPath, JSON.stringify(getAntigravityHooksContent(autoUpdate), null, 2) + '\n');
     }
-    log(`✓ Created plugin manifest: ${pluginManifestPath}`);
+    log(`[ok] Created plugin manifest: ${pluginManifestPath}`);
+    log(`[ok] Created plugin hooks:    ${pluginHooksPath}`);
 
     // 3. Write standard mcp_config.json
     const pluginMcpPath = path.join(cwd, 'mcp_config.json');
     if (mergeMcpConfig(pluginMcpPath, dryRun, autoUpdate)) {
-      log(`✓ Configured plugin MCP:  ${pluginMcpPath}`);
+      log(`[ok] Configured plugin MCP:  ${pluginMcpPath}`);
     }
 
     // 4. Write standard mcp.json and .mcp.json (universal across Cursor, Claude Code, Windsurf, Zed)
     const mcpConfigPath = path.join(cwd, 'mcp.json');
     const dotMcpConfigPath = path.join(cwd, '.mcp.json');
     if (mergeMcpConfig(mcpConfigPath, dryRun, autoUpdate)) {
-      log(`✓ Configured MCP config:  ${mcpConfigPath}`);
+      log(`[ok] Configured MCP config:  ${mcpConfigPath}`);
     }
     if (mergeMcpConfig(dotMcpConfigPath, dryRun, autoUpdate)) {
-      log(`✓ Configured MCP config:  ${dotMcpConfigPath}`);
+      log(`[ok] Configured MCP config:  ${dotMcpConfigPath}`);
     }
 
     // 5. Write standard skills/lux/SKILL.md and skills/lux-web/SKILL.md
@@ -1111,13 +1155,13 @@ export async function runInit(options: InitOptions = {}) {
       }
     }
     if (writeSkillFile(skillFile, dryRun)) {
-      log(`✓ Created agent skill:    ${skillFile}`);
+      log(`[ok] Created agent skill:    ${skillFile}`);
     }
     if (writeSkillFile(skillWebFile, dryRun, SKILL_WEB_CONTENT)) {
-      log(`✓ Created agent skill:    ${skillWebFile}`);
+      log(`[ok] Created agent skill:    ${skillWebFile}`);
     }
 
-    // 6. Auto-detect and sync Claude Code ~/.claude/skills
+    // 6. Auto-detect and sync Claude Code ~/.claude/skills & hooks
     const claudeDir = path.join(home, '.claude');
     if (fs.existsSync(claudeDir) || fs.existsSync(path.join(home, '.claude.json'))) {
       if (!dryRun) {
@@ -1135,32 +1179,37 @@ export async function runInit(options: InitOptions = {}) {
       const claudeSkill = path.join(claudeDir, 'skills', 'lux', 'SKILL.md');
       const claudeWebSkill = path.join(claudeDir, 'skills', 'lux-web', 'SKILL.md');
       if (writeSkillFile(claudeSkill, dryRun)) {
-        log(`✓ Synced Claude Code:     ${claudeSkill}`);
+        log(`[ok] Synced Claude Code:     ${claudeSkill}`);
       }
       if (writeSkillFile(claudeWebSkill, dryRun, SKILL_WEB_CONTENT)) {
-        log(`✓ Synced Claude Code:     ${claudeWebSkill}`);
+        log(`[ok] Synced Claude Code:     ${claudeWebSkill}`);
       }
+      mergeHarnessHooksConfig(path.join(claudeDir, 'settings.json'), 'claude-code', dryRun, autoUpdate);
     }
 
-    // 6. Auto-detect and sync Antigravity / Gemini ~/.gemini/config/plugins/lux-edit
+    // 7. Auto-detect and sync Antigravity / Gemini ~/.gemini/config/plugins/lux-edit
     const geminiDir = path.join(home, '.gemini');
     if (fs.existsSync(geminiDir)) {
       const geminiPluginDir = path.join(geminiDir, 'config', 'plugins', 'lux-edit');
       if (writePluginBundle(geminiPluginDir, dryRun, autoUpdate)) {
-        log(`✓ Synced Antigravity:     ${geminiPluginDir}`);
+        log(`[ok] Synced Antigravity:     ${geminiPluginDir}`);
       }
     }
 
-    // 7. Auto-detect and sync .agents/skills if .agents directory exists
+    // 8. Auto-detect and sync .agents/skills and .agents/hooks.json if .agents directory exists
     const agentsDir = path.join(cwd, '.agents');
     if (fs.existsSync(agentsDir)) {
       const agentsSkill = path.join(agentsDir, 'skills', 'lux', 'SKILL.md');
       const agentsWebSkill = path.join(agentsDir, 'skills', 'lux-web', 'SKILL.md');
+      const agentsHooks = path.join(agentsDir, 'hooks.json');
       if (writeSkillFile(agentsSkill, dryRun)) {
-        log(`✓ Synced .agents skill:   ${agentsSkill}`);
+        log(`[ok] Synced .agents skill:   ${agentsSkill}`);
       }
       if (writeSkillFile(agentsWebSkill, dryRun, SKILL_WEB_CONTENT)) {
-        log(`✓ Synced .agents skill:   ${agentsWebSkill}`);
+        log(`[ok] Synced .agents skill:   ${agentsWebSkill}`);
+      }
+      if (!dryRun) {
+        fs.writeFileSync(agentsHooks, JSON.stringify(getAntigravityHooksContent(autoUpdate), null, 2) + '\n');
       }
     }
 
@@ -1213,7 +1262,7 @@ export async function runUninstall(options: UninstallOptions = {}) {
     }
 
     log('\nGlobal uninstallation complete.');
-    log('lux MCP servers and skills have been removed from your agents.\n');
+    log('lux MCP servers, skills, and hooks have been removed from your agents.\n');
   } else {
     // 3. Workspace Mode
     log('\nRemoving lux from workspace\n');
@@ -1221,25 +1270,30 @@ export async function runUninstall(options: UninstallOptions = {}) {
     const mcpConfigPath = path.join(cwd, 'mcp.json');
     const dotMcpConfigPath = path.join(cwd, '.mcp.json');
     const pluginManifestPath = path.join(cwd, 'plugin.json');
+    const pluginHooksPath = path.join(cwd, 'hooks.json');
     const pluginMcpPath = path.join(cwd, 'mcp_config.json');
     const skillFile = path.join(cwd, 'skills', 'lux', 'SKILL.md');
     const skillWebFile = path.join(cwd, 'skills', 'lux-web', 'SKILL.md');
     const legacySkillFile = path.join(cwd, 'skills', 'lux-review', 'SKILL.md');
 
     if (removeMcpConfig(mcpConfigPath, dryRun)) {
-      log(`✓ Cleaned MCP config:         ${mcpConfigPath}`);
+      log(`[ok] Cleaned MCP config:         ${mcpConfigPath}`);
     }
     if (removeMcpConfig(dotMcpConfigPath, dryRun)) {
-      log(`✓ Cleaned MCP config:         ${dotMcpConfigPath}`);
+      log(`[ok] Cleaned MCP config:         ${dotMcpConfigPath}`);
     }
     if (fs.existsSync(pluginManifestPath)) {
       if (!dryRun) fs.rmSync(pluginManifestPath, { force: true });
-      log(`✓ Removed plugin manifest:    ${pluginManifestPath}`);
+      log(`[ok] Removed plugin manifest:    ${pluginManifestPath}`);
+    }
+    if (fs.existsSync(pluginHooksPath)) {
+      if (!dryRun) fs.rmSync(pluginHooksPath, { force: true });
+      log(`[ok] Removed plugin hooks:       ${pluginHooksPath}`);
     }
     const claudePluginDir = path.join(cwd, '.claude-plugin');
     if (fs.existsSync(claudePluginDir)) {
       if (!dryRun) fs.rmSync(claudePluginDir, { recursive: true, force: true });
-      log(`✓ Removed Claude plugin:      ${claudePluginDir}`);
+      log(`[ok] Removed Claude plugin:      ${claudePluginDir}`);
     }
     if (fs.existsSync(pluginMcpPath)) {
       let isOnlyLux = false;
@@ -1250,28 +1304,32 @@ export async function runUninstall(options: UninstallOptions = {}) {
       } catch {}
       if (isOnlyLux) {
         if (!dryRun) fs.rmSync(pluginMcpPath, { force: true });
-        log(`✓ Removed plugin MCP:         ${pluginMcpPath}`);
+        log(`[ok] Removed plugin MCP:         ${pluginMcpPath}`);
       } else {
         removeMcpConfig(pluginMcpPath, dryRun);
-        log(`✓ Cleaned plugin MCP:         ${pluginMcpPath}`);
+        log(`[ok] Cleaned plugin MCP:         ${pluginMcpPath}`);
       }
     }
     if (removeSkillFile(skillFile, dryRun)) {
-      log(`✓ Removed workspace skill:    ${skillFile}`);
+      log(`[ok] Removed workspace skill:    ${skillFile}`);
     }
     if (removeSkillFile(skillWebFile, dryRun)) {
-      log(`✓ Removed workspace skill:    ${skillWebFile}`);
+      log(`[ok] Removed workspace skill:    ${skillWebFile}`);
     }
     if (removeSkillFile(legacySkillFile, dryRun)) {
-      log(`✓ Removed legacy skill:       ${legacySkillFile}`);
+      log(`[ok] Removed legacy skill:       ${legacySkillFile}`);
     }
 
     const agentsDir = path.join(cwd, '.agents');
     if (fs.existsSync(agentsDir)) {
       const agentsSkill = path.join(agentsDir, 'skills', 'lux', 'SKILL.md');
       const agentsWebSkill = path.join(agentsDir, 'skills', 'lux-web', 'SKILL.md');
+      const agentsHooks = path.join(agentsDir, 'hooks.json');
       removeSkillFile(agentsSkill, dryRun);
       removeSkillFile(agentsWebSkill, dryRun);
+      if (fs.existsSync(agentsHooks) && !dryRun) {
+        fs.rmSync(agentsHooks, { force: true });
+      }
     }
 
     log('\nWorkspace cleanup complete.\n');

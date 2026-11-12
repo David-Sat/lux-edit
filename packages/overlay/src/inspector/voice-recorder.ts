@@ -1,4 +1,12 @@
-import { VoiceTargetPin, VoiceReviewWalkthrough, formatVoiceTargetTag, SourceLocation } from '@visual-edit/core';
+import {
+  VoiceTargetPin,
+  VoiceSection,
+  VoiceReviewWalkthrough,
+  AnnotationTarget,
+  formatVoiceTargetTag,
+  SourceLocation,
+  computeTargetHash,
+} from '@visual-edit/core';
 import { getRouteFromLocation } from './route-utils.js';
 
 export interface VoiceRecorderState {
@@ -9,6 +17,7 @@ export interface VoiceRecorderState {
   interimTranscript: string;
   annotatedTranscript: string;
   pins: VoiceTargetPin[];
+  sections: VoiceSection[];
   error?: string;
 }
 
@@ -25,7 +34,9 @@ export class VoiceRecorder {
   private interimTranscript = '';
   private annotatedTranscript = '';
   private lastProcessedLength = 0;
+  private activeSectionStartLength = 0;
   private pins: VoiceTargetPin[] = [];
+  private sections: VoiceSection[] = [];
   private listeners = new Set<(state: VoiceRecorderState) => void>();
   private error?: string;
 
@@ -158,6 +169,7 @@ export class VoiceRecorder {
       interimTranscript: this.interimTranscript,
       annotatedTranscript: this.buildCurrentAnnotatedTranscript(),
       pins: [...this.pins],
+      sections: this.sections.map((s) => ({ ...s, targets: [...s.targets] })),
       error: this.error,
     };
   }
@@ -169,7 +181,9 @@ export class VoiceRecorder {
     this.interimTranscript = '';
     this.annotatedTranscript = '';
     this.lastProcessedLength = 0;
+    this.activeSectionStartLength = 0;
     this.pins = [];
+    this.sections = [];
     this.startTime = 0;
     this.isRecording = true;
     this.isReady = false;
@@ -210,22 +224,31 @@ export class VoiceRecorder {
     return true;
   }
 
-  public addPin(target: {
-    selector: string;
-    sourceLocation?: SourceLocation;
-    htmlSnippet?: string;
-    bounds?: { x: number; y: number; width: number; height: number };
-    pathname?: string;
-  }): VoiceTargetPin {
+  public addPin(
+    target: {
+      selector: string;
+      sourceLocation?: SourceLocation;
+      htmlSnippet?: string;
+      bounds?: { x: number; y: number; width: number; height: number };
+      pathname?: string;
+    },
+    options?: { appendToCurrentSection?: boolean }
+  ): VoiceTargetPin {
     const order = this.pins.length + 1;
+    const targetHash = computeTargetHash({
+      selector: target.selector,
+      htmlSnippet: target.htmlSnippet,
+    });
+    const timestampMs = this.startTime > 0 ? Math.round(performance.now() - this.startTime) : 0;
     const pin: VoiceTargetPin = {
       id: `vpin_${Date.now()}_${order}`,
       order,
       targetSelector: target.selector,
+      targetHash,
       sourceLocation: target.sourceLocation,
       htmlSnippet: target.htmlSnippet,
       bounds: target.bounds,
-      timestampMs: this.startTime > 0 ? Math.round(performance.now() - this.startTime) : 0,
+      timestampMs,
       pathname: target.pathname || getRouteFromLocation(),
     };
 
@@ -248,9 +271,77 @@ export class VoiceRecorder {
     }
     this.annotatedTranscript += tag;
 
+    const annTarget: AnnotationTarget = {
+      targetSelector: target.selector,
+      targetHash,
+      sourceLocation: target.sourceLocation,
+      htmlSnippet: target.htmlSnippet,
+      bounds: target.bounds,
+      pathname: target.pathname || getRouteFromLocation(),
+    };
+
+    if (options?.appendToCurrentSection && this.sections.length > 0) {
+      const currentSec = this.sections[this.sections.length - 1];
+      const existingIdx = currentSec.targets.findIndex((t) => t.targetSelector === target.selector);
+      if (existingIdx !== -1 && currentSec.targets.length > 1) {
+        currentSec.targets.splice(existingIdx, 1);
+      } else if (existingIdx === -1) {
+        currentSec.targets.push(annTarget);
+      }
+      currentSec.endTimeMs = timestampMs;
+    } else if (this.sections.length === 0) {
+      const secOrder = 1;
+      this.sections.push({
+        id: `vsec_${Date.now()}_${secOrder}`,
+        order: secOrder,
+        targets: [annTarget],
+        transcript: newSpoken,
+        timestampMs,
+        startTimeMs: 0,
+        endTimeMs: timestampMs,
+      });
+      this.activeSectionStartLength = currentSpoken.length;
+    } else {
+      const prevSec = this.sections[this.sections.length - 1];
+      const sectionSpoken = currentSpoken.slice(this.activeSectionStartLength).trim();
+      if (sectionSpoken) {
+        prevSec.transcript = prevSec.transcript
+          ? `${prevSec.transcript} ${sectionSpoken}`
+          : sectionSpoken;
+      }
+      prevSec.endTimeMs = timestampMs;
+
+      const secOrder = this.sections.length + 1;
+      this.sections.push({
+        id: `vsec_${Date.now()}_${secOrder}`,
+        order: secOrder,
+        targets: [annTarget],
+        transcript: '',
+        timestampMs,
+        startTimeMs: timestampMs,
+        endTimeMs: timestampMs,
+      });
+      this.activeSectionStartLength = currentSpoken.length;
+    }
+
     this.lastProcessedLength = currentSpoken.length;
     this.notify();
     return pin;
+  }
+
+  public removeTargetFromSection(sectionId: string, targetSelector: string): void {
+    const sec = this.sections.find((s) => s.id === sectionId);
+    if (!sec) return;
+    if (sec.targets.length <= 1) return;
+    sec.targets = sec.targets.filter((t) => t.targetSelector !== targetSelector);
+    this.notify();
+  }
+
+  public updateSectionTranscript(sectionId: string, transcript: string): void {
+    const sec = this.sections.find((s) => s.id === sectionId);
+    if (!sec) return;
+    sec.transcript = transcript.trim();
+    this.notify();
   }
 
   private getCurrentFullText(): string {
@@ -316,6 +407,27 @@ export class VoiceRecorder {
       return null;
     }
 
+    if (this.sections.length > 0) {
+      const lastSec = this.sections[this.sections.length - 1];
+      const remainingSpoken = finalRawTranscript.slice(this.activeSectionStartLength).trim();
+      if (remainingSpoken) {
+        lastSec.transcript = lastSec.transcript
+          ? `${lastSec.transcript} ${remainingSpoken}`
+          : remainingSpoken;
+      }
+      lastSec.endTimeMs = totalDurationMs;
+    } else if (finalRawTranscript) {
+      this.sections.push({
+        id: `vsec_${Date.now()}_1`,
+        order: 1,
+        targets: [],
+        transcript: finalRawTranscript,
+        timestampMs: totalDurationMs,
+        startTimeMs: 0,
+        endTimeMs: totalDurationMs,
+      });
+    }
+
     const review: VoiceReviewWalkthrough = {
       id: `voice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
@@ -323,6 +435,7 @@ export class VoiceRecorder {
       transcript: finalRawTranscript,
       annotatedTranscript: finalAnnotated || finalRawTranscript,
       pins: [...this.pins],
+      sections: this.sections.map((s) => ({ ...s, targets: [...s.targets] })),
       url: typeof window !== 'undefined' ? window.location.href : undefined,
       pathname: pathnameOverride || getRouteFromLocation(),
       pageTitle: typeof document !== 'undefined' ? document.title : undefined,
@@ -352,7 +465,9 @@ export class VoiceRecorder {
     this.interimTranscript = '';
     this.annotatedTranscript = '';
     this.pins = [];
+    this.sections = [];
     this.lastProcessedLength = 0;
+    this.activeSectionStartLength = 0;
     this.notify();
   }
 }
