@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.15.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.15.0...lux-edit-v0.15.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **overlay:** guard WebSocket reference and clean up sync timers for Node 20 CI ([#67](https://github.com/David-Sat/lux-edit/issues/67)) ([4204bd0](https://github.com/David-Sat/lux-edit/commit/4204bd0e7049b722f03c2fa5c189e89770602f4f))
+* **overlay:** isolate comment and voice pins to current route and handle navigation ([#65](https://github.com/David-Sat/lux-edit/issues/65)) ([0125f00](https://github.com/David-Sat/lux-edit/commit/0125f00d89eef1a0b7ae0adfe56e83232747ea33))
+* **overlay:** repair dock handle drag-and-drop and eliminate click-follow glitch ([#62](https://github.com/David-Sat/lux-edit/issues/62)) ([85cac4f](https://github.com/David-Sat/lux-edit/commit/85cac4f343aec1eb70c0ba7376360cbfa5ab991a))
+* preserve comments and active reviews during agent file changes ([#63](https://github.com/David-Sat/lux-edit/issues/63)) ([6b44294](https://github.com/David-Sat/lux-edit/commit/6b44294f4732bfb3b14bf1edc63c3c111a9e2e38))
+
 ## [0.15.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.14.0...lux-edit-v0.15.0) (2026-11-02)
 
 
