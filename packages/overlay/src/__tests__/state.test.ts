@@ -40,12 +40,13 @@ describe('OverlayStateManager', () => {
     } as any);
 
     // Reset singleton instance
-    (OverlayStateManager as any).instance = undefined;
+    OverlayStateManager.resetInstance();
     state = OverlayStateManager.getInstance();
   });
 
   afterEach(() => {
     storageMap.clear();
+    OverlayStateManager.resetInstance();
     delete (globalThis as any).WebSocket;
     vi.restoreAllMocks();
   });
@@ -249,7 +250,7 @@ describe('OverlayStateManager', () => {
       window.localStorage.setItem('lux_draft_default', JSON.stringify(draftBatch));
 
       // Reset instance to simulate page load
-      (OverlayStateManager as any).instance = undefined;
+      OverlayStateManager.resetInstance();
       const newInstance = OverlayStateManager.getInstance();
 
       expect(newInstance.sessionId).toBe('recovered_session_42');
@@ -324,7 +325,7 @@ describe('OverlayStateManager', () => {
         })
       );
 
-      (OverlayStateManager as any).instance = undefined;
+      OverlayStateManager.resetInstance();
       const reloaded = OverlayStateManager.getInstance();
 
       expect(reloaded.dockPosition).toEqual({
@@ -379,6 +380,23 @@ describe('OverlayStateManager', () => {
       expect(state.annotations.length).toBe(1);
       expect(state.annotations[0].comment).toBe('Finished comment');
       expect(state.pendingPageReload).toBe(false);
+    });
+
+    it('does not throw ReferenceError when WebSocket is undefined during autoSync', async () => {
+      // Simulate environments like Node 20 where WebSocket is not defined globally
+      delete (globalThis as any).WebSocket;
+
+      state.setUserPrompt('Test prompt for autosync without websocket');
+      await expect(state.autoSync()).resolves.toBeUndefined();
+    });
+
+    it('cleans up timers and sockets cleanly on resetInstance and destroy', () => {
+      state.scheduleAutoSync();
+      expect((state as any).syncTimer).not.toBeNull();
+
+      OverlayStateManager.resetInstance();
+      expect((state as any).syncTimer).toBeNull();
+      expect((state as any).ws).toBeNull();
     });
   });
 });

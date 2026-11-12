@@ -53,12 +53,13 @@ describe('Route-aware Pins & Navigation', () => {
       json: async () => ({}),
     } as any);
 
-    (OverlayStateManager as any).instance = undefined;
+    OverlayStateManager.resetInstance();
     state = OverlayStateManager.getInstance();
   });
 
   afterEach(() => {
     storageMap.clear();
+    OverlayStateManager.resetInstance();
     delete (globalThis as any).WebSocket;
     window.history.replaceState({}, '', originalPath || '/');
     document.body.innerHTML = '';
