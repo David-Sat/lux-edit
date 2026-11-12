@@ -13,41 +13,22 @@ import {
   SERVER_METADATA_DIR,
   computeBatchRevisionHash,
 } from '@visual-edit/core';
-
-export interface GetPendingReviewOptions {
-  port?: number;
-  serverUrl?: string;
-  appId?: string;
-  activeSessionIds?: string[];
-  maxAgeMs?: number;
-  afterCursor?: number;
-}
-
-export function sessionMatchesTarget(sessionUrl: string | undefined, port?: number, serverUrl?: string): boolean {
-  if (!port && !serverUrl) return true;
-  if (!sessionUrl) return true;
-  try {
-    const parsed = new URL(sessionUrl);
-    if (port) {
-      if (parsed.port === String(port)) return true;
-      if (!parsed.port && ((parsed.protocol === 'http:' && port === 80) || (parsed.protocol === 'https:' && port === 443))) return true;
-      return false;
-    }
-    if (serverUrl) {
-      const targetParsed = new URL(serverUrl);
-      if (parsed.host === targetParsed.host) return true;
-      return false;
-    }
-  } catch {
-    if (port && sessionUrl.includes(`:${port}`)) return true;
-    if (serverUrl && sessionUrl.startsWith(serverUrl)) return true;
-  }
-  return false;
-}
-
+import {
+  GetPendingReviewOptions,
+  ensureVisualEditGitignored,
+  extractVerificationTargetsFromSession,
+  hasSessionContent as checkHasSessionContent,
+  loadReviewModeFromFile,
+  loadSessionsFromJsonl,
+  pruneSessionsMap,
+  saveReviewModeToFile,
+  saveSessionsToJsonl,
+  sessionMatchesTarget,
+} from './session-storage.js';
 import { VariantStore } from './variant-store.js';
 import { LeaseManager, HookWaiter } from './lease-manager.js';
 
+export { sessionMatchesTarget, type GetPendingReviewOptions } from './session-storage.js';
 export { VariantStore } from './variant-store.js';
 export { LeaseManager };
 export type { HookWaiter } from './lease-manager.js';
@@ -75,8 +56,11 @@ export class EventStore {
     this.filePath = path.join(dataDir, 'sessions.jsonl');
     this.variantsPath = path.join(dataDir, 'variants.json');
     this.reviewModePath = path.join(dataDir, 'review-mode.json');
-    this.ensureGitignored(this.rootDir);
-    this.loadReviewModeFromDisk();
+    ensureVisualEditGitignored(this.rootDir);
+    const savedMode = loadReviewModeFromFile(this.reviewModePath);
+    if (savedMode) {
+      this.reviewMode = savedMode;
+    }
     this.loadFromDisk();
 
     this.variantStore = new VariantStore(this.variantsPath, {
@@ -99,32 +83,6 @@ export class EventStore {
     });
   }
 
-  private loadReviewModeFromDisk(): void {
-    try {
-      if (fs.existsSync(this.reviewModePath)) {
-        const raw = JSON.parse(fs.readFileSync(this.reviewModePath, 'utf-8'));
-        if (raw?.reviewMode === 'live' || raw?.reviewMode === 'batch') {
-          this.reviewMode = raw.reviewMode;
-        }
-      }
-    } catch {}
-  }
-
-  private ensureGitignored(rootDir: string): void {
-    try {
-      const gitignorePath = path.join(rootDir, '.gitignore');
-      if (fs.existsSync(gitignorePath)) {
-        const content = fs.readFileSync(gitignorePath, 'utf-8');
-        if (!content.includes('.visual-edit')) {
-          const separator = content.endsWith('\n') || content.length === 0 ? '' : '\n';
-          fs.appendFileSync(gitignorePath, `${separator}.visual-edit/\n`, 'utf-8');
-        }
-      }
-    } catch {
-      // Intentionally silent
-    }
-  }
-
   public static getInstance(rootDir?: string): EventStore {
     const resolvedRoot = path.resolve(rootDir || process.cwd());
     let store = EventStore.instances.get(resolvedRoot);
@@ -136,13 +94,7 @@ export class EventStore {
   }
 
   public hasSessionContent(batch: VisualEditBatch): boolean {
-    return Boolean(
-      (batch.mutations && batch.mutations.length > 0) ||
-      (batch.annotations && batch.annotations.length > 0) ||
-      (batch.voiceReviews && batch.voiceReviews.length > 0) ||
-      (batch.variantDecisions && batch.variantDecisions.length > 0) ||
-      (batch.userPrompt && batch.userPrompt.trim().length > 0)
-    );
+    return checkHasSessionContent(batch);
   }
 
   public hasPendingAgentWork(batch: VisualEditBatch): boolean {
@@ -179,9 +131,7 @@ export class EventStore {
     if (mode !== 'live' && mode !== 'batch') return;
     const prev = this.reviewMode;
     this.reviewMode = mode;
-    try {
-      fs.writeFileSync(this.reviewModePath, JSON.stringify({ reviewMode: mode }) + '\n', 'utf-8');
-    } catch {}
+    saveReviewModeToFile(this.reviewModePath, mode);
     if (mode === 'live') {
       const pending = this.getPendingReview();
       if (pending && pending.status === 'draft' && this.hasSessionContent(pending)) {
@@ -211,39 +161,15 @@ export class EventStore {
   private assignCursorsAndHashes(batch: VisualEditBatch): void {
     let maxBatchCursor = batch.latestCursor || 0;
 
-    if (batch.mutations) {
-      for (const m of batch.mutations) {
-        if (typeof m.cursor !== 'number') {
-          m.cursor = this.nextCursor();
+    for (const collection of [batch.mutations, batch.annotations, batch.voiceReviews, batch.variantDecisions]) {
+      if (!collection) continue;
+      for (const item of collection) {
+        if (typeof item.cursor !== 'number') {
+          item.cursor = this.nextCursor();
         }
-        if (m.cursor > maxBatchCursor) maxBatchCursor = m.cursor;
-      }
-    }
-
-    if (batch.annotations) {
-      for (const a of batch.annotations) {
-        if (typeof a.cursor !== 'number') {
-          a.cursor = this.nextCursor();
+        if (item.cursor > maxBatchCursor) {
+          maxBatchCursor = item.cursor;
         }
-        if (a.cursor > maxBatchCursor) maxBatchCursor = a.cursor;
-      }
-    }
-
-    if (batch.voiceReviews) {
-      for (const v of batch.voiceReviews) {
-        if (typeof v.cursor !== 'number') {
-          v.cursor = this.nextCursor();
-        }
-        if (v.cursor > maxBatchCursor) maxBatchCursor = v.cursor;
-      }
-    }
-
-    if (batch.variantDecisions) {
-      for (const d of batch.variantDecisions) {
-        if (typeof d.cursor !== 'number') {
-          d.cursor = this.nextCursor();
-        }
-        if (d.cursor > maxBatchCursor) maxBatchCursor = d.cursor;
       }
     }
 
@@ -258,69 +184,13 @@ export class EventStore {
     batch.revisionHash = computeBatchRevisionHash(batch);
   }
 
-  private pruneOldSessions(): void {
-    const STALE_TTL = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-
-    for (const [id, s] of this.sessions.entries()) {
-      if (now - s.timestamp > STALE_TTL) {
-        this.sessions.delete(id);
-      }
-    }
-
-    const MAX_SESSIONS = 50;
-    if (this.sessions.size <= MAX_SESSIONS) return;
-
-    const sorted = Array.from(this.sessions.values()).sort((a, b) => a.timestamp - b.timestamp);
-    for (const s of sorted) {
-      if (this.sessions.size <= MAX_SESSIONS) break;
-      if (s.status === 'implemented' || s.status === 'resolved') {
-        this.sessions.delete(s.id);
-      }
-    }
-
-    if (this.sessions.size > MAX_SESSIONS) {
-      const remaining = Array.from(this.sessions.values()).sort((a, b) => a.timestamp - b.timestamp);
-      for (const s of remaining) {
-        if (this.sessions.size <= MAX_SESSIONS) break;
-        if (s.status !== 'in_progress' && s.status !== 'submitted') {
-          this.sessions.delete(s.id);
-        }
-      }
-    }
-  }
-
   public loadFromDisk(): void {
-    if (!fs.existsSync(this.filePath)) return;
     try {
-      const content = fs.readFileSync(this.filePath, 'utf-8');
-      const lines = content.split('\n').filter((l) => l.trim().length > 0);
-      let prunedAny = false;
-      const loadedSessions = new Map<string, VisualEditBatch>();
-      let maxSeenCursor = this.currentCursor;
-      for (const line of lines) {
-        try {
-          const batch: VisualEditBatch = JSON.parse(line);
-          if (!this.hasSessionContent(batch)) {
-            prunedAny = true;
-            continue;
-          }
-          if (typeof batch.latestCursor === 'number' && batch.latestCursor > maxSeenCursor) {
-            maxSeenCursor = batch.latestCursor;
-          }
-          if (!batch.revisionHash) {
-            batch.revisionHash = computeBatchRevisionHash(batch);
-          }
-          loadedSessions.set(batch.id, batch);
-        } catch {
-          prunedAny = true;
-        }
-      }
-      this.currentCursor = maxSeenCursor;
-      this.sessions = loadedSessions;
-      const initialSize = this.sessions.size;
-      this.pruneOldSessions();
-      if (prunedAny || this.sessions.size < initialSize) {
+      const result = loadSessionsFromJsonl(this.filePath, this.currentCursor);
+      if (!result) return;
+      this.currentCursor = result.maxSeenCursor;
+      this.sessions = result.sessions;
+      if (result.needsSave) {
         this.saveToDisk();
       }
     } catch (err) {
@@ -330,15 +200,7 @@ export class EventStore {
 
   private saveToDisk(): void {
     try {
-      const dataDir = path.dirname(this.filePath);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
-      const lines = Array.from(this.sessions.values()).map((b) => JSON.stringify(b));
-      const content = lines.join('\n') + (lines.length > 0 ? '\n' : '');
-      const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
-      fs.writeFileSync(tempPath, content, 'utf-8');
-      fs.renameSync(tempPath, this.filePath);
+      saveSessionsToJsonl(this.filePath, this.sessions);
     } catch (err) {
       console.error('[lux] Failed to save sessions to disk:', err);
     }
@@ -375,14 +237,12 @@ export class EventStore {
     const existing = this.sessions.get(batch.id);
     const prevHash = existing?.revisionHash;
 
-    // Preserve existing variantDecisions if the browser sync payload didn't include them
     if (!batch.variantDecisions && existing?.variantDecisions) {
       batch.variantDecisions = existing.variantDecisions;
     }
 
     this.assignCursorsAndHashes(batch);
 
-    // If hash changed since last save, bump cursor so Live Mode waiters know fresh edits arrived
     if (prevHash && prevHash !== batch.revisionHash) {
       batch.latestCursor = this.nextCursor();
     }
@@ -391,7 +251,6 @@ export class EventStore {
     const isLive = effectiveMode === 'live';
     const shouldMarkSubmitted = options?.forceSubmit || batch.status === 'submitted' || (isLive && hasContent);
 
-    // In Live Mode (or when explicitly submitted), mark submitted so waiting hooks wake up immediately
     if (shouldMarkSubmitted) {
       batch.status = 'submitted';
       if (!prevHash || prevHash !== batch.revisionHash || options?.forceSubmit) {
@@ -399,14 +258,13 @@ export class EventStore {
       }
     }
 
-    // Stale detection: if an agent was already in_progress on this session and the user mutated it again
     if (existing?.status === 'in_progress' && prevHash && prevHash !== batch.revisionHash) {
       batch.stale = true;
       batch.staleReason = 'User modified elements in the browser while the agent was processing an earlier revision.';
     }
 
     this.sessions.set(batch.id, batch);
-    this.pruneOldSessions();
+    pruneSessionsMap(this.sessions);
     this.saveToDisk();
     this.notify('SAVE_BATCH', batch.id, batch);
 
@@ -512,65 +370,7 @@ export class EventStore {
   }
 
   public extractVerificationTargets(session: VisualEditBatch, extraSelectors?: string[]): VerificationTarget[] {
-    const targetsMap = new Map<string, VerificationTarget>();
-    const now = Date.now();
-
-    for (const m of session.mutations || []) {
-      if (m.targetSelector && m.targetSelector !== ':root') {
-        targetsMap.set(m.targetSelector, {
-          selector: m.targetSelector,
-          label: m.type === 'STYLE_CHANGE' ? `Style (${m.property})` : m.type,
-          beforeHash: m.targetHash,
-          timestamp: now,
-        });
-      }
-    }
-
-    for (const a of session.annotations || []) {
-      if (a.targetSelector) {
-        targetsMap.set(a.targetSelector, {
-          selector: a.targetSelector,
-          bounds: a.bounds,
-          label: 'Comment Applied',
-          beforeHash: a.targetHash,
-          timestamp: now,
-        });
-      }
-      for (const t of a.targets || []) {
-        if (t.targetSelector) {
-          targetsMap.set(t.targetSelector, {
-            selector: t.targetSelector,
-            bounds: t.bounds,
-            label: 'Updated',
-            beforeHash: t.targetHash,
-            timestamp: now,
-          });
-        }
-      }
-    }
-
-    for (const d of session.variantDecisions || []) {
-      if (d.targetSelector) {
-        targetsMap.set(d.targetSelector, {
-          selector: d.targetSelector,
-          label: `Variant: ${d.variantName}`,
-          beforeHash: d.targetHash,
-          timestamp: now,
-        });
-      }
-    }
-
-    for (const sel of extraSelectors || []) {
-      if (sel && !targetsMap.has(sel)) {
-        targetsMap.set(sel, {
-          selector: sel,
-          label: 'Updated by Agent',
-          timestamp: now,
-        });
-      }
-    }
-
-    return Array.from(targetsMap.values());
+    return extractVerificationTargetsFromSession(session, extraSelectors);
   }
 
   public getPendingReview(options?: GetPendingReviewOptions): VisualEditBatch | null {
@@ -624,58 +424,38 @@ export class EventStore {
     const allTargets: VerificationTarget[] = [];
 
     for (const session of this.sessions.values()) {
-      if (options?.sessionId && session.id !== options.sessionId) {
-        continue;
-      }
-      if (options?.appId && session.appId && session.appId !== options.appId) {
-        continue;
-      }
-      if (!sessionMatchesTarget(session.url, options?.port, options?.serverUrl)) {
-        continue;
-      }
-      if (session.status !== 'implemented' && session.status !== 'resolved') {
-        if (this.hasSessionContent(session)) {
-          if (options?.onlyIfOlderThanReviewTurn) {
-            // Draft sessions never fetched by an agent turn must never be auto-resolved
-            if (session.status === 'draft' && !session.lastFetchedAt) {
-              continue;
-            }
+      if (options?.sessionId && session.id !== options.sessionId) continue;
+      if (options?.appId && session.appId && session.appId !== options.appId) continue;
+      if (!sessionMatchesTarget(session.url, options?.port, options?.serverUrl)) continue;
+      if (session.status !== 'implemented' && session.status !== 'resolved' && this.hasSessionContent(session)) {
+        if (options?.onlyIfOlderThanReviewTurn) {
+          if (session.status === 'draft' && !session.lastFetchedAt) continue;
+          const turnCutoff = session.lastFetchedAt ?? (session.status === 'submitted' ? session.timestamp : 0);
+          if (!turnCutoff) continue;
 
-            // The review turn cutoff is when the agent fetched the review,
-            // or when the review was explicitly submitted if not yet fetched.
-            const turnCutoff = session.lastFetchedAt ?? (session.status === 'submitted' ? session.timestamp : 0);
-            if (!turnCutoff) {
-              continue;
-            }
-
-            // Check if any comments or voice walkthroughs were added after the turn cutoff
-            const latestContentTime = Math.max(
-              session.timestamp || 0,
-              ...(session.annotations?.map((a) => a.timestamp) || []),
-              ...(session.voiceReviews?.map((v) => v.timestamp) || [])
-            );
-            if (latestContentTime > turnCutoff) {
-              // User has added new comments during or after the agent's turn; preserve as pending!
-              continue;
-            }
-          }
-
-          const targets = this.extractVerificationTargets(session);
-          allTargets.push(...targets);
-          session.status = 'implemented';
-          session.claim = undefined;
-          changed = true;
-          this.notify('STATUS_CHANGE', session.id, {
-            status: 'implemented',
-            replies: session.replies || [],
-            verificationTargets: targets,
-          });
+          const latestContentTime = Math.max(
+            session.timestamp || 0,
+            ...(session.annotations?.map((a) => a.timestamp) || []),
+            ...(session.voiceReviews?.map((v) => v.timestamp) || [])
+          );
+          if (latestContentTime > turnCutoff) continue;
         }
+
+        const targets = this.extractVerificationTargets(session);
+        allTargets.push(...targets);
+        session.status = 'implemented';
+        session.claim = undefined;
+        changed = true;
+        this.notify('STATUS_CHANGE', session.id, {
+          status: 'implemented',
+          replies: session.replies || [],
+          verificationTargets: targets,
+        });
       }
     }
     if (changed) {
       this.leaseManager.onSessionImplemented();
-      this.pruneOldSessions();
+      pruneSessionsMap(this.sessions);
       this.saveToDisk();
     }
     return allTargets;

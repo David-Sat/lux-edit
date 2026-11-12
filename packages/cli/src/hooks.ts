@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import {
   API_ROUTES,
   DEFAULT_SERVER_URL,
@@ -9,9 +8,15 @@ import {
   LuxServerMetadata,
   stripTrailingSlashes,
 } from '@visual-edit/core';
+import type { HookHarness, HookEventName } from './hook-config.js';
 
-export type HookHarness = 'antigravity' | 'claude-code' | 'codex' | 'claude' | 'auto';
-export type HookEventName = 'PostToolUse' | 'PreInvocation' | 'Stop' | 'SessionEnd' | 'Interrupt' | 'Wait';
+export {
+  getAntigravityHooksContent,
+  mergeHarnessHooksConfig,
+  removeHarnessHooksConfig,
+  type HookHarness,
+  type HookEventName,
+} from './hook-config.js';
 
 export interface NormalizedHookInput {
   harness: 'antigravity' | 'claude-code' | 'codex' | 'claude';
@@ -27,192 +32,15 @@ export interface NormalizedHookInput {
   stopReason?: string;
 }
 
-export function getAntigravityHooksContent(autoUpdate: boolean = false) {
-  const cmd = autoUpdate ? 'npx -y lux-edit@latest' : 'lux-edit';
-  return {
-    'lux-live-review': {
-      PreInvocation: [
-        {
-          type: 'command',
-          command: `${cmd} hook event --harness antigravity --event PreInvocation`,
-          timeout: 5,
-        },
-      ],
-      PostToolUse: [
-        {
-          matcher: '.*lux.*',
-          hooks: [
-            {
-              type: 'command',
-              command: `${cmd} hook event --harness antigravity --event PostToolUse`,
-              timeout: 10,
-            },
-          ],
-        },
-      ],
-      Stop: [
-        {
-          type: 'command',
-          command: `${cmd} hook event --harness antigravity --event Stop`,
-          timeout: 600,
-        },
-      ],
-    },
-  };
-}
-
-function isGeneratedHookCommand(cmd: unknown): boolean {
-  if (typeof cmd !== 'string') return false;
-  return cmd.includes('lux-edit') && cmd.includes('hook event');
-}
-
-/**
- * Merges Claude Code or Codex hook definitions into ~/.claude/settings.json,
- * .claude/settings.local.json, or .codex/hooks.json while preserving user settings.
- */
-export function mergeHarnessHooksConfig(
-  filePath: string,
-  harness: 'antigravity' | 'claude-code' | 'codex' | 'claude',
-  dryRun: boolean = false,
-  autoUpdate: boolean = false
-): boolean {
-  try {
-    let data: Record<string, any> = {};
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf-8').trim();
-      if (raw) {
-        data = JSON.parse(raw);
-      }
-    }
-    if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      return false;
-    }
-
-    if (harness === 'antigravity') {
-      const agyContent = getAntigravityHooksContent(autoUpdate);
-      Object.assign(data, agyContent);
-      if (!dryRun) {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-        fs.writeFileSync(tempPath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-        fs.renameSync(tempPath, filePath);
-      }
-      return true;
-    }
-
-    if (!data.hooks || typeof data.hooks !== 'object' || Array.isArray(data.hooks)) {
-      data.hooks = {};
-    }
-
-    const pkg = autoUpdate ? 'lux-edit@latest' : 'lux-edit';
-    const cmd = autoUpdate ? `npx -y ${pkg}` : 'lux-edit';
-    const normalizedHarness = harness === 'claude' ? 'claude' : harness;
-    const events: Array<{ event: HookEventName; timeout: number; matcher?: string }> = [
-      { event: 'PostToolUse', timeout: 10, matcher: '.*lux.*' },
-      { event: 'Stop', timeout: 600 },
-      { event: 'SessionEnd', timeout: 3 },
-    ];
-    if (harness === 'codex') {
-      events.push({ event: 'Interrupt', timeout: 3 });
-    }
-
-    for (const { event, timeout, matcher } of events) {
-      const existingList = Array.isArray(data.hooks[event]) ? data.hooks[event] : [];
-      const cleaned = existingList
-        .map((group: any) => {
-          if (!group || typeof group !== 'object' || !Array.isArray(group.hooks)) return group;
-          const kept = group.hooks.filter((h: any) => !isGeneratedHookCommand(h?.command));
-          if (kept.length === 0) return null;
-          return { ...group, hooks: kept };
-        })
-        .filter(Boolean);
-
-      const newEntry: Record<string, any> = {
-        hooks: [
-          {
-            type: 'command',
-            command: `${cmd} hook event --harness ${normalizedHarness} --event ${event}`,
-            timeout,
-          },
-        ],
-      };
-      if (matcher) {
-        newEntry.matcher = matcher;
-      }
-      cleaned.push(newEntry);
-      data.hooks[event] = cleaned;
-    }
-
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-      fs.renameSync(tempPath, filePath);
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function removeHarnessHooksConfig(
-  filePath: string,
-  harnessOrDryRun?: string | boolean,
-  dryRunOpt: boolean = false
-): boolean {
-  try {
-    const dryRun = typeof harnessOrDryRun === 'boolean' ? harnessOrDryRun : dryRunOpt;
-    if (!fs.existsSync(filePath)) return false;
-    const raw = fs.readFileSync(filePath, 'utf-8').trim();
-    if (!raw) return false;
-    const data = JSON.parse(raw);
-    if (!data || typeof data !== 'object') {
-      return false;
-    }
-
-    let modified = false;
-
-    if (data['lux-live-review']) {
-      delete data['lux-live-review'];
-      modified = true;
-    }
-
-    if (data.hooks && typeof data.hooks === 'object') {
-      for (const event of Object.keys(data.hooks)) {
-        const list = data.hooks[event];
-        if (!Array.isArray(list)) continue;
-        const cleaned = list
-          .map((group: any) => {
-            if (!group || typeof group !== 'object' || !Array.isArray(group.hooks)) return group;
-            const kept = group.hooks.filter((h: any) => !isGeneratedHookCommand(h?.command));
-            if (kept.length !== group.hooks.length) {
-              modified = true;
-            }
-            if (kept.length === 0) return null;
-            return { ...group, hooks: kept };
-          })
-          .filter(Boolean);
-
-        if (cleaned.length === 0) {
-          delete data.hooks[event];
-        } else {
-          data.hooks[event] = cleaned;
-        }
-      }
-
-      if (Object.keys(data.hooks).length === 0) {
-        delete data.hooks;
-      }
-    }
-
-    if (modified && !dryRun) {
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf-8');
-    }
-    return modified;
-  } catch {
-    return false;
-  }
-}
+const NON_CONTINUABLE_STOP_REASONS = new Set([
+  'USER_CANCELED',
+  'USER_CANCELLED',
+  'ERROR',
+  'MAX_INVOCATIONS',
+  'MAX_FORCED_INVOCATIONS',
+  'MAX_TOKEN_BUDGET_EXCEEDED',
+  'TERMINAL_CUSTOM_HOOK',
+]);
 
 function extractCursorFromToolResponse(response: any): number | undefined {
   if (!response) return undefined;
@@ -240,7 +68,6 @@ export function normalizeHookPayload(
 
   const eventName: HookEventName = event || rawPayload.hook_event_name || rawPayload.event || 'Stop';
 
-  // Detect harness from payload shape if 'auto'
   const isAntigravityShape =
     typeof rawPayload.conversationId === 'string' ||
     typeof rawPayload.conversation_id === 'string' ||
@@ -256,10 +83,10 @@ export function normalizeHookPayload(
 
   const sessionId = String(
     rawPayload.conversationId ||
-    rawPayload.conversation_id ||
-    rawPayload.session_id ||
-    rawPayload.sessionId ||
-    'default'
+      rawPayload.conversation_id ||
+      rawPayload.session_id ||
+      rawPayload.sessionId ||
+      'default'
   ).trim();
 
   const workspaceDir =
@@ -268,11 +95,8 @@ export function normalizeHookPayload(
     rawPayload.workspaceDir ||
     process.cwd();
 
-  const toolName = String(
-    rawPayload.toolCall?.name || rawPayload.tool_name || rawPayload.toolName || ''
-  );
-  const toolInput =
-    rawPayload.toolCall?.args || rawPayload.tool_input || rawPayload.toolInput || {};
+  const toolName = String(rawPayload.toolCall?.name || rawPayload.tool_name || rawPayload.toolName || '');
+  const toolInput = rawPayload.toolCall?.args || rawPayload.tool_input || rawPayload.toolInput || {};
   const toolResponse = rawPayload.tool_response || rawPayload.toolResponse;
   const terminationReason = rawPayload.terminationReason || rawPayload.termination_reason;
 
@@ -291,7 +115,9 @@ export function normalizeHookPayload(
 
   const seenCursor = extractCursorFromToolResponse(toolResponse);
   const stopReason = terminationReason
-    ? (terminationReason.toLowerCase().includes('cancel') ? 'user' : terminationReason)
+    ? terminationReason.toLowerCase().includes('cancel')
+      ? 'user'
+      : terminationReason
     : undefined;
 
   return {
@@ -335,24 +161,50 @@ function resolveRunningServerUrl(workspaceDir?: string, explicitUrl?: string): s
   return DEFAULT_SERVER_URL;
 }
 
-/**
- * Formats the stdout JSON decision for the specific agent harness when feedback arrives on Stop.
- */
+async function fetchHookStatus(serverUrl: string, timeoutMs: number): Promise<any | null> {
+  const statusRes = await fetch(`${serverUrl}${API_ROUTES.STATUS}`, {
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!statusRes.ok) return null;
+  return statusRes.json();
+}
+
+function isSessionLeaseHolder(statusData: any, sessionId: string): boolean {
+  const lease = statusData?.hookLease;
+  return Boolean(
+    lease?.connected &&
+      (!lease?.sessionId ||
+        lease.sessionId === sessionId ||
+        lease.sessionId === 'default' ||
+        lease.sessionId === 'waiter')
+  );
+}
+
+async function postHookApi(
+  serverUrl: string,
+  payload: Record<string, any>,
+  timeoutMs: number
+): Promise<any | null> {
+  const res = await fetch(`${serverUrl}${API_ROUTES.HOOKS}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/** Formats the stdout JSON decision for the specific agent harness when feedback arrives on Stop. */
 export function formatStopContinuationOutput(
   harness: 'antigravity' | 'claude-code' | 'codex' | 'claude',
   reason: string
 ): Record<string, any> {
   if (harness === 'antigravity') {
-    return {
-      decision: 'continue',
-      reason,
-    };
+    return { decision: 'continue', reason };
   }
   // Claude Code & Codex use decision: "block" on Stop to continue the agent turn with reason
-  return {
-    decision: 'block',
-    reason,
-  };
+  return { decision: 'block', reason };
 }
 
 /**
@@ -375,19 +227,8 @@ export async function handleHookEvent(
     return {};
   }
 
-  if (normalized.event === 'Stop' && normalized.terminationReason) {
-    const nonContinuableReasons = new Set([
-      'USER_CANCELED',
-      'USER_CANCELLED',
-      'ERROR',
-      'MAX_INVOCATIONS',
-      'MAX_FORCED_INVOCATIONS',
-      'MAX_TOKEN_BUDGET_EXCEEDED',
-      'TERMINAL_CUSTOM_HOOK',
-    ]);
-    if (nonContinuableReasons.has(normalized.terminationReason)) {
-      return {};
-    }
+  if (normalized.event === 'Stop' && normalized.terminationReason && NON_CONTINUABLE_STOP_REASONS.has(normalized.terminationReason)) {
+    return {};
   }
 
   const serverUrl = resolveRunningServerUrl(normalized.workspaceDir, options.serverUrl);
@@ -397,49 +238,26 @@ export async function handleHookEvent(
 
   if (normalized.event === 'PreInvocation') {
     try {
-      const statusRes = await fetch(`${serverUrl}${API_ROUTES.STATUS}`, {
-        signal: AbortSignal.timeout(800),
-      });
-      if (!statusRes.ok) return {};
-      const statusData = (await statusRes.json()) as any;
-      const lease = statusData?.hookLease;
-      const hasPendingReview = Boolean(statusData?.hasPendingReview);
-      const waiterConnected = Boolean(statusData?.waiterConnected ?? lease?.waiterConnected);
-
-      const isLeaseHolder = Boolean(
-        lease?.connected &&
-          (!lease?.sessionId ||
-            lease.sessionId === normalized.sessionId ||
-            lease.sessionId === 'default' ||
-            lease.sessionId === 'waiter')
-      );
-
-      if (!isLeaseHolder || !hasPendingReview || waiterConnected) {
+      const statusData = await fetchHookStatus(serverUrl, 800);
+      if (!statusData) return {};
+      const waiterConnected = Boolean(statusData?.waiterConnected ?? statusData?.hookLease?.waiterConnected);
+      if (!isSessionLeaseHolder(statusData, normalized.sessionId) || !statusData?.hasPendingReview || waiterConnected) {
         return {};
       }
 
-      const hookRes = await fetch(`${serverUrl}${API_ROUTES.HOOKS}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const result = await postHookApi(
+        serverUrl,
+        {
           harness: normalized.harness,
           sessionId: normalized.sessionId,
           event: 'PreInvocation',
           waitMs: 0,
-        }),
-        signal: AbortSignal.timeout(1200),
-      });
-      if (!hookRes.ok) return {};
-      const result = (await hookRes.json()) as any;
-      if (result.feedbackAvailable === true && typeof result.reason === 'string' && result.reason) {
+        },
+        1200
+      );
+      if (result?.feedbackAvailable === true && typeof result.reason === 'string' && result.reason) {
         return {
-          injectSteps: [
-            {
-              systemMessage: {
-                systemMessage: result.reason,
-              },
-            },
-          ],
+          injectSteps: [{ systemMessage: { systemMessage: result.reason } }],
         };
       }
       return {};
@@ -451,50 +269,27 @@ export async function handleHookEvent(
   // For Stop events, verify whether this session owns the review lease
   if (normalized.event === 'Stop') {
     try {
-      const statusRes = await fetch(`${serverUrl}${API_ROUTES.STATUS}`, {
-        signal: AbortSignal.timeout(1000),
-      });
-      if (!statusRes.ok) return {};
-      const statusData = (await statusRes.json()) as any;
-      const lease = statusData?.hookLease;
-      const hasPendingReview = Boolean(statusData?.hasPendingReview);
-      const waiterConnected = Boolean(statusData?.waiterConnected ?? lease?.waiterConnected);
-
-      // Strict PostToolUse Lease Binding (Artifact-Studio pattern):
-      // Stop NEVER claims an unbound lease and NEVER holds unrelated sessions.
-      // Only a session that already bound the lease via PostToolUse (or background Wait) may proceed.
-      const isLeaseHolder = Boolean(
-        lease?.connected &&
-          (!lease?.sessionId ||
-            lease.sessionId === normalized.sessionId ||
-            lease.sessionId === 'default' ||
-            lease.sessionId === 'waiter')
-      );
-      if (!isLeaseHolder) {
+      const statusData = await fetchHookStatus(serverUrl, 1000);
+      if (!statusData || !isSessionLeaseHolder(statusData, normalized.sessionId)) {
         return {};
       }
 
-      // Antigravity Non-Blocking Stop Architecture:
-      // In Antigravity, holding Stop open keeps the conversation stuck in "Working" state
-      // and blocks the user from chatting. Instead, Antigravity uses a background command
-      // (`lux-edit hook wait` with IsDaemon: false) for Reactive Wakeup while idle.
+      // Antigravity Non-Blocking Stop Architecture: uses `lux-edit hook wait` rather than holding Stop open.
       if (normalized.harness === 'antigravity' && !options.forceLongPoll) {
-        if (hasPendingReview) {
-          const res = await fetch(`${serverUrl}${API_ROUTES.HOOKS}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        const waiterConnected = Boolean(statusData?.waiterConnected ?? statusData?.hookLease?.waiterConnected);
+        if (statusData?.hasPendingReview) {
+          const result = await postHookApi(
+            serverUrl,
+            {
               harness: normalized.harness,
               sessionId: normalized.sessionId,
               event: 'Stop',
               seenCursor: normalized.seenCursor,
               waitMs: 0,
-            }),
-            signal: AbortSignal.timeout(2500),
-          });
-          if (!res.ok) return {};
-          const result = (await res.json()) as any;
-          if (result.feedbackAvailable === true && typeof result.reason === 'string' && result.reason) {
+            },
+            2500
+          );
+          if (result?.feedbackAvailable === true && typeof result.reason === 'string' && result.reason) {
             return formatStopContinuationOutput(normalized.harness, result.reason);
           }
         } else if (
@@ -528,23 +323,19 @@ To enable seamless Live/Batch browser wakeups without locking the Antigravity ch
       const remainingMs = Math.max(200, deadline - Date.now());
       const currentWaitMs = normalized.event === 'Stop' ? Math.min(pollTickMs, remainingMs) : 0;
 
-      const res = await fetch(`${serverUrl}${API_ROUTES.HOOKS}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const result = await postHookApi(
+        serverUrl,
+        {
           harness: normalized.harness,
           sessionId: normalized.sessionId,
           event: normalized.event,
           seenCursor: normalized.seenCursor,
           waitMs: currentWaitMs,
-        }),
-        signal: AbortSignal.timeout(currentWaitMs + 2500),
-      });
+        },
+        currentWaitMs + 2500
+      );
 
-      if (!res.ok) return {};
-      const result = (await res.json()) as any;
-
-      if (normalized.event !== 'Stop') {
+      if (!result || normalized.event !== 'Stop') {
         return {};
       }
 
@@ -600,25 +391,22 @@ export async function handleHookWait(options: {
       const remainingMs = Math.max(200, deadline - Date.now());
       const currentWaitMs = Math.min(pollTickMs, remainingMs);
 
-      const res = await fetch(`${serverUrl}${API_ROUTES.HOOKS}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const result = await postHookApi(
+        serverUrl,
+        {
           harness,
           sessionId,
           event: 'Wait',
           waiterId,
           seenCursor,
           waitMs: currentWaitMs,
-        }),
-        signal: AbortSignal.timeout(currentWaitMs + 3000),
-      });
+        },
+        currentWaitMs + 3000
+      );
 
-      if (!res.ok) {
+      if (!result) {
         return { feedbackAvailable: false };
       }
-
-      const result = (await res.json()) as any;
 
       if (result.superseded === true) {
         return { feedbackAvailable: false, superseded: true };
