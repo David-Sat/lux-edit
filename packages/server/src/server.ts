@@ -30,7 +30,9 @@ export interface VisualEditServerOptions {
 let serverPkgVersion = '0.13.0';
 try {
   serverPkgVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
-} catch {}
+} catch {
+  // Fall back to default version when package.json cannot be read.
+}
 
 export class VisualEditServer {
   public readonly appId: string;
@@ -220,8 +222,8 @@ export class VisualEditServer {
           } else if (encoding.includes('deflate')) {
             buffer = zlib.inflateSync(buffer);
           }
-        } catch (err: any) {
-          console.error('[lux] Failed to decompress upstream HTML payload:', err.message);
+        } catch (err: unknown) {
+          console.error('[lux] Failed to decompress upstream HTML payload:', err instanceof Error ? err.message : String(err));
         }
 
         const body = buffer.toString('utf-8');
@@ -233,13 +235,13 @@ export class VisualEditServer {
       });
     });
 
-    this.proxy.on('error', (err, req, res) => {
+    this.proxy.on('error', (err, _req, res) => {
       console.error('[lux] Proxy error:', err.message);
-      if (res && 'writeHead' in res && !(res as ServerResponse).headersSent) {
-        (res as ServerResponse).writeHead(502, { 'Content-Type': 'text/plain' });
-        (res as ServerResponse).end(`Proxy error: Cannot reach upstream target at ${this.options.target}`);
-      } else if (res && 'destroy' in res && typeof (res as any).destroy === 'function') {
-        (res as any).destroy();
+      if (res && 'writeHead' in res && !res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end(`Proxy error: Cannot reach upstream target at ${this.options.target}`);
+      } else if (res && 'destroy' in res && typeof res.destroy === 'function') {
+        res.destroy();
       }
     });
   }
@@ -258,7 +260,7 @@ export class VisualEditServer {
   }
 
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    let pathname = '/';
+    let pathname: string;
     let url: URL;
     try {
       url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -307,7 +309,7 @@ export class VisualEditServer {
         ? resolvedStaticRoot
         : resolvedStaticRoot + path.sep;
 
-      let decodedPath = pathname;
+      let decodedPath: string;
       try {
         decodedPath = decodeURIComponent(pathname);
       } catch {
@@ -400,7 +402,7 @@ export class VisualEditServer {
       const strictPort = !!this.options.strictPort;
 
       const tryListen = (port: number) => {
-        const onError = (err: any) => {
+        const onError = (err: NodeJS.ErrnoException) => {
           this.server.removeListener('error', onError);
           if (err.code === 'EADDRINUSE' && !strictPort && initialPort > 0 && port < initialPort + 50) {
             tryListen(port + 1);
@@ -442,8 +444,8 @@ export class VisualEditServer {
         rootDir: this.rootDir,
       };
       fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2) + '\n', 'utf-8');
-    } catch (err: any) {
-      console.debug('[lux] Failed to write server metadata lockfile:', err?.message);
+    } catch (err: unknown) {
+      console.debug('[lux] Failed to write server metadata lockfile:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -461,8 +463,8 @@ export class VisualEditServer {
           fs.unlinkSync(metaPath);
         }
       }
-    } catch (err: any) {
-      console.debug('[lux] Failed to remove server metadata lockfile:', err?.message);
+    } catch (err: unknown) {
+      console.debug('[lux] Failed to remove server metadata lockfile:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -475,13 +477,17 @@ export class VisualEditServer {
     if (this.fileWatcher) {
       try {
         this.fileWatcher.close();
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Failed to close file watcher:', err);
+      }
     }
     this.eventStore.clearWaiters();
     this.wsHub.close();
     try {
       this.proxy?.close();
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] Failed to close upstream proxy:', err);
+    }
     return new Promise((resolve) => {
       this.server.close(() => resolve());
     });

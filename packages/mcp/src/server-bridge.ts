@@ -4,12 +4,27 @@ import { EventStore } from '@visual-edit/server';
 import {
   VisualEditBatch,
   LuxServerMetadata,
+  HookLeaseStatus,
+  ReviewMode,
+  SessionSummary,
   SERVER_METADATA_DIR,
   SERVER_METADATA_FILE,
   DEFAULT_SERVER_URL,
   API_ROUTES,
   stripTrailingSlashes,
 } from '@visual-edit/core';
+
+export interface ServerStatusResponse {
+  appId?: string;
+  version?: string;
+  reviewMode?: ReviewMode;
+  latestCursor?: number;
+  hookLease?: HookLeaseStatus;
+  waiterConnected?: boolean;
+  connectedClients?: number;
+  hasPendingReview?: boolean;
+  pendingSessionId?: string;
+}
 
 export const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -96,11 +111,13 @@ export function readServerMetadata(rootDir: string): LuxServerMetadata | null {
     if (data.pid && typeof data.pid === 'number') {
       try {
         process.kill(data.pid, 0);
-      } catch (e: any) {
-        if (e.code === 'ESRCH') {
+      } catch (e: unknown) {
+        if ((e as NodeJS.ErrnoException).code === 'ESRCH') {
           try {
             fs.unlinkSync(metaPath);
-          } catch {}
+          } catch {
+            // Ignore race if lockfile was already removed by server shutdown.
+          }
           return null;
         }
       }
@@ -137,29 +154,35 @@ export async function fetchFromRunningServer(
         return data;
       }
     }
-  } catch {}
+  } catch {
+    // Live HTTP server unreachable; callers fall back to disk EventStore.
+  }
   return null;
 }
 
-export async function fetchServerStatus(serverUrl: string): Promise<any | null> {
+export async function fetchServerStatus(serverUrl: string): Promise<ServerStatusResponse | null> {
   try {
     const url = stripTrailingSlashes(serverUrl) + API_ROUTES.STATUS;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
-      return await res.json();
+      return (await res.json()) as ServerStatusResponse;
     }
-  } catch {}
+  } catch {
+    // Live server status is optional; return null when server is not running.
+  }
   return null;
 }
 
-export async function fetchSessionsFromRunningServer(serverUrl: string): Promise<VisualEditBatch[] | null> {
+export async function fetchSessionsFromRunningServer(serverUrl: string): Promise<SessionSummary[] | null> {
   try {
     const url = stripTrailingSlashes(serverUrl) + API_ROUTES.SESSIONS;
     const res = await fetch(url, { signal: AbortSignal.timeout(800) });
     if (res.ok) {
-      return (await res.json()) as VisualEditBatch[];
+      return (await res.json()) as SessionSummary[];
     }
-  } catch {}
+  } catch {
+    // Live server unreachable; return null to use disk EventStore sessions.
+  }
   return null;
 }
 

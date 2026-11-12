@@ -1,10 +1,10 @@
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 
 export function VariantSwitcher() {
   const state = OverlayStateManager.getInstance();
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const [dragPositions, setDragPositions] = useState<Record<string, { left: number; top: number }>>({});
   const dragRef = useRef<{ setId: string; startX: number; startY: number; initLeft: number; initTop: number } | null>(null);
 
@@ -18,7 +18,7 @@ export function VariantSwitcher() {
       window.removeEventListener('resize', handleUpdate);
       unsub();
     };
-  }, []);
+  }, [state]);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -47,14 +47,17 @@ export function VariantSwitcher() {
     };
   }, []);
 
-  const visibleSets = state.variantSets.filter((s) => {
-    if (s.status !== 'pending' && s.status !== 'decided') return false;
-    try {
-      return Boolean(document.querySelector(s.targetSelector));
-    } catch {
-      return false;
-    }
-  });
+  const visibleSets = useMemo(() => {
+    void tick;
+    return state.variantSets.filter((s) => {
+      if (s.status !== 'pending' && s.status !== 'decided') return false;
+      try {
+        return Boolean(document.querySelector(s.targetSelector));
+      } catch {
+        return false;
+      }
+    });
+  }, [state, tick]);
 
   // Keyboard navigation: use Alt + Left/Right arrows or focus switcher to switch options, Enter to Pick & Apply
   useEffect(() => {
@@ -96,7 +99,7 @@ export function VariantSwitcher() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [visibleSets]);
+  }, [state, visibleSets]);
 
   if (visibleSets.length === 0) return null;
 
@@ -128,7 +131,9 @@ export function VariantSwitcher() {
             const r = el.getBoundingClientRect();
             rect = { left: r.left, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
           }
-        } catch {}
+        } catch {
+          // Fall back to default coordinates if targetSelector cannot be queried.
+        }
 
         const activeVarId = state.activeVariantPreview.get(set.id) || null;
         const activeVariant = set.variants.find((v) => v.id === activeVarId);

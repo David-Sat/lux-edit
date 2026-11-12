@@ -5,13 +5,26 @@ import {
   VariantDecision,
   VisualEditBatch,
   ReviewMode,
+  WebSocketMessage,
 } from '@visual-edit/core';
+
+export interface ProposeVariantInput {
+  id?: string;
+  name: string;
+  rationale?: string;
+  description?: string;
+  styles?: Record<string, string>;
+  styleMutations?: Array<{ property?: string; value?: unknown }>;
+  classes?: { add?: string[]; remove?: string[] };
+  html?: string;
+  text?: string;
+}
 
 export interface VariantStoreContext {
   getPendingReview: () => VisualEditBatch | null;
   getSession: (id: string) => VisualEditBatch | undefined;
   saveBatch: (session: VisualEditBatch, options?: { forceSubmit?: boolean }) => void;
-  notify: (type: string, id: string, payload: any) => void;
+  notify: (type: WebSocketMessage['type'], id: string, payload: unknown) => void;
   nextCursor: () => number;
   getReviewMode: () => ReviewMode;
   onVariantProposed?: (variantSet: ElementVariantSet) => void;
@@ -80,15 +93,7 @@ export class VariantStore {
     targetSelector: string;
     label?: string;
     expectedHash?: string;
-    variants: Array<{
-      id?: string;
-      name: string;
-      rationale: string;
-      styles?: Record<string, string>;
-      classes?: { add?: string[]; remove?: string[] };
-      html?: string;
-      text?: string;
-    }>;
+    variants: ProposeVariantInput[];
   }): ElementVariantSet {
     this.loadVariantsFromDisk();
     const setId = `varset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -118,7 +123,7 @@ export class VariantStore {
       originalTargetHash,
       status: isStale ? 'stale' : 'pending',
       staleReason,
-      variants: input.variants.map((v: any, idx) => {
+      variants: input.variants.map((v: ProposeVariantInput, idx) => {
         let styles: Record<string, string> | undefined = v.styles;
         if (!styles && Array.isArray(v.styleMutations)) {
           styles = {};

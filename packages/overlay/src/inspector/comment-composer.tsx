@@ -15,10 +15,22 @@ export function CommentComposer() {
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   const target = state.commentTargetElement;
   const hasScreenshot = Boolean(state.commentPendingScreenshot);
+
+  const adjustHeight = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const computedHeight = Math.min(Math.max(el.scrollHeight, 72), 240);
+    el.style.height = `${computedHeight}px`;
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [commentText]);
 
   useEffect(() => {
     if (!target || !popoverRef.current) return;
@@ -64,25 +76,13 @@ export function CommentComposer() {
       window.removeEventListener('scroll', updatePos);
       window.removeEventListener('resize', updatePos);
     };
-  }, [target, state.commentTargetBounds]);
+  }, [target, state.commentTargetBounds, state.commentDraftText]);
 
   if (!target || !document.body.contains(target)) return null;
 
   const sourceLoc = resolveSourceLocation(target);
   const tagLabel = sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.selector;
   const selectedText = state.commentTargetSelectedText;
-
-  const adjustHeight = () => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    const computedHeight = Math.min(Math.max(el.scrollHeight, 72), 240);
-    el.style.height = `${computedHeight}px`;
-  };
-
-  useEffect(() => {
-    adjustHeight();
-  }, [commentText]);
 
   const handleSave = () => {
     if (commentText.trim() || hasScreenshot) {

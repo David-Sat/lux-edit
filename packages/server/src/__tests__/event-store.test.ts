@@ -100,7 +100,6 @@ describe('EventStore: Cursors, Live/Batch Mode, Variants, Hooks, and Stale Guard
     expect(decision).toBeDefined();
     expect(decision?.selectedVariantId).toBe('v2');
     expect(store.getVariantSets()[0].selectedVariantId).toBe('v2');
-    const session = store.getSession(decision!.setId ? store.getPendingReview()?.id || '' : '');
     expect(store.getVariantSets()[0].status).toBe('decided');
   });
 

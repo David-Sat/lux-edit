@@ -21,14 +21,59 @@ export interface VoiceRecorderState {
   error?: string;
 }
 
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  readonly [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  lang: string;
+  onstart: (() => void) | null;
+  onaudiostart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const speechWin = window as SpeechRecognitionWindow;
+  return speechWin.SpeechRecognition || speechWin.webkitSpeechRecognition;
+}
+
 export class VoiceRecorder {
   private static instance: VoiceRecorder;
-  private recognition: any = null;
+  private recognition: SpeechRecognitionInstance | null = null;
   private isRecording = false;
   private isReady = false;
   private startTime = 0;
-  private timerInterval: any = null;
-  private readyTimeout: any = null;
+  private timerInterval: ReturnType<typeof setInterval> | null = null;
+  private readyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private transcript = '';
   private interimTranscript = '';
@@ -42,8 +87,7 @@ export class VoiceRecorder {
   private workbenchOverride: VoiceRecorderState | null = null;
 
   public static isSupported(): boolean {
-    if (typeof window === 'undefined') return false;
-    return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    return Boolean(getSpeechRecognitionConstructor());
   }
 
   public static getInstance(): VoiceRecorder {
@@ -58,8 +102,7 @@ export class VoiceRecorder {
   }
 
   private initRecognition(): void {
-    if (typeof window === 'undefined') return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) return;
 
     try {
@@ -70,8 +113,8 @@ export class VoiceRecorder {
       let defaultLang = 'en-US';
       if (typeof navigator !== 'undefined' && navigator?.language) {
         defaultLang = navigator.language;
-      } else if (typeof window !== 'undefined' && (window as any).navigator?.language) {
-        defaultLang = (window as any).navigator.language;
+      } else if (typeof window !== 'undefined' && window.navigator?.language) {
+        defaultLang = window.navigator.language;
       }
       recognition.lang = defaultLang;
 
@@ -91,7 +134,7 @@ export class VoiceRecorder {
         this.notify();
       };
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         let interim = '';
         let finalChunk = '';
 
@@ -118,7 +161,7 @@ export class VoiceRecorder {
         this.notify();
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         if (event.error === 'no-speech') {
           return;
         }
@@ -136,13 +179,15 @@ export class VoiceRecorder {
         if (this.isRecording) {
           try {
             recognition.start();
-          } catch (e) {}
+          } catch (err) {
+            console.debug('[lux] Failed to auto-restart speech recognition:', err);
+          }
         }
       };
 
       this.recognition = recognition;
-    } catch (err: any) {
-      this.error = err?.message || 'Failed to initialize speech recognition';
+    } catch (err: unknown) {
+      this.error = err instanceof Error ? err.message : 'Failed to initialize speech recognition';
     }
   }
 
@@ -224,9 +269,9 @@ export class VoiceRecorder {
 
     try {
       this.initRecognition();
-      this.recognition.start();
-    } catch (e: any) {
-      this.error = e?.message || 'Could not start recording';
+      this.recognition?.start();
+    } catch (e: unknown) {
+      this.error = e instanceof Error ? e.message : 'Could not start recording';
       this.notify();
     }
 
@@ -396,7 +441,9 @@ export class VoiceRecorder {
       if (this.recognition) {
         this.recognition.stop();
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] SpeechRecognition stop threw during finish:', err);
+    }
 
     const flushDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 500;
     if (flushDelay > 0) {
@@ -474,7 +521,9 @@ export class VoiceRecorder {
       if (this.recognition) {
         this.recognition.stop();
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] SpeechRecognition stop threw during finish:', err);
+    }
     this.transcript = '';
     this.interimTranscript = '';
     this.annotatedTranscript = '';

@@ -205,14 +205,18 @@ export function loadReviewModeFromFile(filePath: string): ReviewMode | null {
         return raw.reviewMode;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.debug('[lux] Failed to load review mode from file:', err);
+  }
   return null;
 }
 
 export function saveReviewModeToFile(filePath: string, mode: ReviewMode): void {
   try {
     fs.writeFileSync(filePath, JSON.stringify({ reviewMode: mode }) + '\n', 'utf-8');
-  } catch {}
+  } catch (err) {
+    console.debug('[lux] Failed to save review mode to file:', err);
+  }
 }
 
 export function ensureVisualEditGitignored(rootDir: string): void {

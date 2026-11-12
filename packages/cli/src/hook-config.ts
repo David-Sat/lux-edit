@@ -50,20 +50,37 @@ function writeJsonFileAtomic(filePath: string, data: unknown): void {
   fs.renameSync(tempPath, filePath);
 }
 
+interface HookCommandEntry {
+  type?: string;
+  command?: unknown;
+  timeout?: number;
+  [key: string]: unknown;
+}
+
+interface HookGroupEntry {
+  matcher?: string;
+  hooks?: HookCommandEntry[];
+  [key: string]: unknown;
+}
+
+function isHookGroupEntry(val: unknown): val is HookGroupEntry {
+  return Boolean(val && typeof val === 'object' && !Array.isArray(val));
+}
+
 /** Strips previously generated lux-edit hook entries while preserving all user-defined hooks. */
-function stripGeneratedHooksFromList(list: any[]): { cleaned: any[]; modified: boolean } {
+function stripGeneratedHooksFromList(list: unknown[]): { cleaned: unknown[]; modified: boolean } {
   let modified = false;
   const cleaned = list
-    .map((group: any) => {
-      if (!group || typeof group !== 'object' || !Array.isArray(group.hooks)) return group;
-      const kept = group.hooks.filter((h: any) => !isGeneratedHookCommand(h?.command));
+    .map((group) => {
+      if (!isHookGroupEntry(group) || !Array.isArray(group.hooks)) return group;
+      const kept = group.hooks.filter((hook) => !isGeneratedHookCommand(hook?.command));
       if (kept.length !== group.hooks.length) {
         modified = true;
       }
       if (kept.length === 0) return null;
       return { ...group, hooks: kept };
     })
-    .filter(Boolean);
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   return { cleaned, modified };
 }
 
@@ -79,11 +96,11 @@ export function mergeHarnessHooksConfig(
   autoUpdate: boolean = false
 ): boolean {
   try {
-    let data: Record<string, any> = {};
+    let data: Record<string, unknown> = {};
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, 'utf-8').trim();
       if (raw) {
-        data = JSON.parse(raw);
+        data = JSON.parse(raw) as Record<string, unknown>;
       }
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
@@ -101,6 +118,7 @@ export function mergeHarnessHooksConfig(
     if (!data.hooks || typeof data.hooks !== 'object' || Array.isArray(data.hooks)) {
       data.hooks = {};
     }
+    const hooksMap = data.hooks as Record<string, unknown>;
 
     const pkg = autoUpdate ? 'lux-edit@latest' : 'lux-edit';
     const cmd = autoUpdate ? `npx -y ${pkg}` : 'lux-edit';
@@ -115,10 +133,10 @@ export function mergeHarnessHooksConfig(
     }
 
     for (const { event, timeout, matcher } of events) {
-      const existingList = Array.isArray(data.hooks[event]) ? data.hooks[event] : [];
+      const existingList = Array.isArray(hooksMap[event]) ? (hooksMap[event] as unknown[]) : [];
       const { cleaned } = stripGeneratedHooksFromList(existingList);
 
-      const newEntry: Record<string, any> = {
+      const newEntry: HookGroupEntry = {
         hooks: [
           {
             type: 'command',
@@ -131,7 +149,7 @@ export function mergeHarnessHooksConfig(
         newEntry.matcher = matcher;
       }
       cleaned.push(newEntry);
-      data.hooks[event] = cleaned;
+      hooksMap[event] = cleaned;
     }
 
     if (!dryRun) {

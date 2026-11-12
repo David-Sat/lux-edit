@@ -1,9 +1,19 @@
 import {
+  ElementVariant,
   ElementVariantSet,
   VariantDecision,
   ReviewMode,
   API_ROUTES,
 } from '@visual-edit/core';
+
+interface VariantStyleMutationItem {
+  property?: string;
+  value?: unknown;
+}
+
+type VariantWithLegacyMutations = ElementVariant & {
+  styleMutations?: VariantStyleMutationItem[];
+};
 
 export interface VariantOriginalSnapshot {
   styleAttr: string | null;
@@ -27,7 +37,13 @@ export function applySanitizedHtml(targetEl: HTMLElement, rawHtml: string): void
       }
       for (const attr of Array.from(element.attributes)) {
         const attrName = attr.name.toLowerCase();
-        const attrVal = attr.value.replace(/[\u0000-\u0020]+/g, '').toLowerCase();
+        const attrVal = Array.from(attr.value.replace(/\s+/g, ''))
+          .filter((ch) => {
+            const code = ch.charCodeAt(0);
+            return code > 0x1f && code !== 0x7f;
+          })
+          .join('')
+          .toLowerCase();
         if (
           attrName.startsWith('on') ||
           attrVal.startsWith('javascript:') ||
@@ -84,7 +100,9 @@ export class VariantManager {
     let el: HTMLElement | null = null;
     try {
       el = document.querySelector(vSet.targetSelector) as HTMLElement | null;
-    } catch {}
+    } catch {
+      // Ignore invalid target selectors when resolving variant preview node.
+    }
     if (!el) return;
 
     if (!this.originalSnapshots.has(setId)) {
@@ -111,7 +129,8 @@ export class VariantManager {
     if (variantId !== null) {
       const variant = vSet.variants.find((v) => v.id === variantId);
       if (variant) {
-        const rawStyles: any = variant.styles || (variant as any).styleMutations;
+        const legacyVariant = variant as VariantWithLegacyMutations;
+        const rawStyles = variant.styles || legacyVariant.styleMutations;
         const stylesMap: Record<string, string> = {};
         if (Array.isArray(rawStyles)) {
           for (const m of rawStyles) {
@@ -123,12 +142,15 @@ export class VariantManager {
           Object.assign(stylesMap, rawStyles);
         }
 
+        const styleRecord = el.style as unknown as Record<string, string>;
         for (const [k, v] of Object.entries(stylesMap)) {
           el.style.setProperty(k, v, 'important');
           const camel = k.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
           try {
-            (el.style as any)[camel] = v;
-          } catch {}
+            styleRecord[camel] = v;
+          } catch {
+            // Ignore read-only style properties in constrained DOM implementations.
+          }
         }
 
         if (variant.classes) {

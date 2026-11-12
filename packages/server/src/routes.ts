@@ -2,10 +2,15 @@ import { IncomingMessage, ServerResponse } from 'node:http';
 import fs from 'node:fs';
 import {
   API_ROUTES,
+  ReviewMode,
+  SessionStatus,
+  ViewportPreset,
+  VisualEditBatch,
   checkForUpdates,
   formatBatchSummary,
 } from '@visual-edit/core';
 import { EventStore } from './event-store.js';
+import type { ProposeVariantInput } from './variant-store.js';
 import { WebSocketHub } from './ws-hub.js';
 
 export interface ApiRouteContext {
@@ -17,13 +22,55 @@ export interface ApiRouteContext {
   overlayScriptPath: string;
 }
 
-export function readJsonBody(req: IncomingMessage): Promise<any> {
+interface HookRequestBody {
+  harness?: string;
+  sessionId?: string;
+  event?: 'PostToolUse' | 'Stop' | 'SessionEnd' | 'Interrupt' | 'PreInvocation' | 'Wait';
+  seenCursor?: number;
+  waitMs?: unknown;
+  waiterId?: string;
+}
+
+interface CaptureRequestBody {
+  timeoutMs?: unknown;
+  selector?: string;
+  viewport?: ViewportPreset;
+  resolution?: 'draft' | 'full';
+  includeOverlay?: unknown;
+}
+
+interface VariantsRequestBody {
+  action?: 'dismiss' | 'delete' | 'revert' | 'decide' | 'propose';
+  setId?: string;
+  sessionId?: string;
+  selectedVariantId?: string;
+  userNote?: string;
+  targetHash?: string;
+  targetSelector?: string;
+  label?: string;
+  expectedHash?: string;
+  variants?: ProposeVariantInput[];
+}
+
+interface StatusRequestBody {
+  action?: 'setReviewMode' | 'endLiveReview' | 'resolve';
+  reviewMode?: ReviewMode;
+  sessionId?: string;
+  modifiedSelectors?: string[];
+  expectedHash?: string;
+  force?: boolean;
+  status?: SessionStatus;
+  reply?: string;
+  agentId?: string;
+}
+
+export function readJsonBody<T = Record<string, unknown>>(req: IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk) => (body += chunk.toString()));
     req.on('end', () => {
       try {
-        resolve(body ? JSON.parse(body) : {});
+        resolve((body ? JSON.parse(body) : {}) as T);
       } catch (e) {
         reject(e);
       }
@@ -34,7 +81,7 @@ export function readJsonBody(req: IncomingMessage): Promise<any> {
 
 export function sendJson(
   res: ServerResponse,
-  data: any,
+  data: unknown,
   statusCode: number = 200,
   headers?: Record<string, string>
 ): void {
@@ -79,7 +126,7 @@ export async function handleApiRoute(
 
   if (pathname === API_ROUTES.EDITS && req.method === 'POST') {
     try {
-      const batch = await readJsonBody(req);
+      const batch = await readJsonBody<VisualEditBatch>(req);
       if (ctx.appId && batch.appId && batch.appId !== ctx.appId) {
         console.warn(`[lux] Dropping REST batch from mismatched appId: ${batch.appId} (expected: ${ctx.appId})`);
         sendJson(res, { error: 'App ID mismatch' }, 400);
@@ -112,7 +159,7 @@ export async function handleApiRoute(
   // Lifecycle Hook Endpoint (Antigravity, Claude Code, Codex)
   if (pathname === API_ROUTES.HOOKS && req.method === 'POST') {
     try {
-      const payload = await readJsonBody(req);
+      const payload = await readJsonBody<HookRequestBody>(req);
       const harness = String(payload.harness || 'unknown');
       const sessionId = String(payload.sessionId || 'default');
       const event = payload.event || 'Stop';
@@ -295,7 +342,7 @@ ${summary}
   // Visual Capture Endpoint (Bridges MCP lux_capture_visual to Browser via WebSocket)
   if (pathname === API_ROUTES.CAPTURE && req.method === 'POST') {
     try {
-      const body = await readJsonBody(req);
+      const body = await readJsonBody<CaptureRequestBody>(req);
       const timeoutMs = clampTimeoutMs(body.timeoutMs, 12000, 500, 30000);
       const captureResult = await ctx.wsHub.requestVisualCapture(
         {
@@ -322,20 +369,24 @@ ${summary}
     }
     if (req.method === 'POST') {
       try {
-        const body = await readJsonBody(req);
+        const body = await readJsonBody<VariantsRequestBody>(req);
         if (body.action === 'dismiss' || body.action === 'delete') {
-          const deleted = ctx.eventStore.deleteVariantSet(body.setId, body.sessionId);
+          const deleted = body.setId ? ctx.eventStore.deleteVariantSet(body.setId, body.sessionId) : false;
           sendJson(res, { success: deleted });
           return true;
         }
 
         if (body.action === 'revert') {
-          const reverted = ctx.eventStore.revertVariantDecision(body.setId, body.sessionId);
+          const reverted = body.setId ? ctx.eventStore.revertVariantDecision(body.setId, body.sessionId) : false;
           sendJson(res, { success: reverted });
           return true;
         }
 
         if (body.action === 'decide') {
+          if (!body.setId || !body.selectedVariantId) {
+            sendJson(res, { error: 'setId and selectedVariantId are required' }, 400);
+            return true;
+          }
           const decision = ctx.eventStore.recordVariantDecision({
             setId: body.setId,
             selectedVariantId: body.selectedVariantId,
@@ -396,7 +447,7 @@ ${summary}
     }
     if (req.method === 'POST') {
       try {
-        const body = await readJsonBody(req);
+        const body = await readJsonBody<StatusRequestBody>(req);
         if (body.action === 'setReviewMode' && (body.reviewMode === 'live' || body.reviewMode === 'batch')) {
           ctx.eventStore.setReviewMode(body.reviewMode);
           sendJson(res, { success: true, reviewMode: ctx.eventStore.getReviewMode() });
@@ -493,7 +544,7 @@ ${summary}
     const shouldClaim = url.searchParams.get('claim') === 'true' || url.searchParams.get('claim') === '1';
     const shouldResolve = url.searchParams.get('resolve') === 'true' || url.searchParams.get('resolve') === '1';
 
-    const handlePendingResponse = (pending: any) => {
+    const handlePendingResponse = (pending: VisualEditBatch | null) => {
       if (pending && shouldResolve) {
         const verificationTargets = ctx.eventStore.markPendingSessionsImplemented({
           port: ctx.port,

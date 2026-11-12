@@ -45,7 +45,9 @@ function collectKeyStyles(el: HTMLElement): Record<string, string> {
       const val = computed.getPropertyValue(prop);
       if (val) result[prop] = val;
     }
-  } catch {}
+  } catch (err) {
+    console.debug('[lux] Failed to collect key computed styles:', err);
+  }
   return result;
 }
 
@@ -110,7 +112,9 @@ export function collectLayoutDiagnostics(
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    console.debug('[lux] Partial DOM diagnostics walk aborted:', err);
+  }
 
   const computedStyles = collectKeyStyles(rootEl);
   const loc = resolveSourceLocation(rootEl);
@@ -166,7 +170,9 @@ function inlineComputedStylesRecursive(source: Element, clone: Element): void {
         cloneImg.removeAttribute('srcset');
       }
     }
-  } catch {}
+  } catch (err) {
+    console.debug('[lux] Partial DOM diagnostics walk aborted:', err);
+  }
 
   const srcChildren = Array.from(source.children);
   const cloneChildren = Array.from(clone.children);
@@ -201,7 +207,9 @@ function renderFallbackWireframeCanvas(
     if (bodyBg && bodyBg !== 'rgba(0, 0, 0, 0)' && bodyBg !== 'transparent') {
       bg = bodyBg;
     }
-  } catch {}
+  } catch {
+    // Keep default dark canvas background when body style lookup fails.
+  }
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
@@ -240,7 +248,9 @@ function renderFallbackWireframeCanvas(
           }
         }
       }
-    } catch {}
+    } catch {
+      // Skip elements whose bounding box or style cannot be sampled on fallback canvas.
+    }
   }
 
   try {
@@ -360,7 +370,9 @@ export async function captureVisualSnapshot(
         };
         img.src = svgUrl;
       });
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] SVG foreignObject capture failed, falling back to wireframe canvas:', err);
+    }
 
     if (!dataUrl) {
       dataUrl = renderFallbackWireframeCanvas(targetEl, rawWidth, rawHeight, scale);

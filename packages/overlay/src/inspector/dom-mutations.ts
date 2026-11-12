@@ -294,7 +294,9 @@ export class DomMutationManager {
     if (mutation.targetSelector && isMutationOnCurrentRoute && typeof document !== 'undefined') {
       try {
         targetEl = document.querySelector(mutation.targetSelector) as HTMLElement | null;
-      } catch (e) {}
+      } catch {
+        // Ignore invalid CSS selectors when probing whether target exists on page.
+      }
     }
 
     let clearActive = false;

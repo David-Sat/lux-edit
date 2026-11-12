@@ -33,7 +33,6 @@ describe('OverlayStateManager', () => {
     };
 
     // Mock fetch to prevent pending unhandled HTTP requests in happy-dom
-    const origFetch = globalThis.fetch;
     (globalThis as any).fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({}),

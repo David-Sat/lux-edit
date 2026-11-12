@@ -18,15 +18,65 @@ export {
   type HookEventName,
 } from './hook-config.js';
 
+export type ConcreteHookHarness = 'antigravity' | 'claude-code' | 'codex' | 'claude';
+
+export interface RawHookPayload {
+  hook_event_name?: HookEventName;
+  event?: HookEventName;
+  conversationId?: string;
+  conversation_id?: string;
+  session_id?: string;
+  sessionId?: string;
+  workspacePaths?: string[];
+  cwd?: string;
+  workspaceDir?: string;
+  toolCall?: { name?: string; args?: Record<string, unknown>; arguments?: Record<string, unknown> };
+  tool_name?: string;
+  toolName?: string;
+  tool_input?: Record<string, unknown>;
+  toolInput?: Record<string, unknown>;
+  tool_response?: unknown;
+  toolResponse?: unknown;
+  terminationReason?: string;
+  termination_reason?: string;
+  continuationActive?: boolean;
+  [key: string]: unknown;
+}
+
+export interface HookServerStatusResponse {
+  waiterConnected?: boolean;
+  hasPendingReview?: boolean;
+  connectedClients?: number;
+  hookLease?: {
+    connected?: boolean;
+    sessionId?: string;
+    waiterConnected?: boolean;
+  };
+}
+
+export interface HookApiResponse {
+  listening?: boolean;
+  endedByUser?: boolean;
+  feedbackAvailable?: boolean;
+  reason?: string;
+  cursor?: number;
+  superseded?: boolean;
+}
+
+export type HookDecisionOutput =
+  | Record<string, never>
+  | { decision: 'continue' | 'block'; reason: string }
+  | { injectSteps: Array<{ systemMessage: { systemMessage: string } }> };
+
 export interface NormalizedHookInput {
-  harness: 'antigravity' | 'claude-code' | 'codex' | 'claude';
+  harness: ConcreteHookHarness;
   event: HookEventName;
   sessionId: string;
   workspaceDir: string;
   cwd: string;
   toolName?: string;
-  toolInput?: Record<string, any>;
-  toolResponse?: any;
+  toolInput?: Record<string, unknown>;
+  toolResponse?: unknown;
   seenCursor?: number;
   terminationReason?: string;
   stopReason?: string;
@@ -42,7 +92,7 @@ const NON_CONTINUABLE_STOP_REASONS = new Set([
   'TERMINAL_CUSTOM_HOOK',
 ]);
 
-function extractCursorFromToolResponse(response: any): number | undefined {
+function extractCursorFromToolResponse(response: unknown): number | undefined {
   if (!response) return undefined;
   try {
     const str = typeof response === 'string' ? response : JSON.stringify(response);
@@ -51,7 +101,9 @@ function extractCursorFromToolResponse(response: any): number | undefined {
       const parsed = parseInt(match[1], 10);
       if (!isNaN(parsed)) return parsed;
     }
-  } catch {}
+  } catch {
+    // Non-serializable or non-cursor tool response; continue without cursor.
+  }
   return undefined;
 }
 
@@ -60,7 +112,7 @@ function extractCursorFromToolResponse(response: any): number | undefined {
  * or OpenAI Codex (snake_case) into a unified structure.
  */
 export function normalizeHookPayload(
-  rawPayload: Record<string, any>,
+  rawPayload: RawHookPayload,
   harnessHint?: HookHarness,
   event?: HookEventName
 ): NormalizedHookInput | null {
@@ -74,12 +126,12 @@ export function normalizeHookPayload(
     Array.isArray(rawPayload.workspacePaths) ||
     typeof rawPayload.toolCall === 'object';
 
-  const harness: 'antigravity' | 'claude-code' | 'codex' | 'claude' =
+  const harness: ConcreteHookHarness =
     !harnessHint || harnessHint === 'auto'
       ? isAntigravityShape
         ? 'antigravity'
         : 'claude'
-      : (harnessHint as any);
+      : harnessHint;
 
   const sessionId = String(
     rawPayload.conversationId ||
@@ -149,27 +201,29 @@ function resolveRunningServerUrl(workspaceDir?: string, explicitUrl?: string): s
           if (meta.pid) {
             try {
               process.kill(meta.pid, 0);
-            } catch (e: any) {
-              if (e.code === 'ESRCH') continue;
+            } catch (e: unknown) {
+              if ((e as NodeJS.ErrnoException).code === 'ESRCH') continue;
             }
           }
           return stripTrailingSlashes(meta.url);
         }
       }
-    } catch {}
+    } catch {
+      // Metadata file missing, unreadable, or invalid; try next candidate directory.
+    }
   }
   return DEFAULT_SERVER_URL;
 }
 
-async function fetchHookStatus(serverUrl: string, timeoutMs: number): Promise<any | null> {
+async function fetchHookStatus(serverUrl: string, timeoutMs: number): Promise<HookServerStatusResponse | null> {
   const statusRes = await fetch(`${serverUrl}${API_ROUTES.STATUS}`, {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!statusRes.ok) return null;
-  return statusRes.json();
+  return (await statusRes.json()) as HookServerStatusResponse;
 }
 
-function isSessionLeaseHolder(statusData: any, sessionId: string): boolean {
+function isSessionLeaseHolder(statusData: HookServerStatusResponse | null, sessionId: string): boolean {
   const lease = statusData?.hookLease;
   return Boolean(
     lease?.connected &&
@@ -182,9 +236,9 @@ function isSessionLeaseHolder(statusData: any, sessionId: string): boolean {
 
 async function postHookApi(
   serverUrl: string,
-  payload: Record<string, any>,
+  payload: Record<string, unknown>,
   timeoutMs: number
-): Promise<any | null> {
+): Promise<HookApiResponse | null> {
   const res = await fetch(`${serverUrl}${API_ROUTES.HOOKS}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -192,14 +246,14 @@ async function postHookApi(
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) return null;
-  return res.json();
+  return (await res.json()) as HookApiResponse;
 }
 
 /** Formats the stdout JSON decision for the specific agent harness when feedback arrives on Stop. */
 export function formatStopContinuationOutput(
-  harness: 'antigravity' | 'claude-code' | 'codex' | 'claude',
+  harness: ConcreteHookHarness,
   reason: string
-): Record<string, any> {
+): HookDecisionOutput {
   if (harness === 'antigravity') {
     return { decision: 'continue', reason };
   }
@@ -212,7 +266,7 @@ export function formatStopContinuationOutput(
  * Fails open (`{}`) if the server is not running or if no review session is attached.
  */
 export async function handleHookEvent(
-  rawPayload: Record<string, any>,
+  rawPayload: RawHookPayload,
   options: {
     harness?: HookHarness;
     event: HookEventName;
@@ -221,7 +275,7 @@ export async function handleHookEvent(
     pollTickMs?: number;
     forceLongPoll?: boolean;
   }
-): Promise<Record<string, any>> {
+): Promise<HookDecisionOutput> {
   const normalized = normalizeHookPayload(rawPayload, options.harness || 'auto', options.event);
   if (!normalized) {
     return {};
@@ -440,7 +494,7 @@ export async function handleHookWait(options: {
   }
 }
 
-export async function readStdinJson(): Promise<Record<string, any>> {
+export async function readStdinJson(): Promise<RawHookPayload> {
   return new Promise((resolve) => {
     if (process.stdin.isTTY) {
       resolve({});

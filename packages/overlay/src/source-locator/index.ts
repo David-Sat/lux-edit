@@ -13,7 +13,7 @@ export function getElementHtmlSnippet(element: HTMLElement): string {
       return outer.slice(0, 117) + '...>';
     }
     return outer;
-  } catch (e) {
+  } catch {
     return `<${element.tagName.toLowerCase()}>`;
   }
 }
@@ -28,12 +28,14 @@ export function resolveSourceLocation(element: HTMLElement): SourceLocation {
     ? element.className.trim().split(/\s+/).filter(Boolean)
     : [];
 
+  const hasReactGlobal = typeof window !== 'undefined' && 'React' in window;
+
   return {
     fileName: reactLoc?.fileName,
     lineNumber: reactLoc?.lineNumber,
     columnNumber: reactLoc?.columnNumber,
     componentName: reactLoc?.componentName,
-    framework: reactLoc?.framework ?? ((window as any).React ? 'react' : 'html'),
+    framework: reactLoc?.framework ?? (hasReactGlobal ? 'react' : 'html'),
     selector,
     xpath,
     tag: element.tagName.toLowerCase(),

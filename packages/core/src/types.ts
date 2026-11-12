@@ -27,6 +27,12 @@ export type MutationType =
   | 'DOM_REORDER'
   | 'THEME_CHANGE';
 
+export interface MutationDetails {
+  added?: string[];
+  removed?: string[];
+  [key: string]: unknown;
+}
+
 export interface MutationRecord {
   id: string;
   type: MutationType;
@@ -40,7 +46,7 @@ export interface MutationRecord {
   before: string;
   after: string;
   tailwindSuggestion?: string;
-  details?: Record<string, any>;
+  details?: MutationDetails;
   targetHash?: string;
   cursor?: number;
 }
@@ -314,7 +320,7 @@ export interface WebSocketMessage {
     | 'RELOAD_PAGE'
     | 'PING'
     | 'PONG';
-  payload: any;
+  payload: unknown;
   sessionId?: string;
 }
 

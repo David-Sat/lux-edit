@@ -10,6 +10,7 @@ import {
   VariantDecision,
   HookLeaseStatus,
   VerificationTarget,
+  WebSocketMessage,
   SERVER_METADATA_DIR,
   computeBatchRevisionHash,
 } from '@visual-edit/core';
@@ -26,12 +27,20 @@ import {
   sessionMatchesTarget,
 } from './session-storage.js';
 import { VariantStore } from './variant-store.js';
-import { LeaseManager, HookWaiter } from './lease-manager.js';
+import { LeaseManager } from './lease-manager.js';
 
 export { sessionMatchesTarget, type GetPendingReviewOptions } from './session-storage.js';
 export { VariantStore } from './variant-store.js';
 export { LeaseManager };
 export type { HookWaiter } from './lease-manager.js';
+
+export type StoreEventType = WebSocketMessage['type'] | 'SAVE_BATCH';
+
+export interface StoreEvent {
+  type: StoreEventType;
+  sessionId: string;
+  payload: unknown;
+}
 
 export class EventStore {
   private static instances = new Map<string, EventStore>();
@@ -40,7 +49,7 @@ export class EventStore {
   private variantsPath: string;
   private reviewModePath: string;
   private sessions = new Map<string, VisualEditBatch>();
-  private listeners = new Set<(event: { type: string; sessionId: string; payload: any }) => void>();
+  private listeners = new Set<(event: StoreEvent) => void>();
   private variantStore: VariantStore;
   private leaseManager: LeaseManager;
 
@@ -206,12 +215,12 @@ export class EventStore {
     }
   }
 
-  public subscribe(fn: (event: { type: string; sessionId: string; payload: any }) => void): () => void {
+  public subscribe(fn: (event: StoreEvent) => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
 
-  public notify(type: string, sessionId: string, payload: any): void {
+  public notify(type: StoreEventType, sessionId: string, payload: unknown): void {
     this.listeners.forEach((fn) => fn({ type, sessionId, payload }));
   }
 

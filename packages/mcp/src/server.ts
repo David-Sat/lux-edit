@@ -8,7 +8,9 @@ import { registerVisualTools } from './visual-tools.js';
 let mcpPkgVersion = '0.13.0';
 try {
   mcpPkgVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
-} catch {}
+} catch {
+  // Fall back to default version when package.json cannot be read.
+}
 
 /** Creates and configures the `lux-edit` MCP server with review, visual capture, and variant tools. */
 export function createVisualEditMcpServer(rootDir: string = process.cwd()) {

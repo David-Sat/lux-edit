@@ -1,6 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { formatBatchSummary, API_ROUTES, checkForUpdates } from '@visual-edit/core';
+import {
+  formatBatchSummary,
+  API_ROUTES,
+  checkForUpdates,
+  SessionSummary,
+  VisualEditBatch,
+} from '@visual-edit/core';
 import {
   LuxServerBridge,
   READ_ONLY_ANNOTATIONS,
@@ -120,7 +126,9 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
       if (update.updateAvailable) {
         updateNotice = `\n\n*(Note: A newer version of lux-edit (v${update.latestVersion}) is available. Run \`lux update\` to upgrade.)*`;
       }
-    } catch {}
+    } catch {
+      // Version check is best-effort and must not block review retrieval.
+    }
 
     const targetUrl = bridge.resolveTargetServerUrl(args);
     const [batch, serverStatus] = await Promise.all([
@@ -138,7 +146,7 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
           ? '\n\n*(Tip for Antigravity: To wake automatically when the user submits Live/Batch feedback without locking the chat input, start `npx lux-edit hook wait` via `run_command` with `WaitMsBeforeAsync: 500, IsDaemon: false` before ending your turn.)*'
           : '';
       const statusHint = serverStatus
-        ? `Review mode: \`${reviewMode}\` • Live hook: \`${hookConnected ? `connected (${serverStatus.hookLease.harness})` : 'inactive'}\` • Background waiter: \`${waiterConnected ? 'active' : 'inactive'}\` • Latest cursor: \`${serverStatus.latestCursor ?? 0}\`.${listenerHint}`
+        ? `Review mode: \`${reviewMode}\` • Live hook: \`${hookConnected ? `connected (${serverStatus.hookLease?.harness || 'unknown'})` : 'inactive'}\` • Background waiter: \`${waiterConnected ? 'active' : 'inactive'}\` • Latest cursor: \`${serverStatus.latestCursor ?? 0}\`.${listenerHint}`
         : 'Make sure lux is running in the right workspace directory or pass workspaceDir.';
 
       return {
@@ -206,7 +214,7 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
     includeRawJson?: boolean;
   }) => {
     const store = bridge.resolveEventStore(workspaceDir);
-    let session = store.getSession(sessionId);
+    let session: VisualEditBatch | SessionSummary | undefined = store.getSession(sessionId);
 
     if (!session && (serverUrl || !workspaceDir)) {
       const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
@@ -220,6 +228,17 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
       return {
         isError: true,
         content: [{ type: 'text' as const, text: `Session with ID "${sessionId}" not found.` }],
+      };
+    }
+
+    if (!('mutations' in session)) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `### Session: ${session.id}\n\nSummary from live server:\n\`\`\`json\n${JSON.stringify(session, null, 2)}\n\`\`\``,
+          },
+        ],
       };
     }
 
@@ -267,7 +286,7 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
     serverUrl?: string;
   }) => {
     const store = bridge.resolveEventStore(workspaceDir);
-    let allSessions: any[] = store.listSessions();
+    let allSessions: SessionSummary[] = store.listSessions();
 
     if (allSessions.length === 0 && (serverUrl || !workspaceDir)) {
       const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
@@ -407,7 +426,7 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
           signal: AbortSignal.timeout(800),
         });
         if (res.status === 409) {
-          const conflictData = (await res.json()) as any;
+          const conflictData = (await res.json()) as { currentHash?: string };
           return {
             isError: true,
             content: [
@@ -419,12 +438,16 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
           };
         }
         liveNotified = res.ok;
-      } catch {}
+      } catch {
+        // Live server notification failed; try fallback endpoint below.
+      }
 
       if (!liveNotified) {
         try {
           await fetch(`${targetUrl}${API_ROUTES.PENDING}?resolve=true`, { signal: AbortSignal.timeout(600) }).catch(() => {});
-        } catch {}
+        } catch {
+          // Local EventStore already recorded status; live server notify is best-effort.
+        }
       }
     }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import {
   mergeMcpConfig,
   removeMcpConfig,
@@ -117,7 +118,6 @@ describe('lux init and multi-agent configuration', () => {
       writePluginBundle(pluginDir);
 
       try {
-        const { execSync } = require('node:child_process');
         const res = execSync(`claude plugin validate "${pluginDir}"`, { encoding: 'utf-8' });
         expect(res).toContain('Validation passed');
       } catch (err: any) {

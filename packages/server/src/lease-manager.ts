@@ -2,6 +2,7 @@ import {
   VisualEditBatch,
   HookLeaseStatus,
   ReviewMode,
+  WebSocketMessage,
 } from '@visual-edit/core';
 
 export interface HookWaiter {
@@ -24,7 +25,7 @@ export interface LeaseManagerContext {
   getReviewMode: () => ReviewMode;
   getCurrentCursor: () => number;
   getSubmittedPendingReview: (options?: { afterCursor?: number }) => VisualEditBatch | null;
-  notify: (type: string, id: string, payload: any) => void;
+  notify: (type: WebSocketMessage['type'], id: string, payload: unknown) => void;
 }
 
 export class LeaseManager {

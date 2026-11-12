@@ -9,7 +9,7 @@ export function SelectionBox() {
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   if (state.activeTool === 'none') return null;
 

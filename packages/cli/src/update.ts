@@ -21,7 +21,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
         fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
       );
       currentVersion = pkg.version || currentVersion;
-    } catch {}
+    } catch {
+      // Fall back to default version when package.json cannot be read.
+    }
   }
 
   log('\nChecking for updates to lux-edit...');
@@ -45,8 +47,8 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
     try {
       await runInit({ yes: true, global: true, autoUpdate: options.autoUpdate, logger: log });
       log('[ok] Agent skills and MCP settings are up to date.\n');
-    } catch (err: any) {
-      log(`Note: Skill refresh skipped: ${err.message}\n`);
+    } catch (err: unknown) {
+      log(`Note: Skill refresh skipped: ${err instanceof Error ? err.message : String(err)}\n`);
     }
     return result;
   }
@@ -59,8 +61,8 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
     log('Upgrading lux-edit via npm...');
     execSync('npm install -g lux-edit@latest', { stdio: 'inherit' });
     log('[ok] Successfully upgraded global lux-edit package');
-  } catch (err: any) {
-    log(`Note: Global npm install skipped or not run as root (${err.message})`);
+  } catch (err: unknown) {
+    log(`Note: Global npm install skipped or not run as root (${err instanceof Error ? err.message : String(err)})`);
     log('If you run lux via npx, the new version will be used automatically on next run.');
   }
 
@@ -69,8 +71,8 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
   try {
     await runInit({ yes: true, global: true, autoUpdate: options.autoUpdate, logger: log });
     log('[ok] Refreshed agent skills and MCP settings');
-  } catch (err: any) {
-    log(`Warning: Failed to refresh agent skills: ${err.message}`);
+  } catch (err: unknown) {
+    log(`Warning: Failed to refresh agent skills: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   log('\n[ok] Update complete! Run `lux` to start visual editing.\n');

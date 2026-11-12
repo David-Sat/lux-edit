@@ -107,13 +107,14 @@ export function registerVisualTools(server: McpServer, bridge: LuxServerBridge):
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'connection refused';
         return {
           isError: true,
           content: [
             {
               type: 'text' as const,
-              text: `Could not connect to running lux server at ${targetUrl} for visual capture (${err?.message || 'connection refused'}). Make sure \`lux\` is running and open in a browser tab.`,
+              text: `Could not connect to running lux server at ${targetUrl} for visual capture (${msg}). Make sure \`lux\` is running and open in a browser tab.`,
             },
           ],
         };
@@ -192,7 +193,9 @@ export function registerVisualTools(server: McpServer, bridge: LuxServerBridge):
             const data = (await res.json()) as { variantSet: ElementVariantSet };
             variantSet = data.variantSet;
           }
-        } catch {}
+        } catch {
+          // Live HTTP server unreachable; fall back to persisting via local EventStore.
+        }
       }
 
       if (!variantSet) {

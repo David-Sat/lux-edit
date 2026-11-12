@@ -59,10 +59,20 @@ export interface AgentPaths {
   vscodeMcp?: string;
 }
 
-function readJsonFileOrDefault(filePath: string, fallback: Record<string, any>): Record<string, any> | null {
+interface ContinueMcpServerEntry {
+  name?: string;
+  [key: string]: unknown;
+}
+
+interface ContinueConfigFile {
+  mcpServers?: ContinueMcpServerEntry[] | Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+function readJsonFileOrDefault<T extends Record<string, unknown>>(filePath: string, fallback: T): T | null {
   if (!fs.existsSync(filePath)) return fallback;
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as T;
   } catch {
     return null;
   }
@@ -93,9 +103,15 @@ export function getVscodeGlobalStorage(
   return path.join(home, '.config', 'Code', 'User', 'globalStorage');
 }
 
+interface McpMapConfigFile {
+  mcpServers?: Record<string, unknown>;
+  context_servers?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export function mergeMcpConfig(filePath: string, dryRun: boolean = false, autoUpdate: boolean = false): boolean {
   try {
-    const config = readJsonFileOrDefault(filePath, { mcpServers: {} });
+    const config = readJsonFileOrDefault<McpMapConfigFile>(filePath, { mcpServers: {} });
     if (!config) return false;
     if (!config.mcpServers) config.mcpServers = {};
 
@@ -115,7 +131,7 @@ export function mergeMcpConfig(filePath: string, dryRun: boolean = false, autoUp
 export function removeMcpConfig(filePath: string, dryRun: boolean = false): boolean {
   try {
     if (!fs.existsSync(filePath)) return false;
-    const config = readJsonFileOrDefault(filePath, {});
+    const config = readJsonFileOrDefault<McpMapConfigFile>(filePath, {});
     if (!config || !config.mcpServers) return false;
 
     let modified = false;
@@ -137,7 +153,7 @@ export function removeMcpConfig(filePath: string, dryRun: boolean = false): bool
 
 export function mergeZedConfig(filePath: string, dryRun: boolean = false, autoUpdate: boolean = false): boolean {
   try {
-    const config = readJsonFileOrDefault(filePath, { context_servers: {} });
+    const config = readJsonFileOrDefault<McpMapConfigFile>(filePath, { context_servers: {} });
     if (!config) return false;
     if (!config.context_servers) config.context_servers = {};
 
@@ -154,7 +170,7 @@ export function mergeZedConfig(filePath: string, dryRun: boolean = false, autoUp
 export function removeZedConfig(filePath: string, dryRun: boolean = false): boolean {
   try {
     if (!fs.existsSync(filePath)) return false;
-    const config = readJsonFileOrDefault(filePath, {});
+    const config = readJsonFileOrDefault<McpMapConfigFile>(filePath, {});
     if (!config || !config.context_servers || !('lux' in config.context_servers)) return false;
     delete config.context_servers.lux;
     if (!dryRun) {
@@ -168,13 +184,13 @@ export function removeZedConfig(filePath: string, dryRun: boolean = false): bool
 
 export function mergeContinueConfig(filePath: string, dryRun: boolean = false, autoUpdate: boolean = false): boolean {
   try {
-    const config = readJsonFileOrDefault(filePath, { mcpServers: [] });
+    const config = readJsonFileOrDefault<ContinueConfigFile>(filePath, { mcpServers: [] });
     if (!config) return false;
 
     const spec = getLuxMcpServerSpec(autoUpdate);
     if (Array.isArray(config.mcpServers) || !config.mcpServers) {
       if (!Array.isArray(config.mcpServers)) config.mcpServers = [];
-      config.mcpServers = config.mcpServers.filter((s: any) => s && s.name !== 'lux');
+      config.mcpServers = config.mcpServers.filter((s) => s && s.name !== 'lux');
       config.mcpServers.push({ name: 'lux', ...spec });
     } else if (typeof config.mcpServers === 'object') {
       config.mcpServers.lux = spec;
@@ -192,13 +208,13 @@ export function mergeContinueConfig(filePath: string, dryRun: boolean = false, a
 export function removeContinueConfig(filePath: string, dryRun: boolean = false): boolean {
   try {
     if (!fs.existsSync(filePath)) return false;
-    const config = readJsonFileOrDefault(filePath, {});
+    const config = readJsonFileOrDefault<ContinueConfigFile>(filePath, {});
     if (!config || !config.mcpServers) return false;
 
     let modified = false;
     if (Array.isArray(config.mcpServers)) {
       const beforeLen = config.mcpServers.length;
-      config.mcpServers = config.mcpServers.filter((s: any) => s.name !== 'lux');
+      config.mcpServers = config.mcpServers.filter((s) => s && s.name !== 'lux');
       modified = config.mcpServers.length !== beforeLen;
     } else if (typeof config.mcpServers === 'object' && 'lux' in config.mcpServers) {
       delete config.mcpServers.lux;
@@ -218,13 +234,17 @@ function registerClaudeCodeMcpViaCli(autoUpdate: boolean = false): void {
   try {
     const pkg = autoUpdate ? 'lux-edit@latest' : 'lux-edit';
     execSync(`claude mcp add -s user lux -- npx -y ${pkg} mcp`, { stdio: 'ignore' });
-  } catch {}
+  } catch {
+    // Optional best-effort CLI registration; JSON config files are already written above.
+  }
 }
 
 function deregisterClaudeCodeMcpViaCli(): void {
   try {
     execSync('claude mcp remove -s user lux', { stdio: 'ignore' });
-  } catch {}
+  } catch {
+    // Optional best-effort CLI cleanup; JSON config files are handled separately.
+  }
 }
 
 export const AGENT_HARNESSES: AgentHarnessSpec[] = [
@@ -466,8 +486,8 @@ export function installHarness(
       spec.postInstall(home, dryRun, autoUpdate);
     }
     return true;
-  } catch (err: any) {
-    log(`[error] Failed to install ${spec.name}: ${err.message}`);
+  } catch (err: unknown) {
+    log(`[error] Failed to install ${spec.name}: ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
 }
@@ -513,8 +533,8 @@ export function uninstallHarness(
       spec.postUninstall(home, dryRun);
     }
     return true;
-  } catch (err: any) {
-    log(`[error] Failed to uninstall ${spec.name}: ${err.message}`);
+  } catch (err: unknown) {
+    log(`[error] Failed to uninstall ${spec.name}: ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
 }

@@ -18,7 +18,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   useEffect(() => {
     const isInsideShadow = (e: Event): boolean => {
@@ -30,7 +30,9 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           if (el && el.tagName && el.tagName.toLowerCase() === 'visual-edit-overlay') return true;
           if (el && el.dataset && el.dataset.luxWorkbenchUi !== undefined) return true;
         }
-      } catch (err) {}
+      } catch (err) {
+        console.debug('[lux] Failed to inspect composedPath:', err);
+      }
       return false;
     };
 
@@ -78,7 +80,9 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
                 },
               });
             }
-          } catch (err) {}
+          } catch (err) {
+            console.debug('[lux] Failed to capture selected text range:', err);
+          }
         }
       }
     };
@@ -145,7 +149,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
       try {
         target.contentEditable = 'plaintext-only';
-      } catch (err) {
+      } catch {
         target.contentEditable = 'true';
       }
       target.spellcheck = false;
@@ -157,7 +161,9 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         const sel = window.getSelection();
         sel?.removeAllRanges();
         sel?.addRange(range);
-      } catch (err) {}
+      } catch (err) {
+        console.debug('[lux] Failed to preselect inline-edited element text:', err);
+      }
 
       const prevOutline = target.style.outline;
       const prevOutlineOffset = target.style.outlineOffset;
@@ -280,7 +286,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       document.removeEventListener('dblclick', handleDblClick, { capture: true });
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [shadowRoot]);
+  }, [shadowRoot, state]);
 
   const dockPos = state.dockPosition;
   const isLeft = dockPos.side === 'left';

@@ -114,7 +114,7 @@ describe('Server & EventStore Integration', () => {
   it('automatically adds .visual-edit/ to .gitignore if not present', () => {
     const gitignorePath = path.join(testDir, '.gitignore');
     fs.writeFileSync(gitignorePath, 'node_modules/\ndist/\n');
-    const store = new EventStore(testDir);
+    new EventStore(testDir);
     const content = fs.readFileSync(gitignorePath, 'utf-8');
     expect(content).toContain('.visual-edit/');
   });

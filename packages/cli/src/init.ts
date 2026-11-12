@@ -91,8 +91,8 @@ export function installCustomPath(
       }
       return true;
     }
-  } catch (err: any) {
-    log(`[error] Failed to configure custom path ${targetPath}: ${err.message}`);
+  } catch (err: unknown) {
+    log(`[error] Failed to configure custom path ${targetPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
   return false;
 }
@@ -117,8 +117,8 @@ export function uninstallCustomPath(
       log(`[ok] Cleaned custom directory:     ${resolvedPath}`);
       return true;
     }
-  } catch (err: any) {
-    log(`[error] Failed to uninstall from custom path ${targetPath}: ${err.message}`);
+  } catch (err: unknown) {
+    log(`[error] Failed to uninstall from custom path ${targetPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
   return false;
 }
@@ -424,7 +424,9 @@ export async function runUninstall(options: UninstallOptions = {}) {
       const parsed = JSON.parse(fs.readFileSync(pluginMcpPath, 'utf-8'));
       const keys = Object.keys(parsed.mcpServers || {});
       isOnlyLux = keys.length === 0 || (keys.length === 1 && keys[0] === 'lux');
-    } catch {}
+    } catch {
+      // Fall through to removeMcpConfig if plugin MCP JSON cannot be parsed.
+    }
     if (isOnlyLux) {
       if (!dryRun) fs.rmSync(pluginMcpPath, { force: true });
       log(`[ok] Removed plugin MCP:         ${pluginMcpPath}`);

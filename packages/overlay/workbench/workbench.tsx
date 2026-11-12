@@ -1,6 +1,6 @@
 import './setup.js';
 import { h, render } from 'preact';
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { OverlayStateManager } from '../src/inspector/state.js';
 import '../src/index.js';
 import { MockHostPage, WorkbenchBackdrop } from './mock-host.js';
@@ -68,7 +68,9 @@ function WorkbenchApp() {
       url.searchParams.set('backdrop', backdrop);
       url.searchParams.set('chrome', showSidebar ? '1' : '0');
       window.history.replaceState(null, '', url.toString());
-    } catch {}
+    } catch (err) {
+      console.debug('[lux-workbench] Failed to sync preset query params:', err);
+    }
   }, [selectedPresetId, backdrop, showSidebar]);
 
   // Apply selected preset after MockHostPage renders fresh DOM
@@ -86,16 +88,19 @@ function WorkbenchApp() {
     };
   }, [activePreset, hostEpoch, state]);
 
-  const selectPreset = (id: string) => {
+  const selectPreset = useCallback((id: string) => {
     setSelectedPresetId(id);
     setHostEpoch((e) => e + 1);
-  };
+  }, []);
 
-  const stepPreset = (delta: -1 | 1) => {
-    const idx = WORKBENCH_PRESETS.findIndex((p) => p.id === selectedPresetId);
-    const nextIdx = (idx + delta + WORKBENCH_PRESETS.length) % WORKBENCH_PRESETS.length;
-    selectPreset(WORKBENCH_PRESETS[nextIdx].id);
-  };
+  const stepPreset = useCallback(
+    (delta: -1 | 1) => {
+      const idx = WORKBENCH_PRESETS.findIndex((p) => p.id === selectedPresetId);
+      const nextIdx = (idx + delta + WORKBENCH_PRESETS.length) % WORKBENCH_PRESETS.length;
+      selectPreset(WORKBENCH_PRESETS[nextIdx].id);
+    },
+    [selectedPresetId, selectPreset]
+  );
 
   // Keyboard shortcuts for fast preset stepping (`[` / `]`) & hiding workbench chrome (`Cmd/Ctrl+\`)
   useEffect(() => {
@@ -121,7 +126,7 @@ function WorkbenchApp() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedPresetId]);
+  }, [stepPreset]);
 
   const filteredPresets = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

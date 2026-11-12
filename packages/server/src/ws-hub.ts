@@ -3,11 +3,23 @@ import { Server } from 'node:http';
 import { EventStore } from './event-store.js';
 import {
   WebSocketMessage,
+  VisualEditBatch,
   VisualCaptureRequest,
   VisualCaptureResponse,
   ViewportPreset,
   API_ROUTES,
 } from '@visual-edit/core';
+
+interface WsControlPayload {
+  reviewMode?: unknown;
+  mode?: unknown;
+  setId?: string;
+  selectedVariantId?: string;
+  chosenVariantId?: string;
+  userNote?: string;
+  targetHash?: string;
+  sessionId?: string;
+}
 
 interface PendingCapture {
   resolve: (res: VisualCaptureResponse) => void;
@@ -35,8 +47,9 @@ export class WebSocketHub {
     });
 
     this.unsubscribeStore = this.eventStore.subscribe((event) => {
+      if (event.type === 'SAVE_BATCH') return;
       this.broadcast({
-        type: event.type as any,
+        type: event.type,
         sessionId: event.sessionId,
         payload: event.payload,
       });
@@ -97,38 +110,41 @@ export class WebSocketHub {
             );
           }
         }
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Failed to send initial WebSocket handshake state:', err);
+      }
 
       ws.on('message', (data) => {
         try {
-          const msg: WebSocketMessage = JSON.parse(data.toString());
+          const msg = JSON.parse(data.toString()) as WebSocketMessage;
+          const ctrl = (msg.payload && typeof msg.payload === 'object' ? msg.payload : {}) as WsControlPayload;
           if (msg.type === 'SUBMIT_BATCH') {
-            this.handleIncomingBatch(ws, msg.payload, true);
+            this.handleIncomingBatch(ws, msg.payload as VisualEditBatch, true);
           } else if (msg.type === 'SYNC_SESSION') {
-            this.handleIncomingBatch(ws, msg.payload, false);
+            this.handleIncomingBatch(ws, msg.payload as VisualEditBatch, false);
           } else if (msg.type === 'SET_REVIEW_MODE') {
-            const mode = msg.payload?.reviewMode || msg.payload?.mode;
+            const mode = ctrl.reviewMode || ctrl.mode;
             if (mode === 'live' || mode === 'batch') {
               this.eventStore.setReviewMode(mode);
             }
           } else if (msg.type === 'DECIDE_VARIANT') {
-            const chosenId = msg.payload?.selectedVariantId || msg.payload?.chosenVariantId;
-            if (msg.payload?.setId && chosenId) {
+            const chosenId = ctrl.selectedVariantId || ctrl.chosenVariantId;
+            if (ctrl.setId && chosenId) {
               this.eventStore.recordVariantDecision({
-                setId: msg.payload.setId,
+                setId: ctrl.setId,
                 selectedVariantId: chosenId,
-                userNote: msg.payload.userNote,
-                targetHash: msg.payload.targetHash,
-                sessionId: msg.sessionId || msg.payload.sessionId,
+                userNote: ctrl.userNote,
+                targetHash: ctrl.targetHash,
+                sessionId: msg.sessionId || ctrl.sessionId,
               });
             }
           } else if (msg.type === 'DISMISS_VARIANT' || msg.type === 'DELETE_VARIANT_DECISION') {
-            if (msg.payload?.setId) {
-              this.eventStore.deleteVariantSet(msg.payload.setId, msg.sessionId || msg.payload.sessionId);
+            if (ctrl.setId) {
+              this.eventStore.deleteVariantSet(ctrl.setId, msg.sessionId || ctrl.sessionId);
             }
           } else if (msg.type === 'REVERT_VARIANT_DECISION') {
-            if (msg.payload?.setId) {
-              this.eventStore.revertVariantDecision(msg.payload.setId, msg.sessionId || msg.payload.sessionId);
+            if (ctrl.setId) {
+              this.eventStore.revertVariantDecision(ctrl.setId, msg.sessionId || ctrl.sessionId);
             }
           } else if (msg.type === 'END_LIVE_REVIEW') {
             this.eventStore.endLiveReview();
@@ -155,7 +171,8 @@ export class WebSocketHub {
     });
   }
 
-  private handleIncomingBatch(ws: WebSocket, payload: any, markSubmitted: boolean): void {
+  private handleIncomingBatch(ws: WebSocket, payload: VisualEditBatch | null | undefined, markSubmitted: boolean): void {
+    if (!payload) return;
     if (this.appId && payload?.appId && payload.appId !== this.appId) {
       console.warn(`[lux] WS dropping ${markSubmitted ? 'SUBMIT_BATCH' : 'SYNC_SESSION'} from mismatched appId: ${payload.appId} (server: ${this.appId})`);
       return;
@@ -237,13 +254,14 @@ export class WebSocketHub {
             payload: reqPayload,
           })
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         clearTimeout(timer);
         this.pendingCaptures.delete(requestId);
+        const msg = err instanceof Error ? err.message : 'WebSocket send error';
         resolve({
           requestId,
           success: false,
-          error: `Failed to dispatch capture request to browser client: ${err?.message || 'WebSocket send error'}`,
+          error: `Failed to dispatch capture request to browser client: ${msg}`,
           capturedAt: Date.now(),
         });
       }
@@ -285,12 +303,16 @@ export class WebSocketHub {
     for (const client of this.clients) {
       try {
         client.close();
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Failed to close WebSocket client during shutdown:', err);
+      }
     }
     this.clients.clear();
     this.clientSessionMap.clear();
     try {
       this.wss.close();
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] Failed to close WebSocketServer during shutdown:', err);
+    }
   }
 }

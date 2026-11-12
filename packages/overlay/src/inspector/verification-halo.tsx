@@ -16,7 +16,7 @@ export function VerificationHalo() {
       window.removeEventListener('resize', handleUpdate);
       unsub();
     };
-  }, []);
+  }, [state]);
 
   if (!state.verificationTargets || state.verificationTargets.length === 0) {
     return null;
@@ -45,7 +45,9 @@ export function VerificationHalo() {
               rect = { left: r.left, top: r.top, width: r.width, height: r.height };
             }
           }
-        } catch {}
+        } catch {
+          // Ignore invalid selector when resolving live halo element; fall back to stored bounds.
+        }
 
         if (!rect && target.bounds) {
           rect = {

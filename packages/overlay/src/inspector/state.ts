@@ -34,9 +34,18 @@ import {
   savePersistedDraft,
   saveReviewMode,
 } from './storage.js';
-import { WsSyncClient } from './ws-sync.js';
+import { StatusChangePayload, WsSyncClient } from './ws-sync.js';
 
 export type { DockPosition, ElementSnapshot };
+
+interface LuxGlobalWindow extends Window {
+  __LUX_VERSION__?: string;
+  __LUX_APP_ID__?: string;
+}
+
+function getLuxWindow(): LuxGlobalWindow | undefined {
+  return typeof window !== 'undefined' ? (window as LuxGlobalWindow) : undefined;
+}
 
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
@@ -63,11 +72,14 @@ function flashElementHighlight(el: HTMLElement, boxShadow: string, transition: s
       el.style.boxShadow = origBoxShadow;
       el.style.transition = origTransition;
     }, durationMs);
-  } catch {}
+  } catch (err) {
+    console.debug('[lux] Failed to apply highlight flash animation:', err);
+  }
 }
 
 export class OverlayStateManager {
   private static instance?: OverlayStateManager;
+  private static resizeHandler: (() => void) | null = null;
   private static workbenchMode = false;
 
   public static setWorkbenchMode(enabled: boolean): void {
@@ -118,10 +130,7 @@ export class OverlayStateManager {
   public activeVoicePins: VoiceTargetPin[] = [];
   public agentReplies: AgentReply[] = [];
 
-  public version: string =
-    typeof window !== 'undefined' && (window as any).__LUX_VERSION__
-      ? (window as any).__LUX_VERSION__
-      : '0.15.1';
+  public version: string = getLuxWindow()?.__LUX_VERSION__ || '0.15.1';
   public currentPathname: string = getRouteFromLocation();
   public updateInfo: {
     updateAvailable: boolean;
@@ -137,8 +146,8 @@ export class OverlayStateManager {
     return this.wsSync.getWebSocket();
   }
   private listeners = new Set<() => void>();
-  private liveMutationTimer: any = null;
-  private verificationTimer: any = null;
+  private liveMutationTimer: ReturnType<typeof setTimeout> | null = null;
+  private verificationTimer: ReturnType<typeof setTimeout> | null = null;
 
   private constructor() {
     this.wsSync = new WsSyncClient(BASE_PATH_PREFIX, {
@@ -222,17 +231,16 @@ export class OverlayStateManager {
       this.fetchVersionInfo();
     }
     if (typeof window !== 'undefined') {
-      const prevResizeHandler = (OverlayStateManager as any)._resizeHandler;
-      if (prevResizeHandler) {
-        window.removeEventListener('resize', prevResizeHandler);
+      if (OverlayStateManager.resizeHandler) {
+        window.removeEventListener('resize', OverlayStateManager.resizeHandler);
       }
       const resizeHandler = () => OverlayStateManager.instance?.clampDockPosition();
-      (OverlayStateManager as any)._resizeHandler = resizeHandler;
+      OverlayStateManager.resizeHandler = resizeHandler;
       window.addEventListener('resize', resizeHandler);
     }
   }
 
-  private handleServerStatusChange(payload: any): void {
+  private handleServerStatusChange(payload: StatusChangePayload): void {
     this.sessionStatus = payload.status;
     if (Array.isArray(payload.verificationTargets) && payload.verificationTargets.length > 0) {
       persistVerificationTargets(payload.verificationTargets);
@@ -360,7 +368,9 @@ export class OverlayStateManager {
           this.notify();
         }
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] Failed to fetch version status:', err);
+    }
   }
 
   private loadFromStorage(): void {
@@ -409,12 +419,9 @@ export class OverlayStateManager {
       clearTimeout(this.verificationTimer);
       this.verificationTimer = null;
     }
-    if (typeof window !== 'undefined') {
-      const resizeHandler = (OverlayStateManager as any)._resizeHandler;
-      if (resizeHandler) {
-        window.removeEventListener('resize', resizeHandler);
-        (OverlayStateManager as any)._resizeHandler = undefined;
-      }
+    if (typeof window !== 'undefined' && OverlayStateManager.resizeHandler) {
+      window.removeEventListener('resize', OverlayStateManager.resizeHandler);
+      OverlayStateManager.resizeHandler = null;
     }
     this.wsSync.close();
     this.listeners.clear();
@@ -573,7 +580,7 @@ export class OverlayStateManager {
     }
   }
 
-  private syncTimer: any = null;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
   public scheduleAutoSync(): void {
     if (this.syncTimer) clearTimeout(this.syncTimer);
     this.syncTimer = setTimeout(() => {
@@ -1036,7 +1043,9 @@ export class OverlayStateManager {
       if (snap && snap.success && snap.imageBase64) {
         screenshotDataUrl = snap.imageBase64;
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] Element screenshot capture failed, continuing without snapshot:', err);
+    }
 
     // Flash shutter feedback after clean capture snapshot has been recorded
     flashElementHighlight(
@@ -1233,7 +1242,7 @@ export class OverlayStateManager {
       url: pageMeta.url,
       pageTitle: pageMeta.pageTitle,
       pagesVisited: Array.from(visitedByNorm.values()),
-      appId: typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined,
+      appId: getLuxWindow()?.__LUX_APP_ID__,
       status: this.sessionStatus,
       reviewMode: this.reviewMode,
       userPrompt: this.userPrompt,

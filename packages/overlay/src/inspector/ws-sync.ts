@@ -4,7 +4,11 @@ import {
   ElementVariantSet,
   HookLeaseStatus,
   ReviewMode,
+  SessionStatus,
+  VerificationTarget,
+  VisualCaptureRequest,
   VisualEditBatch,
+  WebSocketMessage,
 } from '@visual-edit/core';
 import { captureVisualSnapshot } from './visual-capture.js';
 
@@ -14,22 +18,33 @@ export function isWebSocketOpen(ws: WebSocket | null): ws is WebSocket {
   return ws.readyState === openState;
 }
 
+export interface StatusChangePayload {
+  status: SessionStatus;
+  replies?: AgentReply[];
+  verificationTargets?: VerificationTarget[];
+}
+
+export interface ReloadPagePayload {
+  file?: string;
+  [key: string]: unknown;
+}
+
 export interface WsSyncHandlers {
   getReviewMode: () => ReviewMode;
-  onStatusChange: (payload: any) => void;
+  onStatusChange: (payload: StatusChangePayload) => void;
   onAgentReply: (reply: AgentReply) => void;
   onAgentStatus: (lease: HookLeaseStatus) => void;
   onSetReviewMode: (mode: ReviewMode) => void;
   onSyncVariants: (sets: ElementVariantSet[]) => void;
   onProposeVariants: (variantSet: ElementVariantSet) => void;
   onSupersedeVariants: (variantSet: ElementVariantSet) => void;
-  onReloadPage: (payload: any) => void;
+  onReloadPage: (payload: ReloadPagePayload) => void;
 }
 
 export class WsSyncClient {
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
-  private reconnectTimer: any = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private basePathPrefix: string,
@@ -40,7 +55,7 @@ export class WsSyncClient {
     return this.ws;
   }
 
-  public send(type: string, payload: any): boolean {
+  public send(type: WebSocketMessage['type'] | string, payload: unknown): boolean {
     if (isWebSocketOpen(this.ws)) {
       this.ws.send(JSON.stringify({ type, payload }));
       return true;
@@ -69,7 +84,9 @@ export class WsSyncClient {
     if (options?.swallowErrors) {
       try {
         await doFetch();
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] HTTP batch sync fallback failed:', err);
+      }
     } else {
       await doFetch();
     }
@@ -149,14 +166,14 @@ export class WsSyncClient {
     }
   }
 
-  private async handleCaptureRequest(payload: any): Promise<void> {
+  private async handleCaptureRequest(payload: VisualCaptureRequest): Promise<void> {
     try {
       const res = await captureVisualSnapshot(payload);
       this.send('CAPTURE_RESPONSE', res);
-    } catch (captureErr: any) {
+    } catch (captureErr: unknown) {
       this.send('CAPTURE_RESPONSE', {
         requestId: payload?.requestId || 'unknown',
-        error: captureErr?.message || String(captureErr),
+        error: captureErr instanceof Error ? captureErr.message : String(captureErr),
       });
     }
   }
@@ -173,7 +190,9 @@ export class WsSyncClient {
         this.ws.onmessage = null;
         this.ws.onopen = null;
         this.ws.close();
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Failed to close WebSocket client cleanly:', err);
+      }
       this.ws = null;
     }
   }

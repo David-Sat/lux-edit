@@ -33,7 +33,9 @@ function useDraggableDock() {
       if (handleEl && handleEl.setPointerCapture) {
         handleEl.setPointerCapture(pointerId);
       }
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] Failed to capture dock drag pointer:', err);
+    }
 
     const rect = targetElement.getBoundingClientRect();
     const startX = e.clientX;
@@ -72,7 +74,9 @@ function useDraggableDock() {
         if (handleEl && handleEl.hasPointerCapture && handleEl.hasPointerCapture(pointerId)) {
           handleEl.releasePointerCapture(pointerId);
         }
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Failed to release dock drag pointer:', err);
+      }
 
       if (hasMoved) {
         wasDraggingRef.current = true;
@@ -138,7 +142,7 @@ export function DockMenu() {
       unsubState();
       unsubRecorder();
     };
-  }, []);
+  }, [state, recorder]);
 
   const totalCount =
     state.mutations.length +

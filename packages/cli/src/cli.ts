@@ -25,7 +25,9 @@ import {
 let cliVersion = '0.13.0';
 try {
   cliVersion = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
-} catch (e) {}
+} catch {
+  // Fall back to default version when package.json cannot be read.
+}
 
 const program = new Command();
 
@@ -61,7 +63,9 @@ program
       forceTimer.unref();
       try {
         await server.close();
-      } catch {}
+      } catch {
+        // Ignore shutdown errors so signal handler exits cleanly.
+      }
       process.exit(0);
     };
     process.once('SIGINT', cleanup);
@@ -90,8 +94,8 @@ program
           }
         })
         .catch(() => {});
-    } catch (err: any) {
-      console.error('Failed to start lux server:', err.message);
+    } catch (err: unknown) {
+      console.error('Failed to start lux server:', err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
   });
@@ -144,7 +148,11 @@ hookCmd
     }
   });
 
-function resolveHookTarget(harness: string, isGlobal: boolean, project: string) {
+function resolveHookTarget(
+  harness: string,
+  isGlobal: boolean,
+  project: string
+): { isAgy: boolean; normHarness: 'antigravity' | 'codex' | 'claude-code'; targetPath: string } {
   const home = os.homedir();
   const projectDir = path.resolve(project || process.cwd());
   const norm = String(harness || 'antigravity').toLowerCase();
@@ -159,7 +167,7 @@ function resolveHookTarget(harness: string, isGlobal: boolean, project: string) 
         : path.join(projectDir, '.agents', 'hooks.json'),
     };
   }
-  const normHarness = norm === 'codex' ? 'codex' : 'claude-code';
+  const normHarness: 'codex' | 'claude-code' = norm === 'codex' ? 'codex' : 'claude-code';
   return {
     isAgy: false,
     normHarness,
@@ -193,7 +201,7 @@ hookCmd
       return;
     }
 
-    const ok = mergeHarnessHooksConfig(targetPath, normHarness as any, options.dryRun, options.autoUpdate);
+    const ok = mergeHarnessHooksConfig(targetPath, normHarness, options.dryRun, options.autoUpdate);
     if (ok) {
       console.log(`[ok] Configured ${normHarness} hooks at ${targetPath}`);
     } else {
