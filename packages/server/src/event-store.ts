@@ -113,19 +113,24 @@ export class EventStore {
     if (batch.voiceReviews && batch.voiceReviews.length > 0) return true;
     if (batch.userPrompt && batch.userPrompt.trim().length > 0) return true;
 
-    // For annotations: if all annotations on selectors have active pending variant sets,
-    // they are currently being previewed by the user in the browser and awaiting user decision.
+    // Suppress annotations already addressed by a subsequent pending variant proposal,
+    // while still surfacing newer annotations created after the variant set was proposed.
     if (batch.annotations && batch.annotations.length > 0) {
       this.variantStore.loadVariantsFromDisk();
-      const activePendingVariantSelectors = new Set(
-        this.variantStore
-          .getVariantSets()
-          .filter((vs) => vs.status === 'pending')
-          .map((vs) => vs.targetSelector)
-      );
-      const hasUncovered = batch.annotations.some(
-        (a) => !a.targetSelector || !activePendingVariantSelectors.has(a.targetSelector)
-      );
+      const latestPendingBySelector = new Map<string, number>();
+      for (const vs of this.variantStore.getVariantSets()) {
+        if (vs.status === 'pending') {
+          const prev = latestPendingBySelector.get(vs.targetSelector) || 0;
+          if (vs.createdAt > prev) {
+            latestPendingBySelector.set(vs.targetSelector, vs.createdAt);
+          }
+        }
+      }
+      const hasUncovered = batch.annotations.some((a) => {
+        if (!a.targetSelector) return true;
+        const proposedAt = latestPendingBySelector.get(a.targetSelector);
+        return proposedAt === undefined || a.timestamp > proposedAt;
+      });
       if (hasUncovered) return true;
     }
 
@@ -246,7 +251,7 @@ export class EventStore {
     const existing = this.sessions.get(batch.id);
     const prevHash = existing?.revisionHash;
 
-    if (!batch.variantDecisions && existing?.variantDecisions) {
+    if ((!batch.variantDecisions || batch.variantDecisions.length === 0) && existing?.variantDecisions?.length) {
       batch.variantDecisions = existing.variantDecisions;
     }
 

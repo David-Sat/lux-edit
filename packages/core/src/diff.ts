@@ -349,6 +349,9 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
       if (d.variant.styles && Object.keys(d.variant.styles).length > 0) {
         lines.push(`  - Styles: \`${JSON.stringify(d.variant.styles)}\``);
       }
+      if (d.variant.text !== undefined) {
+        lines.push(`  - Text: "${d.variant.text}"`);
+      }
       if (d.variant.html) {
         lines.push(`  - Replacement HTML: \`${d.variant.html.slice(0, 240)}${d.variant.html.length > 240 ? '...' : ''}\``);
       }

@@ -280,9 +280,9 @@ ${summary}`;
 
           const asksForVariants = /\b(options?|variants?|alternatives?|choices?|different designs?)\b/i.test(allCommentText);
 
-          const restartWaiterStep =
+          const formatRestartStep = (stepNumber: number): string =>
             event === 'Wait' || harness === 'antigravity'
-              ? `\n4. If working in Antigravity, start a fresh background listener (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) before ending your turn so the next browser action wakes you seamlessly.`
+              ? `\n${stepNumber}. If working in Antigravity, start a fresh background listener (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) before ending your turn so the next browser action wakes you seamlessly.`
               : '';
 
           let actionDirective = '';
@@ -291,13 +291,13 @@ ${summary}`;
 The user has explicitly asked for visual options/variants in the browser.
 1. DO NOT simply edit one style and do NOT mark resolved.
 2. Call \`lux_propose_variants\` (or POST /__visual_edit__/api/variants) proposing 2-4 distinct, creative design options for the targeted element so the user can preview them live in the browser overlay.
-3. Finish your turn and wait for the user to make a variant decision.${restartWaiterStep}`;
+3. Finish your turn and wait for the user to make a variant decision.${formatRestartStep(4)}`;
           } else {
             actionDirective = `ACTION REQUIRED (IMPLEMENT VISUAL FEEDBACK):
 1. Locate the source component files referenced in the summary below.
 2. Apply the requested visual edits or comment suggestions directly to the codebase.
 3. Once applied, call \`lux_resolve_review\` (or POST /__visual_edit__/api/status with action 'resolve').
-4. DO NOT dismiss or mark this review resolved without making changes or proposing variants.${restartWaiterStep}`;
+4. DO NOT dismiss or mark this review resolved without making changes or proposing variants.${formatRestartStep(5)}`;
           }
 
           const reason = `[LUX VISUAL REVIEW INTERRUPTION]

@@ -621,5 +621,57 @@ describe('OverlayStateManager', () => {
         expect(link.hasAttribute('onclick')).toBe(false);
       }
     });
+
+    it('preserves pending variants when server resolves a prior session and skips duplicate mutations for variant targets', () => {
+      const target = document.createElement('button');
+      target.id = 'cta-preserve-test';
+      target.textContent = 'Get Started';
+      document.body.appendChild(target);
+
+      state.setTool('edit');
+      state.setActiveElement(target);
+      state.updateElementText('Launch App');
+      expect(state.getBatch().mutations.length).toBeGreaterThan(0);
+
+      // Agent proposes a pending variant while resolving the previous feedback
+      state.variantSets = [
+        {
+          id: 'vset_keep_pending',
+          targetSelector: '#cta-preserve-test',
+          label: 'Keep Pending',
+          createdAt: Date.now(),
+          status: 'pending',
+          variants: [
+            {
+              id: 'var_violet',
+              name: 'Violet',
+              rationale: 'Violet pill',
+              styles: { background: 'rgb(124, 58, 237)' },
+              text: 'Launch Now',
+            },
+          ],
+        },
+      ];
+
+      (state as any).handleServerStatusChange({
+        status: 'implemented',
+        replies: [{ id: 'r1', timestamp: Date.now(), agentId: 'agent', message: 'Done' }],
+      });
+
+      // Resolved mutations & activeElement cleared, but unresolved pending variant set preserved
+      expect(state.activeElement).toBeNull();
+      expect(state.mutations).toHaveLength(0);
+      expect(state.variantSets).toHaveLength(1);
+      expect(state.variantSets[0].id).toBe('vset_keep_pending');
+
+      // Re-selecting the variant target and deciding a variant does not record phantom raw mutations
+      state.setTool('edit');
+      state.setActiveElement(target);
+      state.decideVariant('vset_keep_pending', 'var_violet');
+      const batchAfterPick = state.getBatch();
+      expect(batchAfterPick.variantDecisions).toHaveLength(1);
+      expect(batchAfterPick.variantDecisions?.[0].variantName).toBe('Violet');
+      expect(batchAfterPick.mutations).toHaveLength(0);
+    });
   });
 });

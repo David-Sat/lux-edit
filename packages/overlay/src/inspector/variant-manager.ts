@@ -64,6 +64,7 @@ export function applySanitizedHtml(targetEl: HTMLElement, rawHtml: string): void
 }
 
 export interface VariantManagerContext {
+  getSessionId: () => string;
   getVariantSets: () => ElementVariantSet[];
   setVariantSets: (sets: ElementVariantSet[]) => void;
   getVariantDecisions: () => VariantDecision[];
@@ -87,6 +88,24 @@ export class VariantManager {
 
   public getOriginalSnapshots(): Map<string, VariantOriginalSnapshot> {
     return this.originalSnapshots;
+  }
+
+  /** Returns true when `el` is actively previewing or committed to a proposed variant. */
+  public isElementVariantTarget(el: HTMLElement): boolean {
+    const activePreviews = this.ctx.getActiveVariantPreview();
+    for (const set of this.ctx.getVariantSets()) {
+      const isControlled =
+        set.status === 'decided' || (set.status === 'pending' && Boolean(activePreviews.get(set.id)));
+      if (!isControlled) continue;
+      try {
+        if (el.matches(set.targetSelector) || document.querySelector(set.targetSelector) === el) {
+          return true;
+        }
+      } catch {
+        // Ignore invalid target selectors when checking variant ownership.
+      }
+    }
+    return false;
   }
 
   public clearOriginalSnapshots(keepSetIds?: Set<string>): void {
@@ -210,10 +229,25 @@ export class VariantManager {
     vSet.selectedVariantId = variantId;
     vSet.status = 'decided';
 
+    const sessionId = this.ctx.getSessionId();
     const ws = this.ctx.getWebSocket();
     const openState = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1;
     if (ws && ws.readyState === openState) {
-      ws.send(JSON.stringify({ type: 'DECIDE_VARIANT', payload: decision }));
+      ws.send(JSON.stringify({ type: 'DECIDE_VARIANT', sessionId, payload: { ...decision, sessionId } }));
+    } else if (typeof fetch !== 'undefined') {
+      fetch(`${this.ctx.basePathPrefix}${API_ROUTES.VARIANTS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'decide',
+          setId,
+          selectedVariantId: variantId,
+          userNote,
+          sessionId,
+        }),
+      }).catch((err) => {
+        console.debug('[lux] HTTP variant decision fallback failed:', err);
+      });
     }
 
     if (this.ctx.getReviewMode() === 'live') {

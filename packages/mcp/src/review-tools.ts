@@ -4,6 +4,7 @@ import {
   formatBatchSummary,
   API_ROUTES,
   checkForUpdates,
+  ReviewMode,
   SessionSummary,
   VisualEditBatch,
 } from '@visual-edit/core';
@@ -83,7 +84,114 @@ export function registerReviewResourcesAndPrompts(server: McpServer, bridge: Lux
   );
 }
 
-/** Registers pending review reading, session inspection, and resolution MCP tools. */
+/** Resolves a review session on the live server first, falling back to local disk EventStore if offline. */
+export async function resolveSessionOnServerOrStore(opts: {
+  bridge: LuxServerBridge;
+  sessionId: string;
+  status: 'implemented' | 'resolved';
+  reply?: string;
+  expectedHash?: string;
+  modifiedSelectors?: string[];
+  workspaceDir?: string;
+  serverUrl?: string;
+}): Promise<{ ok: true; updated: boolean } | { ok: false; errorText: string }> {
+  const { bridge, sessionId, status, reply, expectedHash, modifiedSelectors, workspaceDir, serverUrl } = opts;
+  const store = bridge.resolveEventStore(workspaceDir);
+  const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
+
+  if (targetUrl) {
+    try {
+      const res = await fetch(`${targetUrl}${API_ROUTES.STATUS}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resolve',
+          sessionId,
+          status,
+          reply,
+          expectedHash,
+          modifiedSelectors,
+        }),
+        signal: AbortSignal.timeout(800),
+      });
+      if (res.status === 409) {
+        const conflictData = (await res.json()) as { currentHash?: string };
+        return {
+          ok: false,
+          errorText: `Stale revision conflict on live server for session "${sessionId}": expected hash "${expectedHash}", current hash is "${conflictData?.currentHash}". Call \`lux_get_pending_review\` to read the newest user feedback.`,
+        };
+      }
+      if (res.status === 400) {
+        const errData = (await res.json()) as { error?: string };
+        return {
+          ok: false,
+          errorText: errData?.error || `Failed to resolve session "${sessionId}" on live server.`,
+        };
+      }
+      if (res.ok) {
+        return { ok: true, updated: true };
+      }
+    } catch {
+      // Live server unreachable; fall back to local EventStore update below.
+    }
+  }
+
+  const localResult = store.updateStatus(
+    sessionId,
+    status,
+    reply ? { agentId: 'agent', message: reply } : undefined,
+    { expectedHash, modifiedSelectors }
+  );
+
+  if (localResult.staleConflict) {
+    return {
+      ok: false,
+      errorText: `Stale revision conflict on session "${sessionId}": expected hash "${expectedHash}", but current hash is "${localResult.currentHash}". The user added new edits or comments while you were working. Call \`lux_get_pending_review\` to inspect the latest changes before resolving.`,
+    };
+  }
+
+  return { ok: true, updated: localResult.updated };
+}
+
+/** Formats a claimed or fetched review batch cleanly for agent consumption. */
+function formatPendingReviewContent(
+  batch: VisualEditBatch,
+  options: {
+    reviewMode: ReviewMode;
+    hookConnected: boolean;
+    latestCursor?: number;
+    includeRawJson?: boolean;
+    updateNotice?: string;
+  }
+) {
+  const summary = formatBatchSummary(batch);
+  const nextCursor = batch.latestCursor ?? options.latestCursor ?? 0;
+  const revHash = batch.revisionHash || '';
+  const nextStepHint = `\n\n### Next Steps for Agent\n- Apply the requested code changes to the project files (or propose interactive choices via \`lux_propose_variants\`).\n- To visually verify changes in the live browser, call \`lux_capture_visual\`.\n- When finished, call \`lux_resolve_review\` with \`sessionId: "${batch.id}"\` and \`expectedHash: "${revHash}"\`.\n- To wait for follow-up browser feedback over MCP, call \`lux_wait_for_feedback\` with \`afterCursor: ${nextCursor}\`.`;
+
+  const { imageItems, sanitizedBatch } = extractBatchImagesAndSanitize({
+    ...batch,
+    nextCursor,
+    reviewMode: options.reviewMode,
+    liveHookConnected: options.hookConnected,
+  });
+
+  const rawPayloadSection = options.includeRawJson
+    ? `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedBatch, null, 2)}\n\`\`\``
+    : '';
+
+  return {
+    content: [
+      ...imageItems,
+      {
+        type: 'text' as const,
+        text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}${nextStepHint}${rawPayloadSection}${options.updateNotice || ''}`,
+      },
+    ],
+  };
+}
+
+/** Registers pending review reading, long-polling, session inspection, and resolution MCP tools. */
 export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, mcpPkgVersion: string): void {
   const reviewParams = {
     workspaceDir: z
@@ -105,7 +213,7 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
       .min(0)
       .max(30000)
       .optional()
-      .describe('Optional long-poll wait in milliseconds (up to 30000ms) to wait for incoming Live/Batch browser feedback when lifecycle hooks are not active.'),
+      .describe('Optional long-poll wait in milliseconds (up to 30000ms) to wait for incoming Live/Batch browser feedback.'),
     includeRawJson: z
       .boolean()
       .optional()
@@ -138,15 +246,10 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
 
     const reviewMode = batch?.reviewMode || serverStatus?.reviewMode || 'batch';
     const hookConnected = Boolean(serverStatus?.hookLease?.connected);
-    const waiterConnected = Boolean(serverStatus?.waiterConnected ?? serverStatus?.hookLease?.waiterConnected);
 
     if (!hasPendingContent(batch)) {
-      const listenerHint =
-        serverStatus && !waiterConnected
-          ? '\n\n*(Tip for Antigravity: To wake automatically when the user submits Live/Batch feedback without locking the chat input, start `npx lux-edit hook wait` via `run_command` with `WaitMsBeforeAsync: 500, IsDaemon: false` before ending your turn.)*'
-          : '';
       const statusHint = serverStatus
-        ? `Review mode: \`${reviewMode}\` • Live hook: \`${hookConnected ? `connected (${serverStatus.hookLease?.harness || 'unknown'})` : 'inactive'}\` • Background waiter: \`${waiterConnected ? 'active' : 'inactive'}\` • Latest cursor: \`${serverStatus.latestCursor ?? 0}\`.${listenerHint}`
+        ? `Review mode: \`${reviewMode}\` • Latest cursor: \`${serverStatus.latestCursor ?? 0}\` • Connected tabs: \`${serverStatus.connectedClients ?? 0}\`. Call \`lux_wait_for_feedback\` with \`afterCursor: ${serverStatus.latestCursor ?? 0}\` to listen for incoming browser feedback.`
         : 'Make sure lux is running in the right workspace directory or pass workspaceDir.';
 
       return {
@@ -159,31 +262,13 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
       };
     }
 
-    const summary = formatBatchSummary(batch);
-    const nextCursor = batch.latestCursor ?? serverStatus?.latestCursor ?? 0;
-    const revHash = batch.revisionHash || '';
-    const nextStepHint = `\n\n### Next Steps for Agent\n- Apply the requested code changes to the project files.\n- To visually verify your changes in the live browser, call \`lux_capture_visual\`.\n- When finished, call \`lux_resolve_review\` with \`sessionId: "${batch.id}"\` and \`expectedHash: "${revHash}"\` (or save the modified source file to trigger automatic hot-reload verification).\n- If working in Antigravity, start a fresh background listener (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) before ending your turn.\n- Carry \`nextCursor: ${nextCursor}\` forward if polling incrementally.`;
-
-    const { imageItems, sanitizedBatch } = extractBatchImagesAndSanitize({
-      ...batch,
-      nextCursor,
+    return formatPendingReviewContent(batch, {
       reviewMode,
-      liveHookConnected: hookConnected,
+      hookConnected,
+      latestCursor: serverStatus?.latestCursor,
+      includeRawJson: args?.includeRawJson,
+      updateNotice,
     });
-
-    const rawPayloadSection = args?.includeRawJson
-      ? `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedBatch, null, 2)}\n\`\`\``
-      : '';
-
-    return {
-      content: [
-        ...imageItems,
-        {
-          type: 'text' as const,
-          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}${nextStepHint}${rawPayloadSection}${updateNotice}`,
-        },
-      ],
-    };
   };
 
   server.tool(
@@ -200,6 +285,84 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
     reviewParams,
     READ_ONLY_ANNOTATIONS,
     getPendingReviewHandler
+  );
+
+  server.tool(
+    'lux_wait_for_feedback',
+    'Long-poll the running lux server over MCP until the user submits new edits, pinned comments, voice notes, or a variant decision (or until waitMs expires).',
+    {
+      afterCursor: z
+        .number()
+        .int()
+        .optional()
+        .describe('Cursor from the previous review read so only newer browser feedback wakes this call.'),
+      waitMs: z
+        .number()
+        .int()
+        .min(100)
+        .max(60000)
+        .default(25000)
+        .describe('How long to wait in milliseconds for incoming feedback (default: 25000ms, max: 60000ms).'),
+      claim: z
+        .boolean()
+        .default(true)
+        .describe('Whether to mark returned pending feedback as in_progress (default: true).'),
+      includeRawJson: z
+        .boolean()
+        .default(false)
+        .describe('Whether to append full raw JSON payload beneath the markdown summary.'),
+      workspaceDir: z.string().optional().describe('Absolute path to project workspace directory'),
+      serverUrl: z.string().optional().describe('URL of running lux server'),
+    },
+    READ_ONLY_ANNOTATIONS,
+    async ({ afterCursor, waitMs = 25000, claim = true, includeRawJson = false, workspaceDir, serverUrl }) => {
+      const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
+      const batch = await bridge.resolvePendingBatch({
+        workspaceDir,
+        serverUrl,
+        afterCursor,
+        waitForFeedbackMs: waitMs,
+        claim,
+      });
+
+      const serverStatus = targetUrl ? await fetchServerStatus(targetUrl) : null;
+      const reviewMode = batch?.reviewMode || serverStatus?.reviewMode || 'batch';
+      const hookConnected = Boolean(serverStatus?.hookLease?.connected);
+
+      if (hasPendingContent(batch)) {
+        return formatPendingReviewContent(batch, {
+          reviewMode,
+          hookConnected,
+          latestCursor: serverStatus?.latestCursor,
+          includeRawJson,
+        });
+      }
+
+      if (!serverStatus) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: 'No running lux review server found to wait on. Start `lux` or pass `serverUrl` / `workspaceDir`.',
+            },
+          ],
+        };
+      }
+
+      const endedMsg = serverStatus.hookLease?.endedByUser
+        ? ' User ended live review session.'
+        : '';
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `No new visual feedback received within ${waitMs}ms.${endedMsg} Review mode: \`${reviewMode}\` • Latest cursor: \`${serverStatus.latestCursor ?? 0}\` • Connected tabs: \`${serverStatus.connectedClients ?? 0}\`.`,
+          },
+        ],
+      };
+    }
   );
 
   const getSessionHandler = async ({
@@ -368,7 +531,6 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
     workspaceDir?: string;
     serverUrl?: string;
   }) => {
-    const store = bridge.resolveEventStore(workspaceDir);
     let targetId = sessionId;
 
     if (!targetId) {
@@ -389,93 +551,31 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
       };
     }
 
-    const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
-    let liveNotified = false;
-    if (targetUrl) {
-      try {
-        const res = await fetch(`${targetUrl}${API_ROUTES.STATUS}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'resolve',
-            sessionId: targetId,
-            status,
-            reply,
-            expectedHash,
-            modifiedSelectors,
-          }),
-          signal: AbortSignal.timeout(800),
-        });
-        if (res.status === 409) {
-          const conflictData = (await res.json()) as { currentHash?: string };
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: `Stale revision conflict on live server for session "${targetId}": expected hash "${expectedHash}", current hash is "${conflictData?.currentHash}". Call \`lux_get_pending_review\` to read the newest user feedback.`,
-              },
-            ],
-          };
-        }
-        if (res.status === 400) {
-          const errData = (await res.json()) as { error?: string };
-          return {
-            isError: true,
-            content: [
-              {
-                type: 'text' as const,
-                text: errData?.error || `Failed to resolve session "${targetId}" on live server.`,
-              },
-            ],
-          };
-        }
-        liveNotified = res.ok;
-      } catch {
-        // Live server unreachable; fall back to local EventStore update below.
-      }
-    }
+    const result = await resolveSessionOnServerOrStore({
+      bridge,
+      sessionId: targetId,
+      status,
+      reply,
+      expectedHash,
+      modifiedSelectors,
+      workspaceDir,
+      serverUrl,
+    });
 
-    let localUpdated = false;
-    if (!liveNotified) {
-      const localResult = store.updateStatus(
-        targetId,
-        status,
-        reply ? { agentId: 'agent', message: reply } : undefined,
-        { expectedHash, modifiedSelectors }
-      );
-
-      if (localResult.staleConflict) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: 'text' as const,
-              text: `Stale revision conflict on session "${targetId}": expected hash "${expectedHash}", but current hash is "${localResult.currentHash}". The user added new edits or comments while you were working. Call \`lux_get_pending_review\` to inspect the latest changes before resolving.`,
-            },
-          ],
-        };
-      }
-
-      localUpdated = localResult.updated;
-
-      if (targetUrl) {
-        try {
-          await fetch(`${targetUrl}${API_ROUTES.PENDING}?resolve=true`, { signal: AbortSignal.timeout(600) }).catch(() => {});
-        } catch {
-          // Local EventStore already recorded status; live server notify is best-effort.
-        }
-      }
+    if (!result.ok) {
+      return {
+        isError: true,
+        content: [{ type: 'text' as const, text: result.errorText }],
+      };
     }
 
     return {
       content: [
         {
           type: 'text' as const,
-          text:
-            localUpdated || liveNotified
-              ? `Review session "${targetId}" marked as ${status}.${reply ? ` Reply recorded: "${reply}"` : ''}`
-              : `Session "${targetId}" not found on disk, but live review server was notified.`,
+          text: result.updated
+            ? `Review session "${targetId}" marked as ${status}.${reply ? ` Reply recorded: "${reply}"` : ''}`
+            : `Session "${targetId}" not found on disk, but live review server was notified.`,
         },
       ],
     };

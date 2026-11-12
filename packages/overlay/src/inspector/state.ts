@@ -208,6 +208,7 @@ export class OverlayStateManager {
     });
 
     this.variantManager = new VariantManager({
+      getSessionId: () => this.sessionId,
       getVariantSets: () => this.variantSets,
       setVariantSets: (sets) => {
         this.variantSets = sets;
@@ -262,6 +263,8 @@ export class OverlayStateManager {
       }
       this.variantManager.clearOriginalSnapshots(pendingSetIds);
       this.userPrompt = '';
+      this.activeElement = null;
+      this.domMutations.clear();
       this.sessionId = `session_${Date.now().toString(36)}`;
       this.sessionStatus = 'draft';
       clearPersistedDraft();
@@ -339,7 +342,7 @@ export class OverlayStateManager {
       this.verificationTargets = [];
       clearVerificationTargets();
       this.notify();
-    }, 3200);
+    }, 6000);
     this.notify();
   }
 
@@ -1210,7 +1213,12 @@ export class OverlayStateManager {
   }
 
   public getBatch(): VisualEditBatch {
-    if (this.activeElement && typeof document !== 'undefined' && document.body?.contains(this.activeElement)) {
+    if (
+      this.activeElement &&
+      typeof document !== 'undefined' &&
+      document.body?.contains(this.activeElement) &&
+      !this.variantManager.isElementVariantTarget(this.activeElement)
+    ) {
       this.syncMutationsForElement(this.activeElement);
     }
 

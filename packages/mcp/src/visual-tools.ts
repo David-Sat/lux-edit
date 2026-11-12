@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { VisualCaptureResponse, ElementVariantSet, API_ROUTES } from '@visual-edit/core';
 import { LuxServerBridge, READ_ONLY_ANNOTATIONS, WRITE_IDEMPOTENT_ANNOTATIONS } from './server-bridge.js';
+import { resolveSessionOnServerOrStore } from './review-tools.js';
 
 /** Formats visual capture layout and computed style diagnostics into markdown lines. */
 function formatCaptureDiagnostics(
@@ -167,11 +168,19 @@ export function registerVisualTools(server: McpServer, bridge: LuxServerBridge):
         .min(1)
         .max(6)
         .describe('List of variants for the user to toggle between in the browser'),
+      resolveSessionId: z
+        .string()
+        .optional()
+        .describe('Optional prior review session ID to mark implemented atomically alongside proposing these variants.'),
+      reply: z
+        .string()
+        .optional()
+        .describe('Optional closing reply recorded when resolveSessionId is provided.'),
       workspaceDir: z.string().optional().describe('Absolute path to project workspace directory'),
       serverUrl: z.string().optional().describe('URL of running lux server'),
     },
     WRITE_IDEMPOTENT_ANNOTATIONS,
-    async ({ targetSelector, label, expectedHash, variants, workspaceDir, serverUrl }) => {
+    async ({ targetSelector, label, expectedHash, variants, resolveSessionId, reply, workspaceDir, serverUrl }) => {
       const store = bridge.resolveEventStore(workspaceDir);
       const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
 
@@ -219,11 +228,26 @@ export function registerVisualTools(server: McpServer, bridge: LuxServerBridge):
         };
       }
 
+      let resolvedSuffix = '';
+      if (resolveSessionId) {
+        const resResult = await resolveSessionOnServerOrStore({
+          bridge,
+          sessionId: resolveSessionId,
+          status: 'implemented',
+          reply,
+          workspaceDir,
+          serverUrl,
+        });
+        resolvedSuffix = resResult.ok
+          ? `\nAlso marked prior session \`${resolveSessionId}\` as implemented.`
+          : `\nWarning: variants were proposed, but resolving \`${resolveSessionId}\` failed: ${resResult.errorText}`;
+      }
+
       return {
         content: [
           {
             type: 'text' as const,
-            text: `Proposed ${variantSet.variants.length} variants for \`${targetSelector}\` (Set ID: \`${variantSet.id}\`).\nThe user can now toggle between Original and [${variantSet.variants.map((v) => `"${v.name}"`).join(', ')}] live in the browser overlay and click "Pick & Apply".\nWhen they approve a variant, you will receive their decision via \`lux_get_pending_review\`.`,
+            text: `Proposed ${variantSet.variants.length} variants for \`${targetSelector}\` (Set ID: \`${variantSet.id}\`).\nThe user can now toggle between Original and [${variantSet.variants.map((v) => `"${v.name}"`).join(', ')}] live in the browser overlay and click "Pick & Apply".\nWhen they approve a variant, you will receive their decision via \`lux_get_pending_review\` or \`lux_wait_for_feedback\`.${resolvedSuffix}`,
           },
         ],
       };

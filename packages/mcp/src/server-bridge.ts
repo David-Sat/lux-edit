@@ -128,7 +128,7 @@ export function readServerMetadata(rootDir: string): LuxServerMetadata | null {
   }
 }
 
-export async function fetchFromRunningServer(
+async function probeRunningServer(
   serverUrl: string,
   options?: {
     autoResolve?: boolean;
@@ -136,7 +136,7 @@ export async function fetchFromRunningServer(
     afterCursor?: number;
     waitMs?: number;
   }
-): Promise<VisualEditBatch | null> {
+): Promise<{ reachable: boolean; batch: VisualEditBatch | null }> {
   try {
     const params = new URLSearchParams();
     if (options?.autoResolve) params.set('resolve', 'true');
@@ -150,14 +150,25 @@ export async function fetchFromRunningServer(
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (res.ok) {
       const data = (await res.json()) as VisualEditBatch | null;
-      if (hasPendingContent(data)) {
-        return data;
-      }
+      return { reachable: true, batch: hasPendingContent(data) ? data : null };
     }
   } catch {
     // Live HTTP server unreachable; callers fall back to disk EventStore.
   }
-  return null;
+  return { reachable: false, batch: null };
+}
+
+export async function fetchFromRunningServer(
+  serverUrl: string,
+  options?: {
+    autoResolve?: boolean;
+    claim?: boolean;
+    afterCursor?: number;
+    waitMs?: number;
+  }
+): Promise<VisualEditBatch | null> {
+  const { batch } = await probeRunningServer(serverUrl, options);
+  return batch;
 }
 
 export async function fetchServerStatus(serverUrl: string): Promise<ServerStatusResponse | null> {
@@ -221,16 +232,25 @@ export function createLuxServerBridge(resolvedRoot: string): LuxServerBridge {
       waitMs: args?.waitForFeedbackMs,
     };
 
+    const triedUrls = new Set<string>();
+    const candidateUrls: string[] = [];
     if (args?.serverUrl && args.serverUrl.trim()) {
-      const live = await fetchFromRunningServer(args.serverUrl.trim(), fetchOpts);
-      if (live) return live;
+      candidateUrls.push(stripTrailingSlashes(args.serverUrl.trim()));
     }
 
     const serverMeta =
       readServerMetadata(targetRootDir) || (targetRootDir !== resolvedRoot ? readServerMetadata(resolvedRoot) : null);
     if (serverMeta && serverMeta.url) {
-      const live = await fetchFromRunningServer(serverMeta.url, fetchOpts);
-      if (live) return live;
+      candidateUrls.push(stripTrailingSlashes(serverMeta.url));
+    }
+
+    for (const url of candidateUrls) {
+      if (triedUrls.has(url)) continue;
+      triedUrls.add(url);
+      const probed = await probeRunningServer(url, fetchOpts);
+      if (probed.reachable) {
+        return probed.batch;
+      }
     }
 
     if (args?.workspaceDir && args.workspaceDir.trim()) {
