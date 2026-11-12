@@ -4,11 +4,9 @@ import {
   CommentAnnotation,
   MutationRecord,
   SessionStatus,
-  SourceLocation,
   VisualEditBatch,
   VoiceReviewWalkthrough,
   VoiceTargetPin,
-  STORAGE_KEYS,
   API_ROUTES,
   DockPosition,
   ReviewMode,
@@ -21,10 +19,22 @@ import {
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { VoiceRecorder } from './voice-recorder.js';
-import { getRouteFromLocation, isAnnotationOnRoute, normalizeRoute } from './route-utils.js';
+import { getRouteFromLocation, normalizeRoute } from './route-utils.js';
 import { captureVisualSnapshot } from './visual-capture.js';
 import { DomMutationManager, ElementSnapshot } from './dom-mutations.js';
-import { VariantManager, applySanitizedHtml } from './variant-manager.js';
+import { VariantManager } from './variant-manager.js';
+import {
+  clearPersistedDraft,
+  clearVerificationTargets,
+  consumeVerificationTargets,
+  loadPersistedState,
+  persistVerificationTargets,
+  saveComposerDraft,
+  saveDockPosition,
+  savePersistedDraft,
+  saveReviewMode,
+} from './storage.js';
+import { WsSyncClient } from './ws-sync.js';
 
 export type { DockPosition, ElementSnapshot };
 
@@ -43,10 +53,17 @@ const BASE_PATH_PREFIX = (() => {
 
 export type ActiveTool = 'none' | 'edit' | 'comment' | 'voice' | 'screenshot';
 
-function isWebSocketOpen(ws: WebSocket | null): ws is WebSocket {
-  if (!ws) return false;
-  const openState = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1;
-  return ws.readyState === openState;
+function flashElementHighlight(el: HTMLElement, boxShadow: string, transition: string, durationMs: number): void {
+  try {
+    const origTransition = el.style.transition;
+    const origBoxShadow = el.style.boxShadow;
+    el.style.transition = transition;
+    el.style.boxShadow = boxShadow;
+    setTimeout(() => {
+      el.style.boxShadow = origBoxShadow;
+      el.style.transition = origTransition;
+    }, durationMs);
+  } catch {}
 }
 
 export class OverlayStateManager {
@@ -106,14 +123,72 @@ export class OverlayStateManager {
 
   private domMutations = new DomMutationManager();
   private variantManager: VariantManager;
+  private wsSync: WsSyncClient;
+  private get ws(): WebSocket | null {
+    return this.wsSync.getWebSocket();
+  }
   private listeners = new Set<() => void>();
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private reconnectTimer: any = null;
   private liveMutationTimer: any = null;
   private verificationTimer: any = null;
 
   private constructor() {
+    this.wsSync = new WsSyncClient(BASE_PATH_PREFIX, {
+      getReviewMode: () => this.reviewMode,
+      onStatusChange: (payload) => this.handleServerStatusChange(payload),
+      onAgentReply: (reply) => {
+        this.agentReplies.push(reply);
+        this.notify();
+      },
+      onAgentStatus: (lease) => {
+        this.hookLease = lease;
+        this.notify();
+      },
+      onSetReviewMode: (mode) => {
+        this.reviewMode = mode;
+        if (mode === 'batch') {
+          this.sessionStatus = 'draft';
+        }
+        saveReviewMode(this.reviewMode);
+        this.notify();
+      },
+      onSyncVariants: (list) => {
+        this.variantSets = list.filter((s) => s.status === 'pending');
+        this.notify();
+      },
+      onProposeVariants: (incoming) => {
+        const idx = this.variantSets.findIndex((s) => s.id === incoming.id);
+        if (idx !== -1) {
+          this.variantSets[idx] = incoming;
+        } else {
+          this.variantSets.push(incoming);
+        }
+        this.notify();
+      },
+      onSupersedeVariants: (incoming) => {
+        const idx = this.variantSets.findIndex((s) => s.id === incoming.id);
+        if (idx !== -1) {
+          this.variantSets[idx] = incoming;
+        }
+        if (this.activeVariantPreview.has(incoming.id)) {
+          this.previewVariant(incoming.id, null);
+        }
+        this.notify();
+      },
+      onReloadPage: (payload) => {
+        if (Array.isArray(payload?.verificationTargets) && payload.verificationTargets.length > 0) {
+          persistVerificationTargets(payload.verificationTargets);
+        }
+        clearPersistedDraft();
+
+        if (this.isComposingComment()) {
+          this.pendingPageReload = true;
+          this.notify();
+        } else if (typeof window !== 'undefined') {
+          window.location.reload();
+        }
+      },
+    });
+
     this.variantManager = new VariantManager({
       getVariantSets: () => this.variantSets,
       setVariantSets: (sets) => {
@@ -125,15 +200,16 @@ export class OverlayStateManager {
       },
       getActiveVariantPreview: () => this.activeVariantPreview,
       getReviewMode: () => this.reviewMode,
-      getWebSocket: () => this.ws,
+      getWebSocket: () => this.wsSync.getWebSocket(),
       submitBatch: () => this.submitBatch(),
       autoSync: () => this.autoSync(),
       notify: () => this.notify(),
       basePathPrefix: BASE_PATH_PREFIX,
     });
+
     this.loadFromStorage();
     this.restoreVerificationTargets();
-    this.initWebSocket();
+    this.wsSync.connect();
     this.fetchVersionInfo();
     if (typeof window !== 'undefined') {
       const prevResizeHandler = (OverlayStateManager as any)._resizeHandler;
@@ -146,27 +222,50 @@ export class OverlayStateManager {
     }
   }
 
+  private handleServerStatusChange(payload: any): void {
+    this.sessionStatus = payload.status;
+    if (Array.isArray(payload.verificationTargets) && payload.verificationTargets.length > 0) {
+      persistVerificationTargets(payload.verificationTargets);
+      this.triggerVerificationHalo(payload.verificationTargets);
+    }
+    if (payload.status === 'implemented' || payload.status === 'resolved') {
+      this.mutations = [];
+      this.annotations = [];
+      this.voiceReviews = [];
+      this.activeVoicePins = [];
+      this.variantDecisions = [];
+      this.variantSets = [];
+      this.activeVariantPreview.clear();
+      this.variantManager.clearOriginalSnapshots();
+      this.userPrompt = '';
+      this.sessionId = `session_${Date.now().toString(36)}`;
+      this.sessionStatus = 'draft';
+      clearPersistedDraft();
+    }
+    if (payload.replies) {
+      this.agentReplies = payload.replies;
+    }
+    this.notify();
+  }
+
+  private hasPendingFeedback(): boolean {
+    return (
+      this.mutations.length > 0 ||
+      this.annotations.length > 0 ||
+      this.voiceReviews.length > 0 ||
+      this.variantDecisions.length > 0 ||
+      this.userPrompt.trim().length > 0
+    );
+  }
+
   public setReviewMode(mode: ReviewMode): void {
     this.reviewMode = mode;
     if (mode === 'batch') {
       this.sessionStatus = 'draft';
     }
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.REVIEW_MODE, mode);
-      }
-    } catch {}
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'SET_REVIEW_MODE', payload: { reviewMode: mode, mode } }));
-    }
-    if (
-      mode === 'live' &&
-      (this.mutations.length > 0 ||
-        this.annotations.length > 0 ||
-        this.voiceReviews.length > 0 ||
-        this.variantDecisions.length > 0 ||
-        this.userPrompt.trim().length > 0)
-    ) {
+    saveReviewMode(mode);
+    this.wsSync.send('SET_REVIEW_MODE', { reviewMode: mode, mode });
+    if (mode === 'live' && this.hasPendingFeedback()) {
       this.submitBatch();
       return;
     }
@@ -174,9 +273,7 @@ export class OverlayStateManager {
   }
 
   public endLiveReview(): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'END_LIVE_REVIEW', payload: {} }));
-    }
+    this.wsSync.send('END_LIVE_REVIEW', {});
     this.hookLease = {
       ...this.hookLease,
       connected: false,
@@ -212,29 +309,17 @@ export class OverlayStateManager {
     if (this.verificationTimer) clearTimeout(this.verificationTimer);
     this.verificationTimer = setTimeout(() => {
       this.verificationTargets = [];
-      try {
-        if (typeof sessionStorage !== 'undefined') {
-          sessionStorage.removeItem(STORAGE_KEYS.VERIFY_TARGETS);
-        }
-      } catch {}
+      clearVerificationTargets();
       this.notify();
     }, 3200);
     this.notify();
   }
 
   private restoreVerificationTargets(): void {
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        const raw = sessionStorage.getItem(STORAGE_KEYS.VERIFY_TARGETS);
-        if (raw) {
-          sessionStorage.removeItem(STORAGE_KEYS.VERIFY_TARGETS);
-          const targets = JSON.parse(raw) as VerificationTarget[];
-          if (Array.isArray(targets) && targets.length > 0) {
-            this.triggerVerificationHalo(targets);
-          }
-        }
-      }
-    } catch {}
+    const targets = consumeVerificationTargets();
+    if (targets) {
+      this.triggerVerificationHalo(targets);
+    }
   }
 
   private scheduleLiveMutationSubmit(): void {
@@ -264,112 +349,22 @@ export class OverlayStateManager {
     } catch {}
   }
 
-  private getStorageKey(): string {
-    const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
-    return `${STORAGE_KEYS.DRAFT_PREFIX}${appId || 'default'}`;
-  }
-
   private loadFromStorage(): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const savedMode = localStorage.getItem(STORAGE_KEYS.REVIEW_MODE);
-        if (savedMode === 'live' || savedMode === 'batch') {
-          this.reviewMode = savedMode;
-        }
-      }
-    } catch {}
-
-    try {
-      const key = this.getStorageKey();
-      // Load current scoped key, falling back to legacy keys for migration
-      let saved = localStorage.getItem(key);
-      if (!saved) {
-        const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
-        if (appId) {
-          saved = localStorage.getItem(`${STORAGE_KEYS.LEGACY_APP_DRAFT_PREFIX}${appId}`);
-        }
-        if (!saved) {
-          saved = localStorage.getItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-        }
-        // If recovered from legacy key, clean it up
-        if (saved) {
-          try {
-            if (appId) localStorage.removeItem(`${STORAGE_KEYS.LEGACY_APP_DRAFT_PREFIX}${appId}`);
-            localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-          } catch {}
-        }
-      }
-
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.status !== 'implemented' && data.status !== 'resolved') {
-          this.sessionId = data.id || this.sessionId;
-          this.sessionStatus = data.status || 'draft';
-          this.mutations = data.mutations || [];
-          this.annotations = data.annotations || [];
-          this.voiceReviews = data.voiceReviews || [];
-          this.variantDecisions = data.variantDecisions || [];
-          this.userPrompt = data.userPrompt || '';
-
-          // Reconcile voice reviews & annotations to clean up any orphaned transcripts/pins
-          const voiceAnnIds = new Set(this.annotations.filter((a) => a.type === 'voice').map((a) => a.id));
-          const voiceReviewIds = new Set(this.voiceReviews.map((v) => v.id));
-          this.voiceReviews = this.voiceReviews.filter((v) => voiceAnnIds.has(v.id));
-          this.annotations = this.annotations.filter((a) => a.type !== 'voice' || voiceReviewIds.has(a.id));
-        }
-      }
-    } catch (e) {}
-
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const savedPos = localStorage.getItem(STORAGE_KEYS.DOCK_POSITION);
-        if (savedPos) {
-          const parsed = JSON.parse(savedPos);
-          if (
-            (parsed.side === 'left' || parsed.side === 'right') &&
-            (parsed.verticalAnchor === 'top' || parsed.verticalAnchor === 'bottom') &&
-            typeof parsed.offsetY === 'number'
-          ) {
-            this.dockPosition = {
-              side: parsed.side,
-              verticalAnchor: parsed.verticalAnchor,
-              offsetY: Math.max(10, parsed.offsetY),
-            };
-          }
-        }
-      }
-    } catch (e) {}
-
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        const savedDraft = sessionStorage.getItem(STORAGE_KEYS.COMPOSER_DRAFT);
-        if (savedDraft) {
-          this.commentDraftText = savedDraft;
-        }
-      }
-    } catch (e) {}
+    const loaded = loadPersistedState();
+    if (loaded.reviewMode) this.reviewMode = loaded.reviewMode;
+    if (loaded.sessionId) this.sessionId = loaded.sessionId;
+    if (loaded.sessionStatus) this.sessionStatus = loaded.sessionStatus;
+    if (loaded.mutations) this.mutations = loaded.mutations;
+    if (loaded.annotations) this.annotations = loaded.annotations;
+    if (loaded.voiceReviews) this.voiceReviews = loaded.voiceReviews;
+    if (loaded.variantDecisions) this.variantDecisions = loaded.variantDecisions;
+    if (loaded.userPrompt !== undefined) this.userPrompt = loaded.userPrompt;
+    if (loaded.dockPosition) this.dockPosition = loaded.dockPosition;
+    if (loaded.commentDraftText !== undefined) this.commentDraftText = loaded.commentDraftText;
   }
 
   private saveToStorage(): void {
-    try {
-      const key = this.getStorageKey();
-      const hasContent =
-        this.mutations.length > 0 ||
-        this.annotations.length > 0 ||
-        this.voiceReviews.length > 0 ||
-        this.variantDecisions.length > 0 ||
-        this.userPrompt.trim().length > 0;
-
-      if (
-        this.sessionStatus === 'implemented' ||
-        this.sessionStatus === 'resolved' ||
-        (!hasContent && this.sessionStatus === 'draft')
-      ) {
-        localStorage.removeItem(key);
-      } else {
-        localStorage.setItem(key, JSON.stringify(this.getBatch()));
-      }
-    } catch (e) {}
+    savePersistedDraft(this.getBatch(), this.hasPendingFeedback(), this.sessionStatus);
   }
 
   public static getInstance(): OverlayStateManager {
@@ -391,10 +386,6 @@ export class OverlayStateManager {
       clearTimeout(this.syncTimer);
       this.syncTimer = null;
     }
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
     if (this.liveMutationTimer) {
       clearTimeout(this.liveMutationTimer);
       this.liveMutationTimer = null;
@@ -410,16 +401,7 @@ export class OverlayStateManager {
         (OverlayStateManager as any)._resizeHandler = undefined;
       }
     }
-    if (this.ws) {
-      try {
-        this.ws.onclose = null;
-        this.ws.onerror = null;
-        this.ws.onmessage = null;
-        this.ws.onopen = null;
-        this.ws.close();
-      } catch {}
-      this.ws = null;
-    }
+    this.wsSync.close();
     this.listeners.clear();
   }
 
@@ -509,13 +491,7 @@ export class OverlayStateManager {
   public notify(): void {
     this.listeners.forEach((fn) => fn());
     this.saveToStorage();
-    const hasContent =
-      this.mutations.length > 0 ||
-      this.annotations.length > 0 ||
-      this.voiceReviews.length > 0 ||
-      this.variantDecisions.length > 0 ||
-      this.userPrompt.trim().length > 0;
-    if (hasContent || this.sessionStatus !== 'draft') {
+    if (this.hasPendingFeedback() || this.sessionStatus !== 'draft') {
       this.scheduleAutoSync();
     }
   }
@@ -530,28 +506,16 @@ export class OverlayStateManager {
 
   public async autoSync(): Promise<void> {
     const batch = this.getBatch();
-    const hasContent =
-      (batch.mutations && batch.mutations.length > 0) ||
-      (batch.annotations && batch.annotations.length > 0) ||
-      (batch.voiceReviews && batch.voiceReviews.length > 0) ||
-      (batch.variantDecisions && batch.variantDecisions.length > 0) ||
-      (batch.userPrompt && batch.userPrompt.trim().length > 0);
+    const hasContent = this.hasPendingFeedback();
 
     if (!hasContent && batch.status === 'draft') {
       return;
     }
 
-    if (isWebSocketOpen(this.ws)) {
-      this.ws.send(JSON.stringify({ type: 'SYNC_SESSION', payload: batch }));
-    } else if (hasContent) {
-      try {
-        await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(batch),
-        });
-      } catch (e) {}
-    }
+    await this.wsSync.sendBatch('SYNC_SESSION', batch, {
+      allowHttpFallback: hasContent,
+      swallowErrors: true,
+    });
   }
 
   public setTool(tool: ActiveTool): void {
@@ -700,16 +664,12 @@ export class OverlayStateManager {
     this.activeVoicePins = [...this.activeVoicePins, pin];
 
     // Visual ripple effect on clicked element
-    try {
-      const origTransition = targetEl.style.transition;
-      const origBoxShadow = targetEl.style.boxShadow;
-      targetEl.style.transition = 'box-shadow 0.2s ease, transform 0.2s ease';
-      targetEl.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)';
-      setTimeout(() => {
-        targetEl.style.boxShadow = origBoxShadow;
-        targetEl.style.transition = origTransition;
-      }, 400);
-    } catch (e) {}
+    flashElementHighlight(
+      targetEl,
+      '0 0 0 4px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)',
+      'box-shadow 0.2s ease, transform 0.2s ease',
+      400
+    );
 
     this.notify();
   }
@@ -729,11 +689,7 @@ export class OverlayStateManager {
 
   public setDockPosition(pos: DockPosition): void {
     this.dockPosition = pos;
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.DOCK_POSITION, JSON.stringify(pos));
-      }
-    } catch {}
+    saveDockPosition(pos);
     this.notify();
   }
 
@@ -795,15 +751,7 @@ export class OverlayStateManager {
 
   public setCommentDraftText(text: string): void {
     this.commentDraftText = text;
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        if (text.trim()) {
-          sessionStorage.setItem(STORAGE_KEYS.COMPOSER_DRAFT, text);
-        } else {
-          sessionStorage.removeItem(STORAGE_KEYS.COMPOSER_DRAFT);
-        }
-      }
-    } catch {}
+    saveComposerDraft(text.trim() ? text : '');
   }
 
   public setCommentTarget(
@@ -988,22 +936,11 @@ export class OverlayStateManager {
     }
   }
 
-  private triggerShutterFlash(el: HTMLElement): void {
-    try {
-      const origTransition = el.style.transition;
-      const origBoxShadow = el.style.boxShadow;
-      el.style.transition = 'box-shadow 0.15s ease, outline 0.15s ease';
-      el.style.boxShadow = '0 0 0 3px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.6)';
-      setTimeout(() => {
-        el.style.boxShadow = origBoxShadow;
-        el.style.transition = origTransition;
-      }, 350);
-    } catch {}
-  }
-
-  public async snapElementToComposer(el: HTMLElement): Promise<void> {
-    if (!el || typeof document === 'undefined') return;
-
+  private async captureElementSnapshotWithFlash(el: HTMLElement): Promise<{
+    loc: ReturnType<typeof resolveSourceLocation>;
+    targetSelector: string;
+    screenshotDataUrl: string;
+  }> {
     const loc = resolveSourceLocation(el);
     const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
 
@@ -1020,31 +957,26 @@ export class OverlayStateManager {
     } catch {}
 
     // Flash shutter feedback after clean capture snapshot has been recorded
-    this.triggerShutterFlash(el);
+    flashElementHighlight(
+      el,
+      '0 0 0 3px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.6)',
+      'box-shadow 0.15s ease, outline 0.15s ease',
+      350
+    );
 
+    return { loc, targetSelector, screenshotDataUrl };
+  }
+
+  public async snapElementToComposer(el: HTMLElement): Promise<void> {
+    if (!el || typeof document === 'undefined') return;
+    const { screenshotDataUrl } = await this.captureElementSnapshotWithFlash(el);
     // Open comment composer anchored to el with the captured screenshot
     this.setCommentTarget(el, { screenshot: screenshotDataUrl });
   }
 
   public async captureElementScreenshot(el: HTMLElement, commentText?: string): Promise<CommentAnnotation | null> {
     if (!el || typeof document === 'undefined') return null;
-
-    const loc = resolveSourceLocation(el);
-    const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
-
-    let screenshotDataUrl = '';
-    try {
-      const snap = await captureVisualSnapshot({
-        selector: targetSelector,
-        resolution: 'draft',
-        includeOverlay: false,
-      });
-      if (snap && snap.success && snap.imageBase64) {
-        screenshotDataUrl = snap.imageBase64;
-      }
-    } catch {}
-
-    this.triggerShutterFlash(el);
+    const { loc, targetSelector, screenshotDataUrl } = await this.captureElementSnapshotWithFlash(el);
 
     const componentLabel = loc.componentName ? `<${loc.componentName}>` : targetSelector;
     const defaultComment = (commentText || '').trim() || `Visual snapshot of ${componentLabel}`;
@@ -1241,176 +1173,7 @@ export class OverlayStateManager {
     this.sessionStatus = 'submitted';
     batch.status = 'submitted';
 
-    if (isWebSocketOpen(this.ws)) {
-      this.ws.send(JSON.stringify({ type: 'SUBMIT_BATCH', payload: batch }));
-    } else {
-      await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(batch),
-      });
-    }
-
+    await this.wsSync.sendBatch('SUBMIT_BATCH', batch);
     this.notify();
-  }
-
-  private initWebSocket(): void {
-    try {
-      if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}${BASE_PATH_PREFIX}${API_ROUTES.WS}`;
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'STATUS_CHANGE') {
-            this.sessionStatus = data.payload.status;
-            if (Array.isArray(data.payload.verificationTargets) && data.payload.verificationTargets.length > 0) {
-              try {
-                if (typeof sessionStorage !== 'undefined') {
-                  sessionStorage.setItem(STORAGE_KEYS.VERIFY_TARGETS, JSON.stringify(data.payload.verificationTargets));
-                }
-              } catch {}
-              this.triggerVerificationHalo(data.payload.verificationTargets);
-            }
-            if (data.payload.status === 'implemented' || data.payload.status === 'resolved') {
-              this.mutations = [];
-              this.annotations = [];
-              this.voiceReviews = [];
-              this.activeVoicePins = [];
-              this.variantDecisions = [];
-              this.variantSets = [];
-              this.activeVariantPreview.clear();
-              this.variantManager.clearOriginalSnapshots();
-              this.userPrompt = '';
-              this.sessionId = `session_${Date.now().toString(36)}`;
-              this.sessionStatus = 'draft';
-              try {
-                localStorage.removeItem(this.getStorageKey());
-                localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-              } catch (e) {}
-            }
-            if (data.payload.replies) {
-              this.agentReplies = data.payload.replies;
-            }
-            this.notify();
-          } else if (data.type === 'AGENT_REPLY') {
-            this.agentReplies.push(data.payload);
-            this.notify();
-          } else if (data.type === 'AGENT_STATUS') {
-            if (data.payload) {
-              this.hookLease = data.payload;
-              this.notify();
-            }
-          } else if (data.type === 'SET_REVIEW_MODE') {
-            const mode = data.payload?.reviewMode || data.payload?.mode;
-            if (mode === 'live' || mode === 'batch') {
-              this.reviewMode = mode;
-              if (mode === 'batch') {
-                this.sessionStatus = 'draft';
-              }
-              try {
-                if (typeof localStorage !== 'undefined') {
-                  localStorage.setItem(STORAGE_KEYS.REVIEW_MODE, this.reviewMode);
-                }
-              } catch {}
-              this.notify();
-            }
-          } else if (data.type === 'SYNC_VARIANTS') {
-            const list = Array.isArray(data.payload) ? data.payload : [];
-            this.variantSets = list.filter((s: ElementVariantSet) => s.status === 'pending');
-            this.notify();
-          } else if (data.type === 'PROPOSE_VARIANTS') {
-            const incoming = data.payload as ElementVariantSet;
-            if (incoming && incoming.id) {
-              const idx = this.variantSets.findIndex((s) => s.id === incoming.id);
-              if (idx !== -1) {
-                this.variantSets[idx] = incoming;
-              } else {
-                this.variantSets.push(incoming);
-              }
-              this.notify();
-            }
-          } else if (data.type === 'SUPERSEDE_VARIANTS') {
-            const incoming = data.payload as ElementVariantSet;
-            if (incoming && incoming.id) {
-              const idx = this.variantSets.findIndex((s) => s.id === incoming.id);
-              if (idx !== -1) {
-                this.variantSets[idx] = incoming;
-              }
-              if (this.activeVariantPreview.has(incoming.id)) {
-                this.previewVariant(incoming.id, null);
-              }
-              this.notify();
-            }
-          } else if (data.type === 'CAPTURE_REQUEST') {
-            try {
-              const res = await captureVisualSnapshot(data.payload);
-              if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ type: 'CAPTURE_RESPONSE', payload: res }));
-              }
-            } catch (captureErr: any) {
-              if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(
-                  JSON.stringify({
-                    type: 'CAPTURE_RESPONSE',
-                    payload: {
-                      requestId: data.payload?.requestId || 'unknown',
-                      error: captureErr?.message || String(captureErr),
-                    },
-                  })
-                );
-              }
-            }
-          } else if (data.type === 'RELOAD_PAGE') {
-            if (Array.isArray(data.payload?.verificationTargets) && data.payload.verificationTargets.length > 0) {
-              try {
-                if (typeof sessionStorage !== 'undefined') {
-                  sessionStorage.setItem(STORAGE_KEYS.VERIFY_TARGETS, JSON.stringify(data.payload.verificationTargets));
-                }
-              } catch {}
-            }
-            try {
-              localStorage.removeItem(this.getStorageKey());
-              localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-            } catch (e) {}
-
-            if (this.isComposingComment()) {
-              this.pendingPageReload = true;
-              this.notify();
-            } else {
-              window.location.reload();
-            }
-          }
-        } catch (e) {
-          console.error('[visual-edit] WebSocket error parsing message:', e);
-        }
-      };
-
-      this.ws.onerror = () => {};
-
-      this.ws.onopen = () => {
-        this.reconnectAttempts = 0;
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(
-            JSON.stringify({
-              type: 'SET_REVIEW_MODE',
-              payload: { reviewMode: this.reviewMode, mode: this.reviewMode },
-            })
-          );
-        }
-      };
-
-      this.ws.onclose = () => {
-        if (this.reconnectAttempts < 10) {
-          this.reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 15000);
-          this.reconnectTimer = setTimeout(() => this.initWebSocket(), delay);
-        }
-      };
-    } catch {
-      console.debug('[lux] WebSocket connection not available');
-    }
   }
 }

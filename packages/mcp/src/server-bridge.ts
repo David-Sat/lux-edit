@@ -1,0 +1,253 @@
+import path from 'node:path';
+import fs from 'node:fs';
+import { EventStore } from '@visual-edit/server';
+import {
+  VisualEditBatch,
+  LuxServerMetadata,
+  SERVER_METADATA_DIR,
+  SERVER_METADATA_FILE,
+  DEFAULT_SERVER_URL,
+  API_ROUTES,
+  stripTrailingSlashes,
+} from '@visual-edit/core';
+
+export const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+export const WRITE_IDEMPOTENT_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+export interface PendingBatchQuery {
+  workspaceDir?: string;
+  serverUrl?: string;
+  afterCursor?: number;
+  waitForFeedbackMs?: number;
+  claim?: boolean;
+}
+
+export interface LuxServerBridge {
+  resolvedRoot: string;
+  defaultEventStore: EventStore;
+  resolveEventStore: (workspaceDir?: string) => EventStore;
+  resolveTargetServerUrl: (args?: { workspaceDir?: string; serverUrl?: string }) => string | null;
+  resolvePendingBatch: (args?: PendingBatchQuery) => Promise<VisualEditBatch | null>;
+}
+
+/** Returns true if a batch contains any actionable mutations, comments, voice notes, variants, or prompt. */
+export function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBatch {
+  if (!batch) return false;
+  return Boolean(
+    (batch.mutations && batch.mutations.length > 0) ||
+      (batch.annotations && batch.annotations.length > 0) ||
+      (batch.voiceReviews && batch.voiceReviews.length > 0) ||
+      (batch.variantDecisions && batch.variantDecisions.length > 0) ||
+      (batch.userPrompt && batch.userPrompt.trim().length > 0)
+  );
+}
+
+/**
+ * Extracts raw PNG image content blocks from annotation screenshots while redacting
+ * base64 data URLs from the JSON payload to minimize MCP token bloat.
+ */
+export function extractBatchImagesAndSanitize<T extends VisualEditBatch>(batch: T): {
+  imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }>;
+  sanitizedBatch: T;
+} {
+  const imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }> = [];
+  const sanitizedBatch: T = {
+    ...batch,
+    annotations: batch.annotations?.map((a) => {
+      if (a.screenshot && typeof a.screenshot === 'string') {
+        const clean = a.screenshot.replace(/^data:image\/\w+;base64,/, '');
+        if (clean) {
+          imageItems.push({
+            type: 'image' as const,
+            data: clean,
+            mimeType: 'image/png' as const,
+          });
+        }
+        const kb = Math.round((a.screenshot.length * 3) / 4 / 1024);
+        return {
+          ...a,
+          screenshot: `[base64 image (${kb > 0 ? kb : 1}KB)]`,
+        };
+      }
+      return a;
+    }),
+  };
+  return { imageItems, sanitizedBatch };
+}
+
+/** Reads `.visual-edit/server.json` metadata and prunes stale entries whose PID no longer exists. */
+export function readServerMetadata(rootDir: string): LuxServerMetadata | null {
+  try {
+    const metaPath = path.join(rootDir, SERVER_METADATA_DIR, SERVER_METADATA_FILE);
+    if (!fs.existsSync(metaPath)) return null;
+    const raw = fs.readFileSync(metaPath, 'utf-8');
+    const data = JSON.parse(raw) as LuxServerMetadata;
+    if (data.pid && typeof data.pid === 'number') {
+      try {
+        process.kill(data.pid, 0);
+      } catch (e: any) {
+        if (e.code === 'ESRCH') {
+          try {
+            fs.unlinkSync(metaPath);
+          } catch {}
+          return null;
+        }
+      }
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchFromRunningServer(
+  serverUrl: string,
+  options?: {
+    autoResolve?: boolean;
+    claim?: boolean;
+    afterCursor?: number;
+    waitMs?: number;
+  }
+): Promise<VisualEditBatch | null> {
+  try {
+    const params = new URLSearchParams();
+    if (options?.autoResolve) params.set('resolve', 'true');
+    if (options?.claim) params.set('claim', 'true');
+    if (typeof options?.afterCursor === 'number') params.set('afterCursor', String(options.afterCursor));
+    if (typeof options?.waitMs === 'number' && options.waitMs > 0) params.set('waitMs', String(options.waitMs));
+
+    const qs = params.toString();
+    const url = stripTrailingSlashes(serverUrl) + `${API_ROUTES.PENDING}${qs ? `?${qs}` : ''}`;
+    const timeoutMs = (options?.waitMs || 0) + 1200;
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (res.ok) {
+      const data = (await res.json()) as VisualEditBatch | null;
+      if (hasPendingContent(data)) {
+        return data;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+export async function fetchServerStatus(serverUrl: string): Promise<any | null> {
+  try {
+    const url = stripTrailingSlashes(serverUrl) + API_ROUTES.STATUS;
+    const res = await fetch(url, { signal: AbortSignal.timeout(800) });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {}
+  return null;
+}
+
+export async function fetchSessionsFromRunningServer(serverUrl: string): Promise<VisualEditBatch[] | null> {
+  try {
+    const url = stripTrailingSlashes(serverUrl) + API_ROUTES.SESSIONS;
+    const res = await fetch(url, { signal: AbortSignal.timeout(800) });
+    if (res.ok) {
+      return (await res.json()) as VisualEditBatch[];
+    }
+  } catch {}
+  return null;
+}
+
+/** Creates a bridge encapsulating EventStore and live lux HTTP server discovery/fallback. */
+export function createLuxServerBridge(resolvedRoot: string): LuxServerBridge {
+  const defaultEventStore = EventStore.getInstance(resolvedRoot);
+
+  const resolveEventStore = (workspaceDir?: string) => {
+    if (workspaceDir && workspaceDir.trim()) {
+      return EventStore.getInstance(path.resolve(workspaceDir.trim()));
+    }
+    return defaultEventStore;
+  };
+
+  const resolveTargetServerUrl = (args?: { workspaceDir?: string; serverUrl?: string }): string | null => {
+    if (args?.serverUrl && args.serverUrl.trim()) {
+      return stripTrailingSlashes(args.serverUrl.trim());
+    }
+    const targetRootDir = args?.workspaceDir ? path.resolve(args.workspaceDir.trim()) : resolvedRoot;
+    const meta = readServerMetadata(targetRootDir);
+    if (meta && meta.url) {
+      return stripTrailingSlashes(meta.url);
+    }
+    if (!args?.workspaceDir) {
+      return DEFAULT_SERVER_URL;
+    }
+    return null;
+  };
+
+  const resolvePendingBatch = async (args?: PendingBatchQuery): Promise<VisualEditBatch | null> => {
+    const targetRootDir = args?.workspaceDir ? path.resolve(args.workspaceDir.trim()) : resolvedRoot;
+    const fetchOpts = {
+      autoResolve: false,
+      claim: args?.claim ?? true,
+      afterCursor: args?.afterCursor,
+      waitMs: args?.waitForFeedbackMs,
+    };
+
+    if (args?.serverUrl && args.serverUrl.trim()) {
+      const live = await fetchFromRunningServer(args.serverUrl.trim(), fetchOpts);
+      if (live) return live;
+    }
+
+    const serverMeta =
+      readServerMetadata(targetRootDir) || (targetRootDir !== resolvedRoot ? readServerMetadata(resolvedRoot) : null);
+    if (serverMeta && serverMeta.url) {
+      const live = await fetchFromRunningServer(serverMeta.url, fetchOpts);
+      if (live) return live;
+    }
+
+    if (args?.workspaceDir && args.workspaceDir.trim()) {
+      const store = resolveEventStore(args.workspaceDir);
+      const batch = store.getPendingReview({
+        serverUrl: args?.serverUrl,
+        afterCursor: args?.afterCursor,
+      });
+      if (hasPendingContent(batch)) {
+        if (args?.claim) {
+          store.updateStatus(batch.id, 'in_progress');
+        }
+        return batch;
+      }
+    }
+
+    const localBatch = defaultEventStore.getPendingReview({
+      serverUrl: args?.serverUrl,
+      afterCursor: args?.afterCursor,
+    });
+    if (hasPendingContent(localBatch)) {
+      if (args?.claim) {
+        defaultEventStore.updateStatus(localBatch.id, 'in_progress');
+      }
+      return localBatch;
+    }
+
+    if (!args?.workspaceDir) {
+      const live = await fetchFromRunningServer(DEFAULT_SERVER_URL, fetchOpts);
+      if (live) return live;
+    }
+
+    return localBatch || null;
+  };
+
+  return {
+    resolvedRoot,
+    defaultEventStore,
+    resolveEventStore,
+    resolveTargetServerUrl,
+    resolvePendingBatch,
+  };
+}
