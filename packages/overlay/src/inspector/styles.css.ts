@@ -191,17 +191,6 @@ export const OVERLAY_STYLES = `
   }
 }
 
-@keyframes ve-shutter-flash {
-  0% {
-    opacity: 0.85;
-    transform: scale(1.02);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1);
-  }
-}
-
 @keyframes veSpin {
   from {
     transform: rotate(0deg);
@@ -529,11 +518,6 @@ export const OVERLAY_STYLES = `
 }
 
 /* Voice Walkthrough Dock Bar */
-.ve-dock-recording {
-  border-radius: 26px;
-  min-inline-size: 280px;
-}
-
 .ve-voice-done-btn {
   position: relative;
   z-index: 2;

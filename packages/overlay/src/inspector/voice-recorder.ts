@@ -329,21 +329,6 @@ export class VoiceRecorder {
     return pin;
   }
 
-  public removeTargetFromSection(sectionId: string, targetSelector: string): void {
-    const sec = this.sections.find((s) => s.id === sectionId);
-    if (!sec) return;
-    if (sec.targets.length <= 1) return;
-    sec.targets = sec.targets.filter((t) => t.targetSelector !== targetSelector);
-    this.notify();
-  }
-
-  public updateSectionTranscript(sectionId: string, transcript: string): void {
-    const sec = this.sections.find((s) => s.id === sectionId);
-    if (!sec) return;
-    sec.transcript = transcript.trim();
-    this.notify();
-  }
-
   private getCurrentFullText(): string {
     const parts: string[] = [];
     if (this.transcript.trim()) parts.push(this.transcript.trim());

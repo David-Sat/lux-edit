@@ -581,5 +581,45 @@ describe('OverlayStateManager', () => {
       expect(state.verificationTargets).toHaveLength(1);
       expect(state.verificationTargets[0].selector).toBe('#var-card');
     });
+
+    it('sanitizes unsafe tags and event handlers when previewing variant html', () => {
+      const state = OverlayStateManager.getInstance();
+      const target = document.createElement('div');
+      target.id = 'unsafe-html-target';
+      target.innerHTML = '<span>Original</span>';
+      document.body.appendChild(target);
+
+      state.variantSets = [
+        {
+          id: 'vset_unsafe',
+          targetSelector: '#unsafe-html-target',
+          label: 'Unsafe HTML Test',
+          createdAt: Date.now(),
+          status: 'pending',
+          variants: [
+            {
+              id: 'var_malicious',
+              name: 'Malicious Variant',
+              rationale: 'XSS test',
+              html: '<strong>Clean</strong><script>alert("XSS")</script><img src="x" onerror="alert(1)"><iframe src="https://evil.com"></iframe><a href="javascript:alert(1)" onclick="steal()">Click</a>',
+            },
+          ],
+        },
+      ];
+
+      state.previewVariant('vset_unsafe', 'var_malicious');
+      expect(target.querySelector('strong')?.textContent).toBe('Clean');
+      expect(target.querySelector('script')).toBeNull();
+      expect(target.querySelector('iframe')).toBeNull();
+      const img = target.querySelector('img');
+      if (img) {
+        expect(img.hasAttribute('onerror')).toBe(false);
+      }
+      const link = target.querySelector('a');
+      if (link) {
+        expect(link.hasAttribute('href')).toBe(false);
+        expect(link.hasAttribute('onclick')).toBe(false);
+      }
+    });
   });
 });

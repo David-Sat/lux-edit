@@ -283,6 +283,8 @@ export function formatBatchSummary(batch: VisualEditBatch): string {
       } else if (a.selectedText) {
         lines.push(`- **Comment on text selection** on ${loc}${annPageTag}: "${a.comment}"`);
         lines.push(`  - Selected text: \`"${a.selectedText}"\``);
+      } else if (a.type === 'screenshot' || a.screenshot) {
+        lines.push(`- **Visual Screenshot Attached** on ${loc}${annPageTag}: "${a.comment}"`);
       } else {
         lines.push(`- **Comment** on ${loc}${annPageTag}: "${a.comment}"`);
       }

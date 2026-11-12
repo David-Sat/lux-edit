@@ -46,7 +46,7 @@ Check whether a review server is already running on port 4320:
 - **If the server is running:**
   1. In Antigravity, if no background waiter is active yet, start `npx lux-edit hook wait` (`WaitMsBeforeAsync: 500, IsDaemon: false`) so browser submissions wake you automatically while leaving the chat input free.
   2. Tell the user:
-     "The lux review server is running at `http://127.0.0.1:4320`. Switch between **Live** and **Batch** mode in the dock, press **V** to edit styles, **C** to drop comment pins, or **R** for multi-target voice dictation."
+     "The lux review server is running at `http://127.0.0.1:4320`. Switch between **Live** and **Batch** mode in the dock, press **V** to edit styles, **C** to drop comment pins, **S** to capture element screenshots, or **R** for multi-target voice dictation."
 
 - **If the server is not running:**
   1. Find the running dev server URL (e.g. `http://localhost:3000`, `http://localhost:5173`) or static HTML file (e.g. `./index.html`).
@@ -56,4 +56,4 @@ Check whether a review server is already running on port 4320:
      ```
   3. In Antigravity, also start the background review waiter (`npx lux-edit hook wait` with `WaitMsBeforeAsync: 500, IsDaemon: false`) so browser feedback wakes you automatically.
   4. Tell the user:
-     "Open `http://127.0.0.1:4320` in your browser. Press C to drop comment pins, R to record a sectioned voice walkthrough, or V to adjust styles. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."
+     "Open `http://127.0.0.1:4320` in your browser. Press V to adjust styles, C to drop comment pins, S to capture visual screenshots, or R to record a sectioned voice walkthrough. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."

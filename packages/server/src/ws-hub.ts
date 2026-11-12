@@ -202,6 +202,9 @@ export class WebSocketHub {
       });
     }
 
+    const rawTimeout = typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) ? Math.floor(timeoutMs) : 12000;
+    const safeTimeoutMs = Math.max(500, Math.min(rawTimeout, 30000));
+
     const requestId = `cap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const reqPayload: VisualCaptureRequest = {
       requestId,
@@ -217,21 +220,32 @@ export class WebSocketHub {
         resolve({
           requestId,
           success: false,
-          error: `Visual capture timed out after ${timeoutMs}ms waiting for browser response.`,
+          error: `Visual capture timed out after ${safeTimeoutMs}ms waiting for browser response.`,
           capturedAt: Date.now(),
         });
-      }, timeoutMs);
+      }, safeTimeoutMs);
 
       this.pendingCaptures.set(requestId, { resolve, timer });
 
       // Send capture request to the most recently connected active client
       const targetClient = openClients[openClients.length - 1];
-      targetClient.send(
-        JSON.stringify({
-          type: 'CAPTURE_REQUEST',
-          payload: reqPayload,
-        })
-      );
+      try {
+        targetClient.send(
+          JSON.stringify({
+            type: 'CAPTURE_REQUEST',
+            payload: reqPayload,
+          })
+        );
+      } catch (err: any) {
+        clearTimeout(timer);
+        this.pendingCaptures.delete(requestId);
+        resolve({
+          requestId,
+          success: false,
+          error: `Failed to dispatch capture request to browser client: ${err?.message || 'WebSocket send error'}`,
+          capturedAt: Date.now(),
+        });
+      }
     });
   }
 
@@ -257,8 +271,14 @@ export class WebSocketHub {
       this.unsubscribeStore();
       this.unsubscribeStore = undefined;
     }
-    for (const pending of this.pendingCaptures.values()) {
+    for (const [reqId, pending] of this.pendingCaptures.entries()) {
       clearTimeout(pending.timer);
+      pending.resolve({
+        requestId: reqId,
+        success: false,
+        error: 'Lux review server closed before capture completed.',
+        capturedAt: Date.now(),
+      });
     }
     this.pendingCaptures.clear();
     for (const client of this.clients) {

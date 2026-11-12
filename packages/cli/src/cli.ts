@@ -144,6 +144,31 @@ hookCmd
     }
   });
 
+function resolveHookTarget(harness: string, isGlobal: boolean, project: string) {
+  const home = os.homedir();
+  const projectDir = path.resolve(project || process.cwd());
+  const norm = String(harness || 'antigravity').toLowerCase();
+  const isAgy = norm === 'antigravity' || norm === 'gemini';
+
+  if (isAgy) {
+    return {
+      isAgy: true,
+      normHarness: 'antigravity',
+      targetPath: isGlobal
+        ? path.join(home, '.gemini', 'config', 'plugins', 'lux-edit', 'hooks.json')
+        : path.join(projectDir, '.agents', 'hooks.json'),
+    };
+  }
+  const normHarness = norm === 'codex' ? 'codex' : 'claude-code';
+  return {
+    isAgy: false,
+    normHarness,
+    targetPath: isGlobal
+      ? path.join(home, normHarness === 'codex' ? '.codex/hooks.json' : '.claude/settings.json')
+      : path.join(projectDir, normHarness === 'codex' ? '.codex/hooks.json' : '.claude/settings.local.json'),
+  };
+}
+
 hookCmd
   .command('configure')
   .alias('install')
@@ -154,14 +179,9 @@ hookCmd
   .option('--auto-update', 'Use lux-edit@latest in hook commands', false)
   .option('--dry-run', 'Preview hook configuration without saving', false)
   .action((options) => {
-    const home = os.homedir();
-    const projectDir = path.resolve(options.project || process.cwd());
-    const harness = String(options.harness || 'antigravity').toLowerCase();
+    const { isAgy, normHarness, targetPath } = resolveHookTarget(options.harness, options.global, options.project);
 
-    if (harness === 'antigravity' || harness === 'gemini') {
-      const targetPath = options.global
-        ? path.join(home, '.gemini', 'config', 'plugins', 'lux-edit', 'hooks.json')
-        : path.join(projectDir, '.agents', 'hooks.json');
+    if (isAgy) {
       const content = JSON.stringify(getAntigravityHooksContent(options.autoUpdate), null, 2) + '\n';
       if (options.dryRun) {
         console.log(`${targetPath}\n${content}`);
@@ -173,12 +193,7 @@ hookCmd
       return;
     }
 
-    const normHarness = harness === 'codex' ? 'codex' : 'claude-code';
-    const targetPath = options.global
-      ? path.join(home, normHarness === 'codex' ? '.codex/hooks.json' : '.claude/settings.json')
-      : path.join(projectDir, normHarness === 'codex' ? '.codex/hooks.json' : '.claude/settings.local.json');
-
-    const ok = mergeHarnessHooksConfig(targetPath, normHarness, options.dryRun, options.autoUpdate);
+    const ok = mergeHarnessHooksConfig(targetPath, normHarness as any, options.dryRun, options.autoUpdate);
     if (ok) {
       console.log(`[ok] Configured ${normHarness} hooks at ${targetPath}`);
     } else {
@@ -196,14 +211,9 @@ hookCmd
   .option('--project <path>', 'Project directory for workspace hooks', process.cwd())
   .option('--dry-run', 'Preview removal without modifying files', false)
   .action((options) => {
-    const home = os.homedir();
-    const projectDir = path.resolve(options.project || process.cwd());
-    const harness = String(options.harness || 'antigravity').toLowerCase();
+    const { isAgy, normHarness, targetPath } = resolveHookTarget(options.harness, options.global, options.project);
 
-    if (harness === 'antigravity' || harness === 'gemini') {
-      const targetPath = options.global
-        ? path.join(home, '.gemini', 'config', 'plugins', 'lux-edit', 'hooks.json')
-        : path.join(projectDir, '.agents', 'hooks.json');
+    if (isAgy) {
       if (fs.existsSync(targetPath) && !options.dryRun) {
         fs.rmSync(targetPath, { force: true });
       }
@@ -211,10 +221,6 @@ hookCmd
       return;
     }
 
-    const normHarness = harness === 'codex' ? 'codex' : 'claude-code';
-    const targetPath = options.global
-      ? path.join(home, normHarness === 'codex' ? '.codex/hooks.json' : '.claude/settings.json')
-      : path.join(projectDir, normHarness === 'codex' ? '.codex/hooks.json' : '.claude/settings.local.json');
     removeHarnessHooksConfig(targetPath, options.dryRun);
     console.log(`[ok] Removed ${normHarness} hooks from ${targetPath}`);
   });

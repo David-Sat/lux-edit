@@ -507,10 +507,7 @@ export function EditReviewDrawer() {
                               display: 'block',
                             }}
                             onClick={() => {
-                              const w = window.open('');
-                              if (w) {
-                                w.document.write(`<title>Lux Visual Capture</title><body style="margin:0;background:#0f172a;display:flex;align-items:center;justify-content:center;height:100vh;"><img src="${ann.screenshot}" style="max-width:95vw;max-height:95vh;box-shadow:0 10px 40px rgba(0,0,0,0.8);border-radius:8px;" /></body>`);
-                              }
+                              window.open(ann.screenshot, '_blank');
                             }}
                             title="Click to view full screenshot"
                           />
@@ -527,129 +524,62 @@ export function EditReviewDrawer() {
                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-accent-text, #38bdf8)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   Variant Proposals ({activeVariantProposals.length})
                 </span>
-                {activeVariantProposals.map((set) => {
-                  const activeVarId = state.activeVariantPreview.get(set.id) || null;
-                  const activeVariant = set.variants.find((v) => v.id === activeVarId);
-
-                  return (
-                    <div
-                      key={set.id}
-                      class="ve-mutation-card"
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.04)',
-                        border: '1px solid rgba(255, 255, 255, 0.12)',
-                        gap: '8px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span class="ve-mut-target" style={{ fontWeight: 600, color: '#f1f5f9' }}>
-                          {set.label || set.targetSelector}
-                        </span>
-                        <button
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#64748b',
-                            cursor: 'pointer',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                          }}
-                          onClick={() => state.dismissVariantSet(set.id)}
-                          title="Dismiss proposal"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-
-                      {/* Options Switcher Row */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                        <button
-                          style={{
-                            background: activeVarId === null ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                            border: activeVarId === null ? '1px solid rgba(255, 255, 255, 0.45)' : '1px solid rgba(255, 255, 255, 0.1)',
-                            color: activeVarId === null ? '#ffffff' : '#94a3b8',
-                            borderRadius: '6px',
-                            padding: '3px 8px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.1s ease',
-                          }}
-                          onClick={() => state.previewVariant(set.id, null)}
-                        >
-                          Original
-                        </button>
-                        {set.variants.map((v, vIdx) => {
-                          const isSel = activeVarId === v.id;
-                          return (
-                            <button
-                              key={v.id}
-                              style={{
-                                background: isSel ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                border: isSel ? '1px solid rgba(255, 255, 255, 0.45)' : '1px solid rgba(255, 255, 255, 0.1)',
-                                color: isSel ? '#ffffff' : '#94a3b8',
-                                borderRadius: '6px',
-                                padding: '3px 8px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                transition: 'all 0.1s ease',
-                              }}
-                              onClick={() => state.previewVariant(set.id, v.id)}
-                              title={v.rationale}
-                            >
-                              {vIdx + 1}. {v.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Detail & Pick Button */}
-                      <div
+                {activeVariantProposals.map((set) => (
+                  <div
+                    key={set.id}
+                    class="ve-mutation-card"
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      gap: '8px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span class="ve-mut-target" style={{ fontWeight: 600, color: '#f1f5f9' }}>
+                        {set.label || set.targetSelector}
+                      </span>
+                      <button
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '8px',
-                          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-                          paddingTop: '6px',
+                          background: 'none',
+                          border: 'none',
+                          color: '#64748b',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 600,
                         }}
+                        onClick={() => state.dismissVariantSet(set.id)}
+                        title="Dismiss proposal"
                       >
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            color: activeVariant ? '#cbd5e1' : '#64748b',
-                            fontStyle: activeVariant ? 'normal' : 'italic',
-                            flex: 1,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {activeVariant ? activeVariant.rationale : 'Viewing original element styles'}
-                        </span>
-                        {activeVariant && (
-                          <button
-                            style={{
-                              background: 'rgba(16, 185, 129, 0.22)',
-                              border: '1px solid rgba(52, 211, 153, 0.45)',
-                              color: '#6ee7b7',
-                              borderRadius: '6px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              padding: '3px 10px',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            }}
-                            onClick={() => state.decideVariant(set.id, activeVariant.id)}
-                          >
-                            Pick & Apply
-                          </button>
-                        )}
-                      </div>
+                        Dismiss
+                      </button>
                     </div>
-                  );
-                })}
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
+                      <span>{set.variants.length} options proposed</span>
+                      <button
+                        style={{
+                          background: 'rgba(56, 189, 248, 0.16)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          color: '#38bdf8',
+                          borderRadius: '5px',
+                          padding: '2px 8px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => {
+                          try {
+                            const el = document.querySelector(set.targetSelector);
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          } catch {}
+                        }}
+                        title="Scroll to element to preview and pick options"
+                      >
+                        Preview on Page
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 

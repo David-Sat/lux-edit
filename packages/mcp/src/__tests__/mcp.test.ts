@@ -72,6 +72,16 @@ describe('MCP Server Tools & Prompts', () => {
     expect(textContent).toContain('mcp_test_batch_1');
     expect(textContent).toContain('src/components/PricingCard.tsx:22');
     expect(textContent).toContain('bg-indigo-500');
+    // Token efficiency: omits raw JSON dump by default
+    expect(textContent).not.toContain('### Raw payload:');
+
+    // Opt-in raw JSON payload
+    const rawRes = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: { includeRawJson: true },
+    });
+    const rawText = (rawRes.content as any)[0].text;
+    expect(rawText).toContain('### Raw payload:');
   });
 
   it('retrieves active comments via alias lux_get_comments', async () => {

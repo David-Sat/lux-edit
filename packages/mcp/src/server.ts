@@ -299,6 +299,11 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       .max(30000)
       .optional()
       .describe('Optional long-poll wait in milliseconds (up to 30000ms) to wait for incoming Live/Batch browser feedback when lifecycle hooks are not active.'),
+    includeRawJson: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('Whether to append full raw JSON batch payload beneath the markdown summary. Defaults to false to minimize token consumption.'),
   };
 
   const getPendingReviewHandler = async (args?: {
@@ -306,6 +311,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     serverUrl?: string;
     afterCursor?: number;
     waitForFeedbackMs?: number;
+    includeRawJson?: boolean;
   }) => {
     let updateNotice = '';
     try {
@@ -349,20 +355,42 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     const revHash = batch.revisionHash || '';
     const nextStepHint = `\n\n### Next Steps for Agent\n- Apply the requested code changes to the project files.\n- To visually verify your changes in the live browser, call \`lux_capture_visual\`.\n- When finished, call \`lux_resolve_review\` with \`sessionId: "${batch.id}"\` and \`expectedHash: "${revHash}"\` (or save the modified source file to trigger automatic hot-reload verification).\n- If working in Antigravity, start a fresh background listener (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) before ending your turn.\n- Carry \`nextCursor: ${nextCursor}\` forward if polling incrementally.`;
 
+    const imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }> = [];
+    const sanitizedBatch = {
+      ...batch,
+      nextCursor,
+      reviewMode,
+      liveHookConnected: hookConnected,
+      annotations: batch.annotations?.map((a) => {
+        if (a.screenshot && typeof a.screenshot === 'string') {
+          const clean = a.screenshot.replace(/^data:image\/\w+;base64,/, '');
+          if (clean) {
+            imageItems.push({
+              type: 'image' as const,
+              data: clean,
+              mimeType: 'image/png' as const,
+            });
+          }
+          const kb = Math.round((a.screenshot.length * 3) / 4 / 1024);
+          return {
+            ...a,
+            screenshot: `[base64 image (${kb > 0 ? kb : 1}KB)]`,
+          };
+        }
+        return a;
+      }),
+    };
+
+    const rawPayloadSection = args?.includeRawJson
+      ? `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedBatch, null, 2)}\n\`\`\``
+      : '';
+
     return {
       content: [
+        ...imageItems,
         {
           type: 'text' as const,
-          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}${nextStepHint}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(
-            {
-              ...batch,
-              nextCursor,
-              reviewMode,
-              liveHookConnected: hookConnected,
-            },
-            null,
-            2
-          )}\n\`\`\`${updateNotice}`,
+          text: `### Visual review and comments (Session: ${batch.id})\n\n${summary}${nextStepHint}${rawPayloadSection}${updateNotice}`,
         },
       ],
     };
@@ -388,10 +416,12 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     sessionId,
     workspaceDir,
     serverUrl,
+    includeRawJson = false,
   }: {
     sessionId: string;
     workspaceDir?: string;
     serverUrl?: string;
+    includeRawJson?: boolean;
   }) => {
     const store = resolveEventStore(workspaceDir);
     let session = store.getSession(sessionId);
@@ -411,12 +441,38 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       };
     }
 
+    const imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }> = [];
+    const sanitizedSession = {
+      ...session,
+      annotations: session.annotations?.map((a) => {
+        if (a.screenshot && typeof a.screenshot === 'string') {
+          const clean = a.screenshot.replace(/^data:image\/\w+;base64,/, '');
+          if (clean) {
+            imageItems.push({
+              type: 'image' as const,
+              data: clean,
+              mimeType: 'image/png' as const,
+            });
+          }
+          const kb = Math.round((a.screenshot.length * 3) / 4 / 1024);
+          return {
+            ...a,
+            screenshot: `[base64 image (${kb > 0 ? kb : 1}KB)]`,
+          };
+        }
+        return a;
+      }),
+    };
+
     const formattedSummary = formatBatchSummary(session);
+    const rawPayloadSection = `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedSession, null, 2)}\n\`\`\``;
+
     return {
       content: [
+        ...imageItems,
         {
           type: 'text' as const,
-          text: `${formattedSummary}\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(session, null, 2)}\n\`\`\``,
+          text: `### Session: ${session.id}\n\n${formattedSummary}${rawPayloadSection}`,
         },
       ],
     };
@@ -429,6 +485,11 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       sessionId: z.string().describe('The ID of the session to retrieve'),
       workspaceDir: z.string().optional().describe('Absolute path to project workspace directory'),
       serverUrl: z.string().optional().describe('URL of running lux server'),
+      includeRawJson: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('Whether to append full raw JSON batch payload beneath the markdown summary. Defaults to false to minimize token consumption.'),
     },
     READ_ONLY_ANNOTATIONS,
     getSessionHandler

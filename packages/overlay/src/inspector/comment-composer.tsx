@@ -9,6 +9,7 @@ export function CommentComposer() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [commentText, setCommentText] = useState('');
+  const [isSnapping, setIsSnapping] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -255,16 +256,25 @@ export function CommentComposer() {
                 gap: '4px',
                 whiteSpace: 'nowrap',
               }}
+              disabled={isSnapping}
               onClick={async () => {
-                const loc = resolveSourceLocation(target);
-                const selector = loc.selector || (target.id ? `#${target.id}` : target.tagName.toLowerCase());
-                const snap = await captureVisualSnapshot({
-                  selector,
-                  resolution: 'draft',
-                  includeOverlay: false,
-                });
-                if (snap && snap.success && snap.imageBase64) {
-                  state.setPendingScreenshot(snap.imageBase64);
+                if (isSnapping) return;
+                setIsSnapping(true);
+                try {
+                  const loc = resolveSourceLocation(target);
+                  const selector = loc.selector || (target.id ? `#${target.id}` : target.tagName.toLowerCase());
+                  const snap = await captureVisualSnapshot({
+                    selector,
+                    resolution: 'draft',
+                    includeOverlay: false,
+                  });
+                  if (snap && snap.success && snap.imageBase64) {
+                    state.setPendingScreenshot(snap.imageBase64);
+                  }
+                } catch (err) {
+                  console.warn('[lux] Failed to capture visual snapshot:', err);
+                } finally {
+                  setIsSnapping(false);
                 }
               }}
               title="Attach screenshot of element"
@@ -273,7 +283,7 @@ export function CommentComposer() {
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
-              <span>Snap Visual</span>
+              <span>{isSnapping ? 'Snapping...' : 'Snap Visual'}</span>
             </button>
           )}
           <span class="ve-hint" style={{ fontSize: '10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

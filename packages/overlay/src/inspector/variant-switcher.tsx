@@ -56,13 +56,19 @@ export function VariantSwitcher() {
     }
   });
 
-  // Keyboard navigation: use Left / Right arrows to switch options, Enter to Pick & Apply
+  // Keyboard navigation: use Alt + Left/Right arrows or focus switcher to switch options, Enter to Pick & Apply
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const activeTag = (document.activeElement?.tagName || '').toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) {
         return;
       }
+
+      // Only handle arrows/enter if Alt/Option is pressed, or if focus/target is inside the variant switcher
+      const targetEl = e.target as HTMLElement | null;
+      const isInsideSwitcher = Boolean(targetEl?.closest?.('.ve-variant-switcher-bar'));
+      const shouldHandle = e.altKey || isInsideSwitcher;
+      if (!shouldHandle) return;
 
       const pendingOnly = visibleSets.filter((s) => s.status === 'pending');
       if (pendingOnly.length === 0) return;
@@ -163,6 +169,7 @@ export function VariantSwitcher() {
             {/* Floating Glass Switcher Card */}
             <div
               class="ve-variant-switcher-bar"
+              tabIndex={0}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               style={{

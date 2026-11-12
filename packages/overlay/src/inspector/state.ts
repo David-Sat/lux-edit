@@ -20,12 +20,13 @@ import {
   computeBatchRevisionHash,
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
-import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
 import { VoiceRecorder } from './voice-recorder.js';
 import { getRouteFromLocation, isAnnotationOnRoute, normalizeRoute } from './route-utils.js';
 import { captureVisualSnapshot } from './visual-capture.js';
+import { DomMutationManager, ElementSnapshot } from './dom-mutations.js';
+import { VariantManager, applySanitizedHtml } from './variant-manager.js';
 
-export type { DockPosition };
+export type { DockPosition, ElementSnapshot };
 
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
@@ -40,15 +41,7 @@ const BASE_PATH_PREFIX = (() => {
   }
 })();
 
-export type ActiveTool = 'none' | 'edit' | 'comment' | 'area' | 'voice' | 'screenshot';
-
-export interface ElementSnapshot {
-  text: string;
-  styles: Record<string, string>;
-  classes: string[];
-  sourceLocation: SourceLocation;
-  originalStyleAttr?: string | null;
-}
+export type ActiveTool = 'none' | 'edit' | 'comment' | 'voice' | 'screenshot';
 
 function isWebSocketOpen(ws: WebSocket | null): ws is WebSocket {
   if (!ws) return false;
@@ -102,7 +95,7 @@ export class OverlayStateManager {
   public version: string =
     typeof window !== 'undefined' && (window as any).__LUX_VERSION__
       ? (window as any).__LUX_VERSION__
-      : '0.13.0';
+      : '0.15.1';
   public currentPathname: string = getRouteFromLocation();
   public updateInfo: {
     updateAvailable: boolean;
@@ -111,11 +104,8 @@ export class OverlayStateManager {
     changelogUrl: string;
   } | null = null;
 
-  private snapshots = new Map<HTMLElement, ElementSnapshot>();
-  private variantOriginalSnapshots = new Map<
-    string,
-    { styleAttr: string | null; className: string; innerHTML: string; textContent: string }
-  >();
+  private domMutations = new DomMutationManager();
+  private variantManager: VariantManager;
   private listeners = new Set<() => void>();
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
@@ -124,6 +114,23 @@ export class OverlayStateManager {
   private verificationTimer: any = null;
 
   private constructor() {
+    this.variantManager = new VariantManager({
+      getVariantSets: () => this.variantSets,
+      setVariantSets: (sets) => {
+        this.variantSets = sets;
+      },
+      getVariantDecisions: () => this.variantDecisions,
+      setVariantDecisions: (decisions) => {
+        this.variantDecisions = decisions;
+      },
+      getActiveVariantPreview: () => this.activeVariantPreview,
+      getReviewMode: () => this.reviewMode,
+      getWebSocket: () => this.ws,
+      submitBatch: () => this.submitBatch(),
+      autoSync: () => this.autoSync(),
+      notify: () => this.notify(),
+      basePathPrefix: BASE_PATH_PREFIX,
+    });
     this.loadFromStorage();
     this.restoreVerificationTargets();
     this.initWebSocket();
@@ -180,184 +187,23 @@ export class OverlayStateManager {
   }
 
   public previewVariant(setId: string, variantId: string | null): void {
-    const vSet = this.variantSets.find((s) => s.id === setId);
-    if (!vSet) return;
-
-    let el: HTMLElement | null = null;
-    try {
-      el = document.querySelector(vSet.targetSelector) as HTMLElement | null;
-    } catch {}
-    if (!el) return;
-
-    if (!this.variantOriginalSnapshots.has(setId)) {
-      this.variantOriginalSnapshots.set(setId, {
-        styleAttr: el.getAttribute('style'),
-        className: typeof el.className === 'string' ? el.className : '',
-        innerHTML: el.innerHTML,
-        textContent: el.textContent || '',
-      });
-    }
-
-    const orig = this.variantOriginalSnapshots.get(setId)!;
-    // Always restore original first before applying variant
-    if (orig.styleAttr !== null) {
-      el.setAttribute('style', orig.styleAttr);
-    } else {
-      el.removeAttribute('style');
-    }
-    if (typeof el.className === 'string') {
-      el.className = orig.className;
-    }
-    el.innerHTML = orig.innerHTML;
-
-    if (variantId !== null) {
-      const variant = vSet.variants.find((v) => v.id === variantId);
-      if (variant) {
-        const rawStyles: any = variant.styles || (variant as any).styleMutations;
-        const stylesMap: Record<string, string> = {};
-        if (Array.isArray(rawStyles)) {
-          for (const m of rawStyles) {
-            if (m.property && m.value !== undefined) {
-              stylesMap[m.property] = String(m.value);
-            }
-          }
-        } else if (rawStyles && typeof rawStyles === 'object') {
-          Object.assign(stylesMap, rawStyles);
-        }
-
-        for (const [k, v] of Object.entries(stylesMap)) {
-          el.style.setProperty(k, v, 'important');
-          const camel = k.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-          try {
-            (el.style as any)[camel] = v;
-          } catch {}
-        }
-
-        if (variant.classes) {
-          if (variant.classes.remove) {
-            variant.classes.remove.forEach((c) => el!.classList.remove(c));
-          }
-          if (variant.classes.add) {
-            variant.classes.add.forEach((c) => el!.classList.add(c));
-          }
-        }
-        if (variant.html !== undefined) {
-          el.innerHTML = variant.html;
-        } else if (variant.text !== undefined) {
-          el.textContent = variant.text;
-        }
-      }
-    }
-
-    this.activeVariantPreview.set(setId, variantId);
-    this.notify();
+    this.variantManager.previewVariant(setId, variantId);
   }
 
   public decideVariant(setId: string, variantId: string, userNote?: string): void {
-    const vSet = this.variantSets.find((s) => s.id === setId);
-    if (!vSet) return;
-    const variant = vSet.variants.find((v) => v.id === variantId);
-    if (!variant) return;
-
-    this.previewVariant(setId, variantId);
-
-    const decision: VariantDecision = {
-      id: `vdec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      setId,
-      targetSelector: vSet.targetSelector,
-      selectedVariantId: variantId,
-      variantName: variant.name,
-      variant,
-      userNote,
-      timestamp: Date.now(),
-    };
-
-    const existingIdx = this.variantDecisions.findIndex((d) => d.setId === setId);
-    if (existingIdx !== -1) {
-      this.variantDecisions[existingIdx] = decision;
-    } else {
-      this.variantDecisions.push(decision);
-    }
-    vSet.selectedVariantId = variantId;
-    vSet.status = 'decided';
-
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'DECIDE_VARIANT', payload: decision }));
-    }
-
-    if (this.reviewMode === 'live') {
-      this.submitBatch();
-    } else {
-      this.notify();
-    }
+    this.variantManager.decideVariant(setId, variantId, userNote);
   }
 
   public revertVariantDecision(setId: string): void {
-    const vSet = this.variantSets.find((s) => s.id === setId);
-    if (vSet) {
-      vSet.status = 'pending';
-      vSet.selectedVariantId = undefined;
-    }
-    this.variantDecisions = this.variantDecisions.filter((d) => d.setId !== setId);
-
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'REVERT_VARIANT_DECISION', payload: { setId } }));
-    } else if (typeof fetch !== 'undefined') {
-      fetch(`${BASE_PATH_PREFIX}${API_ROUTES.VARIANTS}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'revert', setId }),
-      }).catch(() => {});
-    }
-
-    if (this.reviewMode === 'live') {
-      this.autoSync();
-    }
-    this.notify();
+    this.variantManager.revertVariantDecision(setId);
   }
 
   public deleteVariantDecision(setId: string): void {
-    const vSet = this.variantSets.find((s) => s.id === setId);
-    this.previewVariant(setId, null);
-
-    if (vSet) {
-      vSet.status = 'superseded';
-      vSet.selectedVariantId = undefined;
-    }
-    this.variantDecisions = this.variantDecisions.filter((d) => d.setId !== setId);
-    this.variantSets = this.variantSets.filter((s) => s.id !== setId);
-
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'DELETE_VARIANT_DECISION', payload: { setId } }));
-    } else if (typeof fetch !== 'undefined') {
-      fetch(`${BASE_PATH_PREFIX}${API_ROUTES.VARIANTS}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', setId }),
-      }).catch(() => {});
-    }
-
-    if (this.reviewMode === 'live') {
-      this.autoSync();
-    }
-    this.notify();
+    this.variantManager.deleteVariantDecision(setId);
   }
 
   public dismissVariantSet(setId: string): void {
-    const vSet = this.variantSets.find((s) => s.id === setId);
-    if (!vSet) return;
-    vSet.status = 'superseded';
-    this.previewVariant(setId, null);
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'DISMISS_VARIANT', payload: { setId } }));
-    } else if (typeof fetch !== 'undefined') {
-      fetch(`${BASE_PATH_PREFIX}${API_ROUTES.VARIANTS}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'dismiss', setId }),
-      }).catch(() => {});
-    }
-    this.notify();
+    this.variantManager.dismissVariantSet(setId);
   }
 
   public triggerVerificationHalo(targets: VerificationTarget[]): void {
@@ -548,6 +394,21 @@ export class OverlayStateManager {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.liveMutationTimer) {
+      clearTimeout(this.liveMutationTimer);
+      this.liveMutationTimer = null;
+    }
+    if (this.verificationTimer) {
+      clearTimeout(this.verificationTimer);
+      this.verificationTimer = null;
+    }
+    if (typeof window !== 'undefined') {
+      const resizeHandler = (OverlayStateManager as any)._resizeHandler;
+      if (resizeHandler) {
+        window.removeEventListener('resize', resizeHandler);
+        (OverlayStateManager as any)._resizeHandler = undefined;
+      }
     }
     if (this.ws) {
       try {
@@ -894,16 +755,11 @@ export class OverlayStateManager {
   }
 
   public getSnapshotForElement(el: HTMLElement): ElementSnapshot | undefined {
-    return this.snapshots.get(el);
+    return this.domMutations.getSnapshot(el);
   }
 
   public resetElementProperty(el: HTMLElement, property: string): void {
-    const snapshot = this.snapshots.get(el);
-    if (snapshot && snapshot.styles[property] !== undefined && snapshot.styles[property] !== '') {
-      el.style.setProperty(property, snapshot.styles[property]);
-    } else {
-      el.style.removeProperty(property);
-    }
+    this.domMutations.resetElementProperty(el, property);
     this.syncMutationsForElement(el);
     this.notify();
   }
@@ -1132,13 +988,7 @@ export class OverlayStateManager {
     }
   }
 
-  public async snapElementToComposer(el: HTMLElement): Promise<void> {
-    if (!el || typeof document === 'undefined') return;
-
-    const loc = resolveSourceLocation(el);
-    const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
-
-    // Flash camera shutter ripple animation on clicked element
+  private triggerShutterFlash(el: HTMLElement): void {
     try {
       const origTransition = el.style.transition;
       const origBoxShadow = el.style.boxShadow;
@@ -1149,6 +999,13 @@ export class OverlayStateManager {
         el.style.transition = origTransition;
       }, 350);
     } catch {}
+  }
+
+  public async snapElementToComposer(el: HTMLElement): Promise<void> {
+    if (!el || typeof document === 'undefined') return;
+
+    const loc = resolveSourceLocation(el);
+    const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
 
     let screenshotDataUrl = '';
     try {
@@ -1161,6 +1018,9 @@ export class OverlayStateManager {
         screenshotDataUrl = snap.imageBase64;
       }
     } catch {}
+
+    // Flash shutter feedback after clean capture snapshot has been recorded
+    this.triggerShutterFlash(el);
 
     // Open comment composer anchored to el with the captured screenshot
     this.setCommentTarget(el, { screenshot: screenshotDataUrl });
@@ -1171,27 +1031,6 @@ export class OverlayStateManager {
 
     const loc = resolveSourceLocation(el);
     const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
-    const rect = el.getBoundingClientRect();
-    const bounds = {
-      x: Math.round(rect.left + (typeof window !== 'undefined' ? window.scrollX : 0)),
-      y: Math.round(rect.top + (typeof window !== 'undefined' ? window.scrollY : 0)),
-      width: Math.max(1, Math.round(rect.width)),
-      height: Math.max(1, Math.round(rect.height)),
-    };
-
-    const targetHash = computeTargetHash({ selector: targetSelector, htmlSnippet: el.outerHTML.slice(0, 300) });
-
-    // Flash camera shutter ripple animation on clicked element
-    try {
-      const origTransition = el.style.transition;
-      const origBoxShadow = el.style.boxShadow;
-      el.style.transition = 'box-shadow 0.15s ease, outline 0.15s ease';
-      el.style.boxShadow = '0 0 0 3px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.6)';
-      setTimeout(() => {
-        el.style.boxShadow = origBoxShadow;
-        el.style.transition = origTransition;
-      }, 350);
-    } catch {}
 
     let screenshotDataUrl = '';
     try {
@@ -1205,37 +1044,16 @@ export class OverlayStateManager {
       }
     } catch {}
 
+    this.triggerShutterFlash(el);
+
     const componentLabel = loc.componentName ? `<${loc.componentName}>` : targetSelector;
     const defaultComment = (commentText || '').trim() || `Visual snapshot of ${componentLabel}`;
 
-    const ann: CommentAnnotation = {
-      id: `snap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: Date.now(),
-      type: 'screenshot',
-      targetSelector,
-      sourceLocation: loc,
-      htmlSnippet: el.outerHTML.slice(0, 300),
-      bounds,
-      screenshot: screenshotDataUrl,
-      comment: defaultComment,
-      targetHash,
-      url: typeof window !== 'undefined' ? window.location.href : '',
-      pathname: typeof window !== 'undefined' ? window.location.pathname : '',
-      pageTitle: typeof document !== 'undefined' ? document.title : '',
-    };
-
-    this.annotations.push(ann);
-    this.activeTool = 'none';
-
-    if (this.reviewMode === 'live') {
-      this.submitBatch();
-    } else {
-      this.sessionStatus = 'draft';
+    this.addComment(defaultComment, el, { screenshot: screenshotDataUrl });
+    if (this.reviewMode !== 'live') {
       this.setDrawerOpen(true);
-      this.notify();
     }
-
-    return ann;
+    return this.annotations[this.annotations.length - 1] || null;
   }
 
   public updateAnnotation(id: string, newText: string): void {
@@ -1261,51 +1079,12 @@ export class OverlayStateManager {
   }
 
   public captureInitialSnapshot(el: HTMLElement): void {
-    if (this.snapshots.has(el)) return;
-
-    const sourceLocation = resolveSourceLocation(el);
-    const computed = window.getComputedStyle(el);
-    const styles: Record<string, string> = {
-      padding: computed.padding,
-      'padding-top': computed.paddingTop,
-      'padding-bottom': computed.paddingBottom,
-      'padding-left': computed.paddingLeft,
-      'padding-right': computed.paddingRight,
-      margin: computed.margin,
-      'margin-top': computed.marginTop,
-      'margin-bottom': computed.marginBottom,
-      'margin-left': computed.marginLeft,
-      'margin-right': computed.marginRight,
-      'font-size': computed.fontSize,
-      'font-weight': computed.fontWeight,
-      color: computed.color,
-      'background-color': computed.backgroundColor,
-      display: computed.display,
-      'flex-direction': computed.flexDirection,
-      gap: computed.gap,
-      'justify-content': computed.justifyContent,
-      'align-items': computed.alignItems,
-      'border-radius': computed.borderRadius,
-      'border-width': computed.borderWidth,
-      'text-align': computed.textAlign,
-    };
-
-    const classes = typeof el.className === 'string'
-      ? el.className.trim().split(/\s+/).filter(Boolean)
-      : [];
-
-    this.snapshots.set(el, {
-      text: (el.textContent || el.innerText || '').trim(),
-      styles,
-      classes,
-      sourceLocation,
-      originalStyleAttr: el.getAttribute('style'),
-    });
+    this.domMutations.captureInitialSnapshot(el);
   }
 
   public updateElementStyle(property: string, value: string): void {
     if (!this.activeElement) return;
-    this.activeElement.style.setProperty(property, value);
+    this.domMutations.updateElementStyle(this.activeElement, property, value);
     this.syncMutationsForElement(this.activeElement);
     this.scheduleLiveMutationSubmit();
     this.notify();
@@ -1313,10 +1092,7 @@ export class OverlayStateManager {
 
   public updateElementText(newText: string): void {
     if (!this.activeElement) return;
-    if (newText.includes('\n') && this.activeElement.style.whiteSpace !== 'pre-wrap') {
-      this.activeElement.style.whiteSpace = 'pre-wrap';
-    }
-    this.activeElement.textContent = newText;
+    this.domMutations.updateElementText(this.activeElement, newText);
     this.syncMutationsForElement(this.activeElement);
     this.scheduleLiveMutationSubmit();
     this.notify();
@@ -1324,7 +1100,7 @@ export class OverlayStateManager {
 
   public addClass(className: string): void {
     if (!this.activeElement || !className.trim()) return;
-    this.activeElement.classList.add(className.trim());
+    this.domMutations.addClass(this.activeElement, className);
     this.syncMutationsForElement(this.activeElement);
     this.scheduleLiveMutationSubmit();
     this.notify();
@@ -1332,7 +1108,7 @@ export class OverlayStateManager {
 
   public removeClass(className: string): void {
     if (!this.activeElement || !className.trim()) return;
-    this.activeElement.classList.remove(className.trim());
+    this.domMutations.removeClass(this.activeElement, className);
     this.syncMutationsForElement(this.activeElement);
     this.scheduleLiveMutationSubmit();
     this.notify();
@@ -1340,22 +1116,8 @@ export class OverlayStateManager {
 
   public deleteElement(): void {
     if (!this.activeElement) return;
-    const el = this.activeElement;
-    const sourceLocation = resolveSourceLocation(el);
-    const selector = sourceLocation.selector;
-    const outerHtml = el.outerHTML;
-
-    el.remove();
-    this.mutations.push({
-      id: `mut_del_${Date.now()}`,
-      type: 'DOM_REMOVE',
-      targetSelector: selector,
-      targetHash: computeTargetHash({ selector, htmlSnippet: outerHtml.slice(0, 200) }),
-      sourceLocation,
-      before: outerHtml,
-      after: '',
-      ...this.getPageMetadata(),
-    });
+    const mutation = this.domMutations.deleteElement(this.activeElement, this.getPageMetadata());
+    this.mutations.push(mutation);
     this.setActiveElement(null);
     this.scheduleLiveMutationSubmit();
     this.notify();
@@ -1363,125 +1125,35 @@ export class OverlayStateManager {
 
   public duplicateElement(): void {
     if (!this.activeElement || !this.activeElement.parentElement) return;
-    const clone = this.activeElement.cloneNode(true) as HTMLElement;
-    if (clone.id) {
-      clone.id = `${clone.id}-copy`;
-    }
-    clone.querySelectorAll('[id]').forEach((child) => {
-      if (child.id) child.id = `${child.id}-copy`;
-    });
-    this.activeElement.parentElement.insertBefore(clone, this.activeElement.nextSibling);
-
-    const sourceLocation = resolveSourceLocation(clone);
-    this.mutations.push({
-      id: `mut_dup_${Date.now()}`,
-      type: 'DOM_INSERT',
-      targetSelector: sourceLocation.selector,
-      targetHash: computeTargetHash({ selector: sourceLocation.selector, htmlSnippet: clone.outerHTML.slice(0, 200) }),
-      sourceLocation,
-      before: '',
-      after: clone.outerHTML,
-      ...this.getPageMetadata(),
-    });
+    const { clone, mutation } = this.domMutations.duplicateElement(this.activeElement, this.getPageMetadata());
+    this.mutations.push(mutation);
     this.setActiveElement(clone);
     this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public revertMutation(mutationId: string): void {
-    const mutation = this.mutations.find((m) => m.id === mutationId);
-    if (!mutation) return;
-
-    let targetEl: HTMLElement | null = null;
-    const isMutationOnCurrentRoute =
-      !mutation.pathname ||
-      isAnnotationOnRoute({ pathname: mutation.pathname, url: mutation.url }, this.getCurrentPathname());
-
-    if (mutation.targetSelector && isMutationOnCurrentRoute && typeof document !== 'undefined') {
-      try {
-        targetEl = document.querySelector(mutation.targetSelector) as HTMLElement | null;
-      } catch (e) {}
+    const res = this.domMutations.revertMutation(
+      mutationId,
+      this.mutations,
+      this.getCurrentPathname(),
+      this.activeElement
+    );
+    this.mutations = res.remainingMutations;
+    if (res.clearActive) {
+      this.setActiveElement(null);
+    } else if (res.needSyncTarget) {
+      this.syncMutationsForElement(res.needSyncTarget);
     }
-
-    if (targetEl) {
-      const snapshot = this.snapshots.get(targetEl);
-      if (mutation.type === 'CLASS_CHANGE' && mutation.details) {
-        if (mutation.details.added) {
-          (mutation.details.added as string[]).forEach((c: string) => targetEl!.classList.remove(c));
-        }
-        if (mutation.details.removed) {
-          (mutation.details.removed as string[]).forEach((c: string) => targetEl!.classList.add(c));
-        }
-      } else if (mutation.type === 'STYLE_CHANGE' && mutation.property) {
-        if (snapshot && snapshot.styles[mutation.property] !== undefined && snapshot.styles[mutation.property] !== '') {
-          targetEl.style.setProperty(mutation.property, snapshot.styles[mutation.property]);
-        } else {
-          targetEl.style.removeProperty(mutation.property);
-        }
-      } else if (mutation.type === 'TEXT_EDIT') {
-        if (snapshot) {
-          if ('innerText' in targetEl && targetEl.tagName.toLowerCase() !== 'text' && targetEl.tagName.toLowerCase() !== 'tspan') {
-            targetEl.innerText = snapshot.text;
-          } else {
-            targetEl.textContent = snapshot.text;
-          }
-        } else if (mutation.before) {
-          if ('innerText' in targetEl && targetEl.tagName.toLowerCase() !== 'text' && targetEl.tagName.toLowerCase() !== 'tspan') {
-            targetEl.innerText = mutation.before;
-          } else {
-            targetEl.textContent = mutation.before;
-          }
-        }
-      } else if (mutation.type === 'DOM_INSERT') {
-        targetEl.remove();
-        if (this.activeElement === targetEl) {
-          this.setActiveElement(null);
-        }
-      }
-
-      if (this.activeElement === targetEl && document.body.contains(targetEl)) {
-        this.syncMutationsForElement(targetEl);
-      } else {
-        this.mutations = this.mutations.filter((m) => m.id !== mutationId);
-      }
-    } else {
-      this.mutations = this.mutations.filter((m) => m.id !== mutationId);
-    }
-
     this.notify();
   }
 
   public revertAll(): void {
-    for (const [el, snapshot] of this.snapshots.entries()) {
-      if (document.body.contains(el)) {
-        el.innerText = snapshot.text;
-        el.className = snapshot.classes.join(' ');
-        if (snapshot.originalStyleAttr !== null && snapshot.originalStyleAttr !== undefined) {
-          el.setAttribute('style', snapshot.originalStyleAttr);
-        } else {
-          el.removeAttribute('style');
-        }
-      }
-    }
-
-    // Revert any previewed variants
-    for (const [setId] of this.variantOriginalSnapshots.entries()) {
-      this.previewVariant(setId, null);
-    }
-    this.variantOriginalSnapshots.clear();
+    this.domMutations.revertAll();
+    this.variantManager.revertAll();
     this.activeVariantPreview.clear();
     this.variantDecisions = [];
     this.variantSets = [];
-
-    // Revert all theme tokens
-    try {
-      ['--primary', '--color-primary', '--accent', '--color-accent', '--bg', '--background', '--text', '--foreground', '--radius', '--border-radius'].forEach((prop) => {
-        document.documentElement.style.removeProperty(prop);
-      });
-      document.body.style.removeProperty('background-color');
-      document.body.style.removeProperty('color');
-      document.body.style.removeProperty('font-family');
-    } catch (e) {}
 
     this.mutations = [];
     this.annotations = [];
@@ -1495,105 +1167,17 @@ export class OverlayStateManager {
   }
 
   public moveElement(direction: 'up' | 'down'): void {
-    if (!this.activeElement || !this.activeElement.parentElement) return;
-    const parent = this.activeElement.parentElement;
-    const siblings = Array.from(parent.children);
-    const currentIndex = siblings.indexOf(this.activeElement);
-
-    if (direction === 'up' && currentIndex > 0) {
-      parent.insertBefore(this.activeElement, siblings[currentIndex - 1]);
-      this.recordReorder(currentIndex, currentIndex - 1);
-    } else if (direction === 'down' && currentIndex < siblings.length - 1) {
-      parent.insertBefore(this.activeElement, siblings[currentIndex + 1].nextSibling);
-      this.recordReorder(currentIndex, currentIndex + 1);
-    }
-  }
-
-  private recordReorder(beforeIndex: number, afterIndex: number): void {
     if (!this.activeElement) return;
-    const sourceLocation = resolveSourceLocation(this.activeElement);
-    this.mutations.push({
-      id: `mut_reord_${Date.now()}`,
-      type: 'DOM_REORDER',
-      targetSelector: sourceLocation.selector,
-      targetHash: computeTargetHash({ selector: sourceLocation.selector }),
-      sourceLocation,
-      before: `${beforeIndex}`,
-      after: `${afterIndex}`,
-      ...this.getPageMetadata(),
-    });
-    this.scheduleLiveMutationSubmit();
-    this.notify();
+    const mutation = this.domMutations.moveElement(this.activeElement, direction, this.getPageMetadata());
+    if (mutation) {
+      this.mutations.push(mutation);
+      this.scheduleLiveMutationSubmit();
+      this.notify();
+    }
   }
 
   public syncMutationsForElement(el: HTMLElement): void {
-    const snapshot = this.snapshots.get(el);
-    if (!snapshot) return;
-
-    const sourceLocation = resolveSourceLocation(el);
-    const selector = sourceLocation.selector;
-    const pageMeta = this.getPageMetadata();
-    const currentNormRoute = normalizeRoute(pageMeta.pathname);
-
-    this.mutations = this.mutations.filter((m) => {
-      if (
-        m.type === 'DOM_REMOVE' ||
-        m.type === 'DOM_REORDER' ||
-        m.type === 'DOM_INSERT' ||
-        m.type === 'THEME_CHANGE'
-      ) {
-        return true;
-      }
-      const sameRoute = !m.pathname || normalizeRoute(m.pathname) === currentNormRoute;
-      return !(m.targetSelector === selector && sameRoute);
-    });
-
-    const textDiff = computeTextDiff(snapshot.text, el.innerText || '', selector, sourceLocation);
-    if (textDiff) {
-      Object.assign(textDiff, pageMeta);
-      this.mutations.push(textDiff);
-    }
-
-    const currentComputed = window.getComputedStyle(el);
-    const currentStyles: Record<string, string> = {
-      padding: currentComputed.padding,
-      'padding-top': currentComputed.paddingTop,
-      'padding-bottom': currentComputed.paddingBottom,
-      'padding-left': currentComputed.paddingLeft,
-      'padding-right': currentComputed.paddingRight,
-      margin: currentComputed.margin,
-      'margin-top': currentComputed.marginTop,
-      'margin-bottom': currentComputed.marginBottom,
-      'margin-left': currentComputed.marginLeft,
-      'margin-right': currentComputed.marginRight,
-      'font-size': currentComputed.fontSize,
-      'font-weight': currentComputed.fontWeight,
-      color: currentComputed.color,
-      'background-color': currentComputed.backgroundColor,
-      display: currentComputed.display,
-      'flex-direction': currentComputed.flexDirection,
-      gap: currentComputed.gap,
-      'justify-content': currentComputed.justifyContent,
-      'align-items': currentComputed.alignItems,
-      'border-radius': currentComputed.borderRadius,
-      'border-width': currentComputed.borderWidth,
-      'text-align': currentComputed.textAlign,
-    };
-
-    const styleDiffs = computeStyleDiff(snapshot.styles, currentStyles, selector, sourceLocation);
-    styleDiffs.forEach((m: MutationRecord) => {
-      Object.assign(m, pageMeta);
-    });
-    this.mutations.push(...styleDiffs);
-
-    const currentClasses = typeof el.className === 'string'
-      ? el.className.trim().split(/\s+/).filter(Boolean)
-      : [];
-    const classDiffs = computeClassDiff(snapshot.classes, currentClasses, selector, sourceLocation);
-    classDiffs.forEach((m: MutationRecord) => {
-      Object.assign(m, pageMeta);
-    });
-    this.mutations.push(...classDiffs);
+    this.mutations = this.domMutations.syncMutationsForElement(el, this.mutations, this.getPageMetadata());
   }
 
   public getBatch(): VisualEditBatch {
@@ -1696,10 +1280,9 @@ export class OverlayStateManager {
               this.voiceReviews = [];
               this.activeVoicePins = [];
               this.variantDecisions = [];
-    this.variantSets = [];
               this.variantSets = [];
               this.activeVariantPreview.clear();
-              this.variantOriginalSnapshots.clear();
+              this.variantManager.clearOriginalSnapshots();
               this.userPrompt = '';
               this.sessionId = `session_${Date.now().toString(36)}`;
               this.sessionStatus = 'draft';
