@@ -5,7 +5,9 @@
   "main": "./dist/overlay.js",
   "scripts": {
     "build": "vite build",
-    "dev": "vite build --watch"
+    "dev": "vite build --watch",
+    "workbench": "vite --config vite.workbench.config.ts",
+    "typecheck:workbench": "tsc -p tsconfig.workbench.json --noEmit"
   },
   "dependencies": {
     "@floating-ui/dom": "^1.6.13",

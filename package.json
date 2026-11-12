@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
+    "workbench": "pnpm --filter @visual-edit/overlay run workbench",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

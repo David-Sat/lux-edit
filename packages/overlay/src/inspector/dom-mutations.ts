@@ -345,6 +345,10 @@ export class DomMutationManager {
     return { remainingMutations, clearActive, needSyncTarget };
   }
 
+  public clear(): void {
+    this.snapshots.clear();
+  }
+
   public revertAll(): void {
     for (const [el, snapshot] of this.snapshots.entries()) {
       if (document.body.contains(el)) {
