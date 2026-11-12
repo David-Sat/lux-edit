@@ -39,6 +39,7 @@ export class VoiceRecorder {
   private sections: VoiceSection[] = [];
   private listeners = new Set<(state: VoiceRecorderState) => void>();
   private error?: string;
+  private workbenchOverride: VoiceRecorderState | null = null;
 
   public static isSupported(): boolean {
     if (typeof window === 'undefined') return false;
@@ -156,7 +157,34 @@ export class VoiceRecorder {
     this.listeners.forEach((fn) => fn(s));
   }
 
+  public setWorkbenchState(mock: Partial<VoiceRecorderState> | null): void {
+    if (!mock) {
+      this.workbenchOverride = null;
+      this.notify();
+      return;
+    }
+    this.workbenchOverride = {
+      isRecording: mock.isRecording ?? true,
+      isReady: mock.isReady ?? true,
+      durationMs: mock.durationMs ?? 0,
+      transcript: mock.transcript ?? '',
+      interimTranscript: mock.interimTranscript ?? '',
+      annotatedTranscript: mock.annotatedTranscript ?? '',
+      pins: mock.pins ? [...mock.pins] : [],
+      sections: mock.sections ? mock.sections.map((s) => ({ ...s, targets: [...s.targets] })) : [],
+      error: mock.error,
+    };
+    this.notify();
+  }
+
   public getState(): VoiceRecorderState {
+    if (this.workbenchOverride) {
+      return {
+        ...this.workbenchOverride,
+        pins: [...this.workbenchOverride.pins],
+        sections: this.workbenchOverride.sections.map((s) => ({ ...s, targets: [...s.targets] })),
+      };
+    }
     const durationMs =
       this.isRecording && this.isReady && this.startTime > 0
         ? Math.round(performance.now() - this.startTime)
@@ -431,6 +459,7 @@ export class VoiceRecorder {
   }
 
   public cancel(): void {
+    this.workbenchOverride = null;
     this.isRecording = false;
     this.isReady = false;
     if (this.readyTimeout) {

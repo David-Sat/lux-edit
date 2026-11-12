@@ -68,6 +68,15 @@ function flashElementHighlight(el: HTMLElement, boxShadow: string, transition: s
 
 export class OverlayStateManager {
   private static instance?: OverlayStateManager;
+  private static workbenchMode = false;
+
+  public static setWorkbenchMode(enabled: boolean): void {
+    OverlayStateManager.workbenchMode = enabled;
+  }
+
+  public static isWorkbenchMode(): boolean {
+    return OverlayStateManager.workbenchMode;
+  }
 
   public activeTool: ActiveTool = 'none';
   public isDockMenuOpen = false;
@@ -206,11 +215,12 @@ export class OverlayStateManager {
       notify: () => this.notify(),
       basePathPrefix: BASE_PATH_PREFIX,
     });
-
-    this.loadFromStorage();
-    this.restoreVerificationTargets();
-    this.wsSync.connect();
-    this.fetchVersionInfo();
+    if (!OverlayStateManager.workbenchMode) {
+      this.loadFromStorage();
+      this.restoreVerificationTargets();
+      this.wsSync.connect();
+      this.fetchVersionInfo();
+    }
     if (typeof window !== 'undefined') {
       const prevResizeHandler = (OverlayStateManager as any)._resizeHandler;
       if (prevResizeHandler) {
@@ -263,8 +273,10 @@ export class OverlayStateManager {
     if (mode === 'batch') {
       this.sessionStatus = 'draft';
     }
-    saveReviewMode(mode);
-    this.wsSync.send('SET_REVIEW_MODE', { reviewMode: mode, mode });
+    if (!OverlayStateManager.workbenchMode) {
+      saveReviewMode(mode);
+      this.wsSync.send('SET_REVIEW_MODE', { reviewMode: mode, mode });
+    }
     if (mode === 'live' && this.hasPendingFeedback()) {
       this.submitBatch();
       return;
@@ -273,7 +285,9 @@ export class OverlayStateManager {
   }
 
   public endLiveReview(): void {
-    this.wsSync.send('END_LIVE_REVIEW', {});
+    if (!OverlayStateManager.workbenchMode) {
+      this.wsSync.send('END_LIVE_REVIEW', {});
+    }
     this.hookLease = {
       ...this.hookLease,
       connected: false,
@@ -364,6 +378,7 @@ export class OverlayStateManager {
   }
 
   private saveToStorage(): void {
+    if (OverlayStateManager.workbenchMode) return;
     savePersistedDraft(this.getBatch(), this.hasPendingFeedback(), this.sessionStatus);
   }
 
@@ -403,6 +418,67 @@ export class OverlayStateManager {
     }
     this.wsSync.close();
     this.listeners.clear();
+  }
+
+  public resetForWorkbench(): void {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    if (this.liveMutationTimer) {
+      clearTimeout(this.liveMutationTimer);
+      this.liveMutationTimer = null;
+    }
+    if (this.verificationTimer) {
+      clearTimeout(this.verificationTimer);
+      this.verificationTimer = null;
+    }
+
+    this.activeTool = 'none';
+    this.isDockMenuOpen = false;
+    this.isDrawerOpen = false;
+    this.dockPosition = {
+      side: 'right',
+      verticalAnchor: 'bottom',
+      offsetY: 24,
+    };
+    this.activeElement = null;
+    this.hoveredElement = null;
+    this.commentTargetElement = null;
+    this.commentTargetElements = [];
+    this.commentTargetSelectedText = undefined;
+    this.commentTargetBounds = undefined;
+    this.commentDraftText = '';
+    this.pendingPageReload = false;
+    this.commentPendingScreenshot = undefined;
+    this.userPrompt = '';
+    this.sessionId = `workbench_${Date.now().toString(36)}`;
+    this.sessionStatus = 'draft';
+    this.reviewMode = 'batch';
+    this.hookLease = {
+      connected: false,
+      agentState: 'idle',
+      seenCursor: 0,
+      latestCursor: 0,
+    };
+    this.variantSets = [];
+    this.variantDecisions = [];
+    this.activeVariantPreview.clear();
+    this.verificationTargets = [];
+    this.mutations = [];
+    this.annotations = [];
+    this.voiceReviews = [];
+    this.activeVoicePins = [];
+    this.agentReplies = [];
+    this.updateInfo = null;
+    this.isStoppingVoice = false;
+    this.currentPathname = getRouteFromLocation();
+
+    this.domMutations.clear();
+    this.variantManager.clearOriginalSnapshots();
+    VoiceRecorder.getInstance().setWorkbenchState(null);
+
+    this.notify();
   }
 
   public getCurrentPathname(): string {
@@ -490,6 +566,7 @@ export class OverlayStateManager {
 
   public notify(): void {
     this.listeners.forEach((fn) => fn());
+    if (OverlayStateManager.workbenchMode) return;
     this.saveToStorage();
     if (this.hasPendingFeedback() || this.sessionStatus !== 'draft') {
       this.scheduleAutoSync();
@@ -505,6 +582,7 @@ export class OverlayStateManager {
   }
 
   public async autoSync(): Promise<void> {
+    if (OverlayStateManager.workbenchMode) return;
     const batch = this.getBatch();
     const hasContent = this.hasPendingFeedback();
 
@@ -689,7 +767,9 @@ export class OverlayStateManager {
 
   public setDockPosition(pos: DockPosition): void {
     this.dockPosition = pos;
-    saveDockPosition(pos);
+    if (!OverlayStateManager.workbenchMode) {
+      saveDockPosition(pos);
+    }
     this.notify();
   }
 
@@ -751,7 +831,9 @@ export class OverlayStateManager {
 
   public setCommentDraftText(text: string): void {
     this.commentDraftText = text;
-    saveComposerDraft(text.trim() ? text : '');
+    if (!OverlayStateManager.workbenchMode) {
+      saveComposerDraft(text.trim() ? text : '');
+    }
   }
 
   public setCommentTarget(
@@ -1173,7 +1255,10 @@ export class OverlayStateManager {
     this.sessionStatus = 'submitted';
     batch.status = 'submitted';
 
-    await this.wsSync.sendBatch('SUBMIT_BATCH', batch);
+    if (!OverlayStateManager.workbenchMode) {
+      await this.wsSync.sendBatch('SUBMIT_BATCH', batch);
+    }
+
     this.notify();
   }
 }

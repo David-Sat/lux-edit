@@ -28,6 +28,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           if (node === shadowRoot) return true;
           const el = node as HTMLElement;
           if (el && el.tagName && el.tagName.toLowerCase() === 'visual-edit-overlay') return true;
+          if (el && el.dataset && el.dataset.luxWorkbenchUi !== undefined) return true;
         }
       } catch (err) {}
       return false;
