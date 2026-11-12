@@ -89,8 +89,16 @@ export class VariantManager {
     return this.originalSnapshots;
   }
 
-  public clearOriginalSnapshots(): void {
-    this.originalSnapshots.clear();
+  public clearOriginalSnapshots(keepSetIds?: Set<string>): void {
+    if (!keepSetIds || keepSetIds.size === 0) {
+      this.originalSnapshots.clear();
+      return;
+    }
+    for (const key of this.originalSnapshots.keys()) {
+      if (!keepSetIds.has(key)) {
+        this.originalSnapshots.delete(key);
+      }
+    }
   }
 
   public previewVariant(setId: string, variantId: string | null): void {

@@ -252,9 +252,15 @@ export class OverlayStateManager {
       this.voiceReviews = [];
       this.activeVoicePins = [];
       this.variantDecisions = [];
-      this.variantSets = [];
-      this.activeVariantPreview.clear();
-      this.variantManager.clearOriginalSnapshots();
+      const pendingSets = this.variantSets.filter((s) => s.status === 'pending');
+      const pendingSetIds = new Set(pendingSets.map((s) => s.id));
+      this.variantSets = pendingSets;
+      for (const id of this.activeVariantPreview.keys()) {
+        if (!pendingSetIds.has(id)) {
+          this.activeVariantPreview.delete(id);
+        }
+      }
+      this.variantManager.clearOriginalSnapshots(pendingSetIds);
       this.userPrompt = '';
       this.sessionId = `session_${Date.now().toString(36)}`;
       this.sessionStatus = 'draft';

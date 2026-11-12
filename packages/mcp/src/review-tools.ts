@@ -389,25 +389,6 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
       };
     }
 
-    const localResult = store.updateStatus(
-      targetId,
-      status,
-      reply ? { agentId: 'agent', message: reply } : undefined,
-      { expectedHash, modifiedSelectors }
-    );
-
-    if (localResult.staleConflict) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: 'text' as const,
-            text: `Stale revision conflict on session "${targetId}": expected hash "${expectedHash}", but current hash is "${localResult.currentHash}". The user added new edits or comments while you were working. Call \`lux_get_pending_review\` to inspect the latest changes before resolving.`,
-          },
-        ],
-      };
-    }
-
     const targetUrl = bridge.resolveTargetServerUrl({ workspaceDir, serverUrl });
     let liveNotified = false;
     if (targetUrl) {
@@ -437,12 +418,48 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
             ],
           };
         }
+        if (res.status === 400) {
+          const errData = (await res.json()) as { error?: string };
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text' as const,
+                text: errData?.error || `Failed to resolve session "${targetId}" on live server.`,
+              },
+            ],
+          };
+        }
         liveNotified = res.ok;
       } catch {
-        // Live server notification failed; try fallback endpoint below.
+        // Live server unreachable; fall back to local EventStore update below.
+      }
+    }
+
+    let localUpdated = false;
+    if (!liveNotified) {
+      const localResult = store.updateStatus(
+        targetId,
+        status,
+        reply ? { agentId: 'agent', message: reply } : undefined,
+        { expectedHash, modifiedSelectors }
+      );
+
+      if (localResult.staleConflict) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `Stale revision conflict on session "${targetId}": expected hash "${expectedHash}", but current hash is "${localResult.currentHash}". The user added new edits or comments while you were working. Call \`lux_get_pending_review\` to inspect the latest changes before resolving.`,
+            },
+          ],
+        };
       }
 
-      if (!liveNotified) {
+      localUpdated = localResult.updated;
+
+      if (targetUrl) {
         try {
           await fetch(`${targetUrl}${API_ROUTES.PENDING}?resolve=true`, { signal: AbortSignal.timeout(600) }).catch(() => {});
         } catch {
@@ -456,7 +473,7 @@ export function registerReviewTools(server: McpServer, bridge: LuxServerBridge, 
         {
           type: 'text' as const,
           text:
-            localResult.updated || liveNotified
+            localUpdated || liveNotified
               ? `Review session "${targetId}" marked as ${status}.${reply ? ` Reply recorded: "${reply}"` : ''}`
               : `Session "${targetId}" not found on disk, but live review server was notified.`,
         },

@@ -84,15 +84,6 @@ export class WebSocketHub {
           })
         );
 
-        // Send active pending variant sets if any exist
-        const activeVariants = this.eventStore.getVariantSets().filter((s) => s.status === 'pending');
-        ws.send(
-          JSON.stringify({
-            type: 'SYNC_VARIANTS',
-            payload: activeVariants,
-          })
-        );
-
         const latestSessions = this.eventStore.listSessions();
         if (latestSessions.length > 0) {
           const latest = latestSessions[latestSessions.length - 1];
@@ -110,6 +101,15 @@ export class WebSocketHub {
             );
           }
         }
+
+        // Send active pending variant sets after session status sync so unresolved variants persist
+        const activeVariants = this.eventStore.getVariantSets().filter((s) => s.status === 'pending');
+        ws.send(
+          JSON.stringify({
+            type: 'SYNC_VARIANTS',
+            payload: activeVariants,
+          })
+        );
       } catch (err) {
         console.debug('[lux] Failed to send initial WebSocket handshake state:', err);
       }
