@@ -47,6 +47,35 @@ function hasPendingContent(batch: VisualEditBatch | null): batch is VisualEditBa
   );
 }
 
+function extractBatchImagesAndSanitize<T extends VisualEditBatch>(batch: T): {
+  imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }>;
+  sanitizedBatch: T;
+} {
+  const imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }> = [];
+  const sanitizedBatch: T = {
+    ...batch,
+    annotations: batch.annotations?.map((a) => {
+      if (a.screenshot && typeof a.screenshot === 'string') {
+        const clean = a.screenshot.replace(/^data:image\/\w+;base64,/, '');
+        if (clean) {
+          imageItems.push({
+            type: 'image' as const,
+            data: clean,
+            mimeType: 'image/png' as const,
+          });
+        }
+        const kb = Math.round((a.screenshot.length * 3) / 4 / 1024);
+        return {
+          ...a,
+          screenshot: `[base64 image (${kb > 0 ? kb : 1}KB)]`,
+        };
+      }
+      return a;
+    }),
+  };
+  return { imageItems, sanitizedBatch };
+}
+
 function readServerMetadata(rootDir: string): LuxServerMetadata | null {
   try {
     const metaPath = path.join(rootDir, SERVER_METADATA_DIR, SERVER_METADATA_FILE);
@@ -355,31 +384,12 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     const revHash = batch.revisionHash || '';
     const nextStepHint = `\n\n### Next Steps for Agent\n- Apply the requested code changes to the project files.\n- To visually verify your changes in the live browser, call \`lux_capture_visual\`.\n- When finished, call \`lux_resolve_review\` with \`sessionId: "${batch.id}"\` and \`expectedHash: "${revHash}"\` (or save the modified source file to trigger automatic hot-reload verification).\n- If working in Antigravity, start a fresh background listener (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) before ending your turn.\n- Carry \`nextCursor: ${nextCursor}\` forward if polling incrementally.`;
 
-    const imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }> = [];
-    const sanitizedBatch = {
+    const { imageItems, sanitizedBatch } = extractBatchImagesAndSanitize({
       ...batch,
       nextCursor,
       reviewMode,
       liveHookConnected: hookConnected,
-      annotations: batch.annotations?.map((a) => {
-        if (a.screenshot && typeof a.screenshot === 'string') {
-          const clean = a.screenshot.replace(/^data:image\/\w+;base64,/, '');
-          if (clean) {
-            imageItems.push({
-              type: 'image' as const,
-              data: clean,
-              mimeType: 'image/png' as const,
-            });
-          }
-          const kb = Math.round((a.screenshot.length * 3) / 4 / 1024);
-          return {
-            ...a,
-            screenshot: `[base64 image (${kb > 0 ? kb : 1}KB)]`,
-          };
-        }
-        return a;
-      }),
-    };
+    });
 
     const rawPayloadSection = args?.includeRawJson
       ? `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedBatch, null, 2)}\n\`\`\``
@@ -416,7 +426,7 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
     sessionId,
     workspaceDir,
     serverUrl,
-    includeRawJson = false,
+    includeRawJson = true,
   }: {
     sessionId: string;
     workspaceDir?: string;
@@ -441,31 +451,11 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       };
     }
 
-    const imageItems: Array<{ type: 'image'; data: string; mimeType: 'image/png' }> = [];
-    const sanitizedSession = {
-      ...session,
-      annotations: session.annotations?.map((a) => {
-        if (a.screenshot && typeof a.screenshot === 'string') {
-          const clean = a.screenshot.replace(/^data:image\/\w+;base64,/, '');
-          if (clean) {
-            imageItems.push({
-              type: 'image' as const,
-              data: clean,
-              mimeType: 'image/png' as const,
-            });
-          }
-          const kb = Math.round((a.screenshot.length * 3) / 4 / 1024);
-          return {
-            ...a,
-            screenshot: `[base64 image (${kb > 0 ? kb : 1}KB)]`,
-          };
-        }
-        return a;
-      }),
-    };
-
+    const { imageItems, sanitizedBatch: sanitizedSession } = extractBatchImagesAndSanitize(session);
     const formattedSummary = formatBatchSummary(session);
-    const rawPayloadSection = `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedSession, null, 2)}\n\`\`\``;
+    const rawPayloadSection = includeRawJson
+      ? `\n\n### Raw payload:\n\`\`\`json\n${JSON.stringify(sanitizedSession, null, 2)}\n\`\`\``
+      : '';
 
     return {
       content: [
@@ -488,8 +478,8 @@ export function createVisualEditMcpServer(rootDir: string = process.cwd()) {
       includeRawJson: z
         .boolean()
         .optional()
-        .default(false)
-        .describe('Whether to append full raw JSON batch payload beneath the markdown summary. Defaults to false to minimize token consumption.'),
+        .default(true)
+        .describe('Whether to append sanitized raw JSON batch payload (screenshots redacted) beneath the markdown summary. Defaults to true.'),
     },
     READ_ONLY_ANNOTATIONS,
     getSessionHandler

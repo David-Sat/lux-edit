@@ -601,7 +601,7 @@ describe('OverlayStateManager', () => {
               id: 'var_malicious',
               name: 'Malicious Variant',
               rationale: 'XSS test',
-              html: '<strong>Clean</strong><script>alert("XSS")</script><img src="x" onerror="alert(1)"><iframe src="https://evil.com"></iframe><a href="javascript:alert(1)" onclick="steal()">Click</a>',
+              html: '<strong>Clean</strong><script>alert("XSS")</script><img src="data:image/svg+xml,<svg/>" onerror="alert(1)"><iframe src="https://evil.com"></iframe><a href="java\tscript:alert(1)" onclick="steal()">Click</a>',
             },
           ],
         },
@@ -614,6 +614,7 @@ describe('OverlayStateManager', () => {
       const img = target.querySelector('img');
       if (img) {
         expect(img.hasAttribute('onerror')).toBe(false);
+        expect(img.hasAttribute('src')).toBe(false);
       }
       const link = target.querySelector('a');
       if (link) {

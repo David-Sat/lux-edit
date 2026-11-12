@@ -27,11 +27,11 @@ export function applySanitizedHtml(targetEl: HTMLElement, rawHtml: string): void
       }
       for (const attr of Array.from(element.attributes)) {
         const attrName = attr.name.toLowerCase();
-        const attrVal = attr.value.trim().toLowerCase();
+        const attrVal = attr.value.replace(/[\u0000-\u0020]+/g, '').toLowerCase();
         if (
           attrName.startsWith('on') ||
           attrVal.startsWith('javascript:') ||
-          attrVal.startsWith('data:text/html') ||
+          attrVal.startsWith('data:') ||
           attrVal.startsWith('vbscript:')
         ) {
           element.removeAttribute(attr.name);

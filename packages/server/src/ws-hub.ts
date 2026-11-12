@@ -203,7 +203,8 @@ export class WebSocketHub {
     }
 
     const rawTimeout = typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) ? Math.floor(timeoutMs) : 12000;
-    const safeTimeoutMs = Math.max(500, Math.min(rawTimeout, 30000));
+    const clampedTimeout = rawTimeout < 500 ? 500 : rawTimeout > 30000 ? 30000 : rawTimeout;
+    const safeTimeoutMs = clampedTimeout >= 500 && clampedTimeout <= 30000 ? clampedTimeout : 12000;
 
     const requestId = `cap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const reqPayload: VisualCaptureRequest = {
@@ -223,7 +224,7 @@ export class WebSocketHub {
           error: `Visual capture timed out after ${safeTimeoutMs}ms waiting for browser response.`,
           capturedAt: Date.now(),
         });
-      }, safeTimeoutMs);
+      }, safeTimeoutMs <= 30000 ? safeTimeoutMs : 30000);
 
       this.pendingCaptures.set(requestId, { resolve, timer });
 

@@ -42,6 +42,15 @@ export function sendJson(
   res.end(JSON.stringify(data));
 }
 
+function clampTimeoutMs(raw: unknown, defaultMs: number, minMs: number, maxMs: number): number {
+  const num = typeof raw === 'number' ? raw : raw !== null && raw !== undefined ? Number(raw) : NaN;
+  if (!Number.isFinite(num)) return defaultMs;
+  const floored = Math.floor(num);
+  if (floored < minMs) return minMs;
+  if (floored > maxMs) return maxMs;
+  return floored;
+}
+
 /**
  * Dispatches API requests. Returns true if the route was handled, false otherwise.
  */
@@ -108,8 +117,7 @@ export async function handleApiRoute(
       const sessionId = String(payload.sessionId || 'default');
       const event = payload.event || 'Stop';
       const seenCursor = typeof payload.seenCursor === 'number' ? payload.seenCursor : undefined;
-      const rawWaitMs = typeof payload.waitMs === 'number' && Number.isFinite(payload.waitMs) ? Math.floor(payload.waitMs) : 25000;
-      const waitMs = Math.max(100, Math.min(rawWaitMs, 60000));
+      const waitMs = clampTimeoutMs(payload.waitMs, 25000, 100, 60000);
       const waiterId = typeof payload.waiterId === 'string' ? payload.waiterId : undefined;
 
       const lease = ctx.eventStore.registerHookEvent({
@@ -288,8 +296,7 @@ ${summary}
   if (pathname === API_ROUTES.CAPTURE && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
-      const rawTimeoutMs = typeof body.timeoutMs === 'number' && Number.isFinite(body.timeoutMs) ? Math.floor(body.timeoutMs) : 12000;
-      const timeoutMs = Math.max(500, Math.min(rawTimeoutMs, 30000));
+      const timeoutMs = clampTimeoutMs(body.timeoutMs, 12000, 500, 30000);
       const captureResult = await ctx.wsHub.requestVisualCapture(
         {
           selector: body.selector,
@@ -482,7 +489,7 @@ ${summary}
     const afterCursor = afterCursorParam !== null ? parseInt(afterCursorParam, 10) : undefined;
     const waitMsParam = url.searchParams.get('waitMs');
     const parsedWaitMs = waitMsParam !== null ? parseInt(waitMsParam, 10) : 0;
-    const waitMs = Number.isFinite(parsedWaitMs) ? Math.max(0, Math.min(parsedWaitMs, 60000)) : 0;
+    const waitMs = clampTimeoutMs(parsedWaitMs, 0, 0, 60000);
     const shouldClaim = url.searchParams.get('claim') === 'true' || url.searchParams.get('claim') === '1';
     const shouldResolve = url.searchParams.get('resolve') === 'true' || url.searchParams.get('resolve') === '1';
 

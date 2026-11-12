@@ -249,7 +249,8 @@ export class LeaseManager {
     const rawTimeout = typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
       ? Math.floor(options.timeoutMs)
       : 25000;
-    const timeoutMs = Math.max(100, Math.min(rawTimeout, 60000));
+    const clampedTimeout = rawTimeout < 100 ? 100 : rawTimeout > 60000 ? 60000 : rawTimeout;
+    const timeoutMs = clampedTimeout >= 100 && clampedTimeout <= 60000 ? clampedTimeout : 25000;
 
     if (options?.source === 'background_waiter') {
       this.lastBackgroundWaiterPollAt = Date.now();
@@ -302,7 +303,7 @@ export class LeaseManager {
           timedOut: true,
           ended: options?.source === 'background_waiter' ? false : !this.hookLease,
         });
-      }, timeoutMs);
+      }, timeoutMs <= 60000 ? timeoutMs : 60000);
 
       const waiter: HookWaiter = {
         afterCursor,
