@@ -674,4 +674,40 @@ describe('OverlayStateManager', () => {
       expect(batchAfterPick.mutations).toHaveLength(0);
     });
   });
+
+  describe('live-mode auto-sync idempotency', () => {
+    it('deduplicates unchanged autoSync payloads and avoids STATUS_CHANGE ping-pong', async () => {
+      vi.useFakeTimers();
+      try {
+        const wsSync = (state as unknown as { wsSync: { sendBatch: (...args: unknown[]) => Promise<boolean> } }).wsSync;
+        const sendBatchSpy = vi.spyOn(wsSync, 'sendBatch').mockResolvedValue(true);
+
+        state.setReviewMode('live');
+        state.setUserPrompt('Tighten header padding');
+        sendBatchSpy.mockClear();
+
+        // First autoSync sends SYNC_SESSION once
+        await state.autoSync();
+        expect(sendBatchSpy).toHaveBeenCalledTimes(1);
+
+        // Second identical autoSync is skipped
+        await state.autoSync();
+        expect(sendBatchSpy).toHaveBeenCalledTimes(1);
+
+        // Server acknowledges with STATUS_CHANGE('submitted') -> must NOT schedule another SYNC_SESSION
+        (state as unknown as { handleServerStatusChange: (p: { status: string }) => void }).handleServerStatusChange({
+          status: 'submitted',
+        });
+        await vi.advanceTimersByTimeAsync(500);
+        expect(sendBatchSpy).toHaveBeenCalledTimes(1);
+
+        // Changing feedback invalidates the digest and sends again once
+        state.setUserPrompt('Tighten header padding to 12px');
+        await vi.advanceTimersByTimeAsync(250);
+        expect(sendBatchSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

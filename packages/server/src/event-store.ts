@@ -172,14 +172,27 @@ export class EventStore {
     return this.currentCursor;
   }
 
-  private assignCursorsAndHashes(batch: VisualEditBatch): void {
-    let maxBatchCursor = batch.latestCursor || 0;
+  private assignCursorsAndHashes(batch: VisualEditBatch, existing?: VisualEditBatch): void {
+    const existingItemCursors = new Map<string, number>();
+    if (existing) {
+      for (const collection of [existing.mutations, existing.annotations, existing.voiceReviews, existing.variantDecisions]) {
+        if (!collection) continue;
+        for (const item of collection) {
+          if (item.id && typeof item.cursor === 'number') {
+            existingItemCursors.set(item.id, item.cursor);
+          }
+        }
+      }
+    }
+
+    let maxBatchCursor = Math.max(batch.latestCursor || 0, existing?.latestCursor || 0);
 
     for (const collection of [batch.mutations, batch.annotations, batch.voiceReviews, batch.variantDecisions]) {
       if (!collection) continue;
       for (const item of collection) {
         if (typeof item.cursor !== 'number') {
-          item.cursor = this.nextCursor();
+          const reused = item.id ? existingItemCursors.get(item.id) : undefined;
+          item.cursor = typeof reused === 'number' ? reused : this.nextCursor();
         }
         if (item.cursor > maxBatchCursor) {
           maxBatchCursor = item.cursor;
@@ -229,7 +242,10 @@ export class EventStore {
     this.listeners.forEach((fn) => fn({ type, sessionId, payload }));
   }
 
-  public saveBatch(batch: VisualEditBatch, options?: { forceSubmit?: boolean }): void {
+  public saveBatch(
+    batch: VisualEditBatch,
+    options?: { forceSubmit?: boolean; explicitSubmit?: boolean }
+  ): boolean {
     this.loadFromDisk();
     if (batch.reviewMode === 'live' || batch.reviewMode === 'batch') {
       this.reviewMode = batch.reviewMode;
@@ -244,18 +260,27 @@ export class EventStore {
         this.sessions.delete(batch.id);
         this.saveToDisk();
         this.notify('SAVE_BATCH', batch.id, batch);
+        return true;
       }
-      return;
+      return false;
     }
 
     const existing = this.sessions.get(batch.id);
     const prevHash = existing?.revisionHash;
+    const prevStatus = existing?.status;
 
     if ((!batch.variantDecisions || batch.variantDecisions.length === 0) && existing?.variantDecisions?.length) {
       batch.variantDecisions = existing.variantDecisions;
     }
 
-    this.assignCursorsAndHashes(batch);
+    if (existing?.latestCursor && (!batch.latestCursor || batch.latestCursor < existing.latestCursor)) {
+      batch.latestCursor = existing.latestCursor;
+    }
+
+    this.assignCursorsAndHashes(batch, existing);
+
+    const contentChanged = !prevHash || prevHash !== batch.revisionHash;
+    const preserveInProgress = !contentChanged && prevStatus === 'in_progress' && !options?.explicitSubmit;
 
     if (prevHash && prevHash !== batch.revisionHash) {
       batch.latestCursor = this.nextCursor();
@@ -263,11 +288,15 @@ export class EventStore {
 
     const effectiveMode = batch.reviewMode || this.reviewMode;
     const isLive = effectiveMode === 'live';
-    const shouldMarkSubmitted = options?.forceSubmit || batch.status === 'submitted' || (isLive && hasContent);
+    const shouldMarkSubmitted =
+      !preserveInProgress && (options?.forceSubmit || batch.status === 'submitted' || (isLive && hasContent));
+    const newlySubmitted = shouldMarkSubmitted && prevStatus !== 'submitted' && prevStatus !== 'in_progress';
 
-    if (shouldMarkSubmitted) {
+    if (preserveInProgress) {
+      batch.status = 'in_progress';
+    } else if (shouldMarkSubmitted) {
       batch.status = 'submitted';
-      if (!prevHash || prevHash !== batch.revisionHash || options?.forceSubmit) {
+      if (contentChanged || newlySubmitted) {
         batch.latestCursor = this.nextCursor();
       }
     }
@@ -275,6 +304,14 @@ export class EventStore {
     if (existing?.status === 'in_progress' && prevHash && prevHash !== batch.revisionHash) {
       batch.stale = true;
       batch.staleReason = 'User modified elements in the browser while the agent was processing an earlier revision.';
+    } else if (!contentChanged && existing?.stale) {
+      batch.stale = existing.stale;
+      batch.staleReason = existing.staleReason;
+    }
+
+    // Skip disk writes, cursor advancement, and waiter wakeups on idempotent re-syncs
+    if (!contentChanged && !newlySubmitted && existing && batch.status === prevStatus && !options?.explicitSubmit) {
+      return false;
     }
 
     this.sessions.set(batch.id, batch);
@@ -285,6 +322,7 @@ export class EventStore {
     if (batch.status === 'submitted') {
       this.leaseManager.wakeHookWaiters();
     }
+    return true;
   }
 
   public getSession(id: string): VisualEditBatch | undefined {
