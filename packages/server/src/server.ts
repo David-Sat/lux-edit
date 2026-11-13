@@ -11,11 +11,11 @@ import {
   SERVER_METADATA_DIR,
   SERVER_METADATA_FILE,
   LuxServerMetadata,
-  checkForUpdates,
   stripTrailingSlashes,
 } from '@visual-edit/core';
 import { EventStore } from './event-store.js';
 import { WebSocketHub } from './ws-hub.js';
+import { handleApiRoute } from './routes.js';
 
 export interface VisualEditServerOptions {
   port: number;
@@ -30,7 +30,9 @@ export interface VisualEditServerOptions {
 let serverPkgVersion = '0.13.0';
 try {
   serverPkgVersion = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version;
-} catch {}
+} catch {
+  // Fall back to default version when package.json cannot be read.
+}
 
 export class VisualEditServer {
   public readonly appId: string;
@@ -141,14 +143,17 @@ export class VisualEditServer {
         if (this.reloadDebounce) clearTimeout(this.reloadDebounce);
         this.reloadDebounce = setTimeout(() => {
           console.log(`[lux] Detected code change in ${filename || watchTarget}, resolving active review and notifying browser...`);
-          this.eventStore.markPendingSessionsImplemented({
+          const verificationTargets = this.eventStore.markPendingSessionsImplemented({
             port: this.options.port,
             appId: this.appId,
             onlyIfOlderThanReviewTurn: true,
           });
           this.wsHub.broadcast({
             type: 'RELOAD_PAGE',
-            payload: { file: filename || watchTarget },
+            payload: {
+              file: filename || watchTarget,
+              verificationTargets,
+            },
           });
         }, 150);
       });
@@ -217,8 +222,8 @@ export class VisualEditServer {
           } else if (encoding.includes('deflate')) {
             buffer = zlib.inflateSync(buffer);
           }
-        } catch (err: any) {
-          console.error('[lux] Failed to decompress upstream HTML payload:', err.message);
+        } catch (err: unknown) {
+          console.error('[lux] Failed to decompress upstream HTML payload:', err instanceof Error ? err.message : String(err));
         }
 
         const body = buffer.toString('utf-8');
@@ -230,13 +235,13 @@ export class VisualEditServer {
       });
     });
 
-    this.proxy.on('error', (err, req, res) => {
+    this.proxy.on('error', (err, _req, res) => {
       console.error('[lux] Proxy error:', err.message);
-      if (res && 'writeHead' in res && !(res as ServerResponse).headersSent) {
-        (res as ServerResponse).writeHead(502, { 'Content-Type': 'text/plain' });
-        (res as ServerResponse).end(`Proxy error: Cannot reach upstream target at ${this.options.target}`);
-      } else if (res && 'destroy' in res && typeof (res as any).destroy === 'function') {
-        (res as any).destroy();
+      if (res && 'writeHead' in res && !res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end(`Proxy error: Cannot reach upstream target at ${this.options.target}`);
+      } else if (res && 'destroy' in res && typeof res.destroy === 'function') {
+        res.destroy();
       }
     });
   }
@@ -254,8 +259,8 @@ export class VisualEditServer {
     return `${html}\n${scriptTag}`;
   }
 
-  private handleRequest(req: IncomingMessage, res: ServerResponse): void {
-    let pathname = '/';
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    let pathname: string;
     let url: URL;
     try {
       url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -275,108 +280,15 @@ export class VisualEditServer {
       return;
     }
 
-    if (pathname === API_ROUTES.OVERLAY_JS) {
-      if (fs.existsSync(this.overlayScriptPath)) {
-        res.writeHead(200, {
-          'Content-Type': 'application/javascript; charset=utf-8',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        });
-        fs.createReadStream(this.overlayScriptPath).pipe(res);
-      } else {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Overlay bundle not found. Run `pnpm build` first.');
-      }
-      return;
-    }
-
-    if (pathname === API_ROUTES.EDITS && req.method === 'POST') {
-      let body = '';
-      req.on('data', (chunk) => (body += chunk.toString()));
-      req.on('end', () => {
-        try {
-          const batch = JSON.parse(body);
-          if (this.appId && batch.appId && batch.appId !== this.appId) {
-            console.warn(`[lux] Dropping REST batch from mismatched appId: ${batch.appId} (expected: ${this.appId})`);
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'App ID mismatch' }));
-            return;
-          }
-          if (!batch.appId) {
-            batch.appId = this.appId;
-          }
-          this.eventStore.saveBatch(batch);
-          this.wsHub.broadcast({
-            type: 'STATUS_CHANGE',
-            sessionId: batch.id,
-            payload: { status: 'submitted' },
-          });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, id: batch.id }));
-        } catch (e) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON payload' }));
-        }
-      });
-      return;
-    }
-
-    if ((pathname === API_ROUTES.SESSIONS || pathname === '/__lux/api/sessions') && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(this.eventStore.listSessions()));
-      return;
-    }
-
-    if ((pathname === API_ROUTES.VERSION || pathname === '/__lux/api/version') && req.method === 'GET') {
-      checkForUpdates(this.version)
-        .then((result) => {
-          res.writeHead(200, {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-          });
-          res.end(JSON.stringify(result));
-        })
-        .catch(() => {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              updateAvailable: false,
-              currentVersion: this.version,
-              latestVersion: this.version,
-              changelogUrl: 'https://github.com/David-Sat/lux-edit/releases',
-            })
-          );
-        });
-      return;
-    }
-
-    if ((pathname === API_ROUTES.PENDING || pathname === '/__lux/api/pending') && req.method === 'GET') {
-      const activeSessionIds = this.wsHub.getActiveSessionIds();
-      const pending = this.eventStore.getPendingReview({
-        port: this.options.port,
-        appId: this.appId,
-        activeSessionIds,
-      });
-
-      const shouldResolve = url.searchParams.get('resolve') === 'true' || url.searchParams.get('resolve') === '1';
-      if (pending && shouldResolve) {
-        this.eventStore.markPendingSessionsImplemented({
-          port: this.options.port,
-          appId: this.appId,
-          sessionId: pending.id,
-        });
-        this.wsHub.broadcast({
-          type: 'STATUS_CHANGE',
-          sessionId: pending.id,
-          payload: { status: 'implemented', replies: [] },
-        });
-      }
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(pending || null));
-      return;
-    }
+    const handled = await handleApiRoute(req, res, pathname, url, {
+      eventStore: this.eventStore,
+      wsHub: this.wsHub,
+      appId: this.appId,
+      version: this.version,
+      port: this.options.port,
+      overlayScriptPath: this.overlayScriptPath,
+    });
+    if (handled) return;
 
     if (this.isStatic && this.singleHtmlFile) {
       if (pathname === '/' || pathname === `/${path.basename(this.singleHtmlFile)}` || pathname === '/index.html') {
@@ -397,7 +309,7 @@ export class VisualEditServer {
         ? resolvedStaticRoot
         : resolvedStaticRoot + path.sep;
 
-      let decodedPath = pathname;
+      let decodedPath: string;
       try {
         decodedPath = decodeURIComponent(pathname);
       } catch {
@@ -490,7 +402,7 @@ export class VisualEditServer {
       const strictPort = !!this.options.strictPort;
 
       const tryListen = (port: number) => {
-        const onError = (err: any) => {
+        const onError = (err: NodeJS.ErrnoException) => {
           this.server.removeListener('error', onError);
           if (err.code === 'EADDRINUSE' && !strictPort && initialPort > 0 && port < initialPort + 50) {
             tryListen(port + 1);
@@ -532,8 +444,8 @@ export class VisualEditServer {
         rootDir: this.rootDir,
       };
       fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2) + '\n', 'utf-8');
-    } catch (err: any) {
-      console.debug('[lux] Failed to write server metadata lockfile:', err?.message);
+    } catch (err: unknown) {
+      console.debug('[lux] Failed to write server metadata lockfile:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -551,8 +463,8 @@ export class VisualEditServer {
           fs.unlinkSync(metaPath);
         }
       }
-    } catch (err: any) {
-      console.debug('[lux] Failed to remove server metadata lockfile:', err?.message);
+    } catch (err: unknown) {
+      console.debug('[lux] Failed to remove server metadata lockfile:', err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -565,12 +477,17 @@ export class VisualEditServer {
     if (this.fileWatcher) {
       try {
         this.fileWatcher.close();
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Failed to close file watcher:', err);
+      }
     }
+    this.eventStore.clearWaiters();
     this.wsHub.close();
     try {
       this.proxy?.close();
-    } catch {}
+    } catch (err) {
+      console.debug('[lux] Failed to close upstream proxy:', err);
+    }
     return new Promise((resolve) => {
       this.server.close(() => resolve());
     });

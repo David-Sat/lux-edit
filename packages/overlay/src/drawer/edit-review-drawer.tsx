@@ -1,35 +1,13 @@
-import { h } from 'preact';
+import { h, Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from '../inspector/state.js';
 import { formatBatchSummary } from '@visual-edit/core';
-import { normalizeRoute } from '../inspector/route-utils.js';
-
-function RouteBadge({
-  pathname,
-  currentPath,
-  prefix,
-}: {
-  pathname: string;
-  currentPath: string;
-  prefix: string;
-}) {
-  const isCurrent = normalizeRoute(pathname) === normalizeRoute(currentPath);
-  return (
-    <span
-      style={{
-        fontSize: '10px',
-        padding: '1px 5px',
-        borderRadius: '4px',
-        background: isCurrent ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-        color: isCurrent ? 'var(--ve-accent-text, #38bdf8)' : 'var(--ve-text-muted, #94a3b8)',
-        fontFamily: 'monospace',
-      }}
-      title={`${prefix} ${pathname}`}
-    >
-      {pathname}
-    </span>
-  );
-}
+import {
+  AnnotationCard,
+  MutationCard,
+  VariantDecisionCard,
+  VariantProposalCard,
+} from './drawer-cards.js';
 
 export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
@@ -41,20 +19,38 @@ export function EditReviewDrawer() {
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   if (!state.isDrawerOpen) return null;
 
   const currentPath = state.getCurrentPathname();
 
+  // Only consider variant sets that are pending AND whose elements exist in current DOM
+  const pendingVariantSets = state.variantSets.filter((s) => {
+    if (s.status !== 'pending') return false;
+    try {
+      return Boolean(document.querySelector(s.targetSelector));
+    } catch {
+      return false;
+    }
+  });
+
+  const uniquePendingSets = new Map<string, (typeof pendingVariantSets)[0]>();
+  for (const s of pendingVariantSets) {
+    uniquePendingSets.set(s.targetSelector, s);
+  }
+  const activeVariantProposals = Array.from(uniquePendingSets.values());
+
   const totalMutations = state.mutations.length;
   const totalAnnotations = state.annotations.length;
-  const totalItems = totalMutations + totalAnnotations;
+  const totalVariants = state.variantDecisions.length;
+  const totalItems = totalMutations + totalAnnotations + totalVariants + activeVariantProposals.length;
+  const isLive = state.reviewMode === 'live';
 
   const handleCopyPrompt = async () => {
     const batch = state.getBatch();
     const summary = formatBatchSummary(batch);
-    const fullPrompt = `Please implement the following visual modifications drafted in the browser overlay:\n\n${summary}\n\n${state.userPrompt ? `Additional Instructions: ${state.userPrompt}` : ''}`;
+    const fullPrompt = `Please implement the following visual modifications drafted in the browser overlay:\n\n${summary}`;
 
     try {
       await navigator.clipboard.writeText(fullPrompt);
@@ -65,37 +61,6 @@ export function EditReviewDrawer() {
     }
   };
 
-  const getStatusDisplay = () => {
-    if (state.sessionStatus === 'in_progress') {
-      return {
-        label: 'Agent Working...',
-        color: '#a855f7',
-        dot: '#c084fc',
-      };
-    }
-    if (state.sessionStatus === 'implemented') {
-      return {
-        label: 'Implemented',
-        color: '#22c55e',
-        dot: '#4ade80',
-      };
-    }
-    if (state.sessionStatus === 'submitted') {
-      return {
-        label: 'Ready for /lux',
-        color: 'var(--ve-accent-text, #0284c7)',
-        dot: 'var(--ve-accent-text, #0284c7)',
-      };
-    }
-    return {
-      label: totalItems > 0 ? 'Active Review' : 'Drafting',
-      color: totalItems > 0 ? 'var(--ve-accent-text, #0284c7)' : '#94a3b8',
-      dot: totalItems > 0 ? 'var(--ve-accent-text, #0284c7)' : '#64748b',
-    };
-  };
-
-  const statusInfo = getStatusDisplay();
-
   return (
     <div
       class="ve-drawer"
@@ -104,323 +69,123 @@ export function EditReviewDrawer() {
     >
       <div class="ve-drawer-header">
         <div class="ve-drawer-title">
-          <span>Review Changes ({totalItems})</span>
-          <span
-            style={{
-              fontSize: '11px',
-              color: statusInfo.color,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-            }}
-          >
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusInfo.dot }}></span>
-            {statusInfo.label}
-          </span>
+          <span>Review Changes</span>
+          {totalItems > 0 && <span class="ve-drawer-badge">{totalItems}</span>}
         </div>
 
-        <button
-          class="ve-close-btn"
-          onClick={() => state.setDrawerOpen(false)}
-          title="Close (Esc)"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
+        <div class="ve-drawer-header-actions">
+          <button
+            class={`ve-mode-pill ${isLive ? 'is-live' : ''}`}
+            onClick={() => state.setReviewMode(isLive ? 'batch' : 'live')}
+            title={isLive ? 'Live Mode active (click to switch to Batch)' : 'Batch Mode active (click to switch to Live)'}
+          >
+            {isLive && <span class="ve-status-dot" />}
+            <span class={`ve-mode-label ${isLive ? 'is-live' : ''}`}>{isLive ? 'Live' : 'Batch'}</span>
+            <span class={`ve-mode-track ${isLive ? 'is-live' : ''}`}>
+              <span class={`ve-mode-thumb ${isLive ? 'is-live' : ''}`} />
+            </span>
+          </button>
+
+          <button class="ve-close-btn" onClick={() => state.setDrawerOpen(false)} title="Close (Esc)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="ve-drawer-body">
         {totalItems === 0 ? (
-          <div style={{ padding: '28px 0', textAlign: 'center' }}>
-            <p style={{ marginBottom: '6px', fontWeight: 600, fontSize: '14px', color: 'var(--ve-text-primary, #f8fafc)' }}>
-              No changes drafted yet
-            </p>
-            <p style={{ fontSize: '12px', color: 'var(--ve-text-secondary, #cbd5e1)', lineHeight: 1.5 }}>
-              Use <strong style={{ color: 'var(--ve-accent-text, #38bdf8)' }}>Visual Edit (V)</strong> to tweak styles and text, or <strong style={{ color: 'var(--ve-accent-text, #38bdf8)' }}>Comment (C)</strong> to drop feedback pins.
-            </p>
+          <div class="ve-drawer-empty">
+            <p class="ve-drawer-empty-text">No changes drafted yet</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div class="ve-drawer-sections">
             {totalMutations > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-accent-text, #0284c7)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div class="ve-drawer-section">
+                <div class="ve-drawer-section-header">
+                  <span class="ve-drawer-section-title ve-drawer-section-title--accent">
                     Visual Edits ({totalMutations})
                   </span>
                 </div>
-
                 {state.mutations.map((m) => (
-                  <div key={m.id} class="ve-mutation-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div class="ve-mut-target" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span>
-                          {m.sourceLocation?.componentName
-                            ? `<${m.sourceLocation.componentName}>`
-                            : m.targetSelector}
-                          {m.property ? ` • ${m.property}` : ''}
-                        </span>
-                        {m.pathname && <RouteBadge pathname={m.pathname} currentPath={currentPath} prefix="Modified on" />}
-                      </div>
-                      <button
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#f43f5e',
-                          cursor: 'pointer',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          padding: '0 4px',
-                        }}
-                        onClick={() => state.revertMutation(m.id)}
-                        title="Revert this visual change"
-                      >
-                        Revert
-                      </button>
-                    </div>
-
-                    <div class="ve-mut-diff">
-                      {m.type === 'TEXT_EDIT' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span class="ve-mut-before">"{m.before}"</span>
-                          <span class="ve-mut-after">"{m.after}"</span>
-                        </div>
-                      )}
-
-                      {m.type === 'STYLE_CHANGE' && (
-                        <div>
-                          <span class="ve-mut-before">{m.before}</span> →{' '}
-                          <span class="ve-mut-after">{m.after}</span>
-                          {m.tailwindSuggestion && (
-                            <span style={{ color: 'var(--ve-accent-text, #0284c7)', marginLeft: '6px', fontSize: '11px' }}>
-                              ({m.tailwindSuggestion})
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {m.type === 'CLASS_CHANGE' && (
-                        <div>
-                          {m.details?.added && m.details.added.length > 0 && (
-                            <div style={{ color: '#22c55e' }}>+ {m.details.added.join(', ')}</div>
-                          )}
-                          {m.details?.removed && m.details.removed.length > 0 && (
-                            <div style={{ color: '#ef4444' }}>- {m.details.removed.join(', ')}</div>
-                          )}
-                        </div>
-                      )}
-
-                      {m.type === 'DOM_INSERT' && (
-                        <span style={{ color: '#22c55e' }}>+ Inserted element</span>
-                      )}
-                      {m.type === 'DOM_REMOVE' && (
-                        <span style={{ color: '#ef4444' }}>- Deleted element</span>
-                      )}
-                      {m.type === 'DOM_REORDER' && (
-                        <span style={{ color: 'var(--ve-accent-text, #0284c7)' }}>⇄ Reordered position</span>
-                      )}
-                    </div>
-                  </div>
+                  <MutationCard
+                    key={m.id}
+                    mutation={m}
+                    currentPath={currentPath}
+                    onRevert={(id) => state.revertMutation(id)}
+                  />
                 ))}
               </div>
             )}
 
             {totalAnnotations > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ve-text-primary, #f8fafc)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Comments & Pins ({totalAnnotations})
+              <div class="ve-drawer-section">
+                <span class="ve-drawer-section-title">Comments & Pins ({totalAnnotations})</span>
+                {state.annotations.map((ann, idx) => (
+                  <AnnotationCard
+                    key={ann.id}
+                    annotation={ann}
+                    index={idx}
+                    currentPath={currentPath}
+                    isEditing={editingAnnotationId === ann.id}
+                    editingText={editingAnnotationText}
+                    onStartEdit={() => {
+                      setEditingAnnotationId(ann.id);
+                      setEditingAnnotationText(ann.comment);
+                    }}
+                    onChangeEditingText={setEditingAnnotationText}
+                    onSaveEdit={() => {
+                      state.updateAnnotation(ann.id, editingAnnotationText);
+                      setEditingAnnotationId(null);
+                    }}
+                    onCancelEdit={() => setEditingAnnotationId(null)}
+                    onDelete={() => {
+                      state.deleteAnnotation(ann.id);
+                      if (editingAnnotationId === ann.id) setEditingAnnotationId(null);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+
+            {activeVariantProposals.length > 0 && (
+              <div class="ve-drawer-section">
+                <span class="ve-drawer-section-title ve-drawer-section-title--accent">
+                  Variant Proposals ({activeVariantProposals.length})
                 </span>
-                {state.annotations.map((ann, idx) => {
-                  const isEditing = editingAnnotationId === ann.id;
-                  const isVoice = ann.type === 'voice';
-                  return (
-                    <div
-                      key={ann.id}
-                      class="ve-mutation-card"
-                      style={isVoice ? { background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)' } : undefined}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span class="ve-mut-target" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          {isVoice ? (
-                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                              </svg>
-                              Voice Walkthrough {ann.targets && ann.targets.length > 0 ? `(${ann.targets.length} target${ann.targets.length > 1 ? 's' : ''})` : ''}
-                            </span>
-                          ) : (
-                            ann.targets && ann.targets.length > 1
-                              ? `Pin #${idx + 1} • Linked (${ann.targets.length} elements)`
-                              : `Pin #${idx + 1} ${ann.targetSelector ? `• ${ann.targetSelector}` : ''}`
-                          )}
-                          {!isVoice && ann.selectedText ? ' • [Text Selection]' : ''}
-                          {ann.pathname && <RouteBadge pathname={ann.pathname} currentPath={currentPath} prefix="Created on" />}
-                        </span>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          {!isEditing && (
-                            <button
-                              style={{ background: 'none', border: 'none', color: 'var(--ve-text-muted, #94a3b8)', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
-                              onClick={() => {
-                                setEditingAnnotationId(ann.id);
-                                setEditingAnnotationText(ann.comment);
-                              }}
-                            >
-                              Edit
-                            </button>
-                          )}
-                          <button
-                            style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}
-                            onClick={() => {
-                              state.deleteAnnotation(ann.id);
-                              if (editingAnnotationId === ann.id) setEditingAnnotationId(null);
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
+                {activeVariantProposals.map((set) => (
+                  <VariantProposalCard
+                    key={set.id}
+                    variantSet={set}
+                    onDismiss={(id) => state.dismissVariantSet(id)}
+                  />
+                ))}
+              </div>
+            )}
 
-                      {ann.targets && ann.targets.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
-                          {ann.targets.map((t, tIdx) => {
-                            const label = t.sourceLocation?.componentName
-                              ? `<${t.sourceLocation.componentName}>`
-                              : t.targetSelector || `Target ${tIdx + 1}`;
-                            return (
-                              <span
-                                key={tIdx}
-                                style={{
-                                  fontSize: '10px',
-                                  fontFamily: 'ui-monospace, monospace',
-                                  background: isVoice ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.12)',
-                                  border: isVoice ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(56, 189, 248, 0.3)',
-                                  color: isVoice ? '#fca5a5' : 'var(--ve-accent-text, #38bdf8)',
-                                  padding: '1px 5px',
-                                  borderRadius: '4px',
-                                }}
-                              >
-                                {isVoice ? `Target ${tIdx + 1}: ${label}` : `${String.fromCharCode(65 + tIdx)}: ${label}`}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {ann.selectedText && (
-                        <div
-                          style={{
-                            fontSize: '11px',
-                            color: 'var(--ve-amber-text, #d97706)',
-                            background: 'rgba(251, 191, 36, 0.14)',
-                            borderLeft: '2px solid var(--ve-amber-text, #d97706)',
-                            padding: '3px 6px',
-                            borderRadius: '2px',
-                            marginBottom: '4px',
-                            fontStyle: 'italic',
-                            wordBreak: 'break-word',
-                          }}
-                        >
-                          "{ann.selectedText}"
-                        </div>
-                      )}
-
-                      {isEditing ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-                          <textarea
-                            style={{
-                              background: 'rgba(0, 0, 0, 0.45)',
-                              color: 'var(--ve-text-primary, #f8fafc)',
-                              border: '1px solid rgba(255, 255, 255, 0.25)',
-                              borderRadius: '6px',
-                              padding: '6px',
-                              fontSize: '12px',
-                              fontFamily: 'inherit',
-                              resize: 'vertical',
-                              minHeight: '48px',
-                              outline: 'none',
-                              width: '100%',
-                              boxSizing: 'border-box',
-                            }}
-                            value={editingAnnotationText}
-                            onInput={(e) => setEditingAnnotationText((e.target as HTMLTextAreaElement).value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                                state.updateAnnotation(ann.id, editingAnnotationText);
-                                setEditingAnnotationId(null);
-                              } else if (e.key === 'Escape') {
-                                setEditingAnnotationId(null);
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                            <button
-                              style={{ background: 'none', border: 'none', color: 'var(--ve-text-muted, #94a3b8)', fontSize: '11px', cursor: 'pointer', padding: '2px 6px' }}
-                              onClick={() => setEditingAnnotationId(null)}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => {
-                                state.updateAnnotation(ann.id, editingAnnotationText);
-                                setEditingAnnotationId(null);
-                              }}
-                              style={{
-                                background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.12) 100%)',
-                                border: '1px solid rgba(255, 255, 255, 0.4)',
-                                boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.7)',
-                                color: '#ffffff',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                padding: '3px 10px',
-                              }}
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p
-                          style={{ color: 'var(--ve-text-primary, #f8fafc)', fontSize: '12px', cursor: 'pointer' }}
-                          onClick={() => {
-                            setEditingAnnotationId(ann.id);
-                            setEditingAnnotationText(ann.comment);
-                          }}
-                          title="Click to edit"
-                        >
-                          {ann.comment}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
+            {totalVariants > 0 && (
+              <div class="ve-drawer-section">
+                <span class="ve-drawer-section-title ve-drawer-section-title--green">
+                  Variant Selections ({totalVariants})
+                </span>
+                {state.variantDecisions.map((vd) => (
+                  <VariantDecisionCard
+                    key={vd.setId}
+                    decision={vd}
+                    onChangeOption={(setId) => state.revertVariantDecision(setId)}
+                    onDelete={(setId) => state.deleteVariantDecision(setId)}
+                  />
+                ))}
               </div>
             )}
           </div>
         )}
 
-        <div class="ve-prompt-box">
-          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ve-text-muted, #94a3b8)' }}>
-            Instructions for AI Agent (Optional)
-          </span>
-          <textarea
-            class="ve-textarea"
-            placeholder="Any extra instructions (e.g. 'Keep existing tests passing, make changes in Hero.tsx')..."
-            value={state.userPrompt}
-            onInput={(e) => state.setUserPrompt((e.target as HTMLTextAreaElement).value)}
-          />
-        </div>
-
         {state.agentReplies.length > 0 && (
           <div class="ve-replies-list">
-            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ve-text-primary, #f8fafc)' }}>
-              Agent Progress & Replies
-            </span>
+            <span class="ve-drawer-section-title">Agent Progress & Replies</span>
             {state.agentReplies.map((r) => (
               <div key={r.id} class="ve-reply-item">
                 <div class="ve-reply-author">{r.agentId}</div>
@@ -431,112 +196,41 @@ export function EditReviewDrawer() {
         )}
       </div>
 
-      <div
-        class="ve-drawer-autosave-bar"
-        style={{
-          padding: '8px 16px',
-          background: 'rgba(0, 0, 0, 0.25)',
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '11px',
-          color: 'var(--ve-text-muted, #94a3b8)',
-          fontWeight: 500,
-          userSelect: 'none',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-          <span
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              backgroundColor: '#22c55e',
-              boxShadow: '0 0 6px rgba(34, 197, 94, 0.6)',
-              flexShrink: 0,
-            }}
-          />
+      <div class="ve-drawer-autosave-bar">
+        <div class="ve-drawer-autosave-status">
+          {isLive && <span class="ve-status-dot ve-status-dot--live" />}
           <span>
-            Changes auto-saved &bull; Run{' '}
-            <strong
-              style={{
-                color: 'var(--ve-accent-text, #0284c7)',
-                fontWeight: 700,
-                fontFamily: 'monospace',
-              }}
-            >
-              /lux
-            </strong>{' '}
-            in chat
+            {isLive ? 'Live mode: changes stream to agent automatically' : 'Batch mode: click Submit when ready'}
           </span>
         </div>
 
         {state.updateInfo?.updateAvailable ? (
           <button
             class="ve-update-pill"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              background: 'rgba(14, 165, 233, 0.15)',
-              border: '1px solid rgba(14, 165, 233, 0.4)',
-              color: '#38bdf8',
-              fontSize: '10px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText('lux update');
                 setUpdateCopiedToast(true);
                 setTimeout(() => setUpdateCopiedToast(false), 2500);
-              } catch {}
+              } catch (err) {
+                console.debug('[lux] Clipboard copy failed:', err);
+              }
             }}
             title={`v${state.updateInfo.latestVersion} available! Click to copy "lux update"`}
           >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: '#38bdf8',
-                boxShadow: '0 0 6px #38bdf8',
-              }}
-            />
-            <span>
-              {updateCopiedToast ? 'Copied "lux update"!' : `Update v${state.updateInfo.latestVersion}`}
-            </span>
+            <span class="ve-status-dot ve-status-dot--accent" />
+            <span>{updateCopiedToast ? 'Copied "lux update"!' : `Update v${state.updateInfo.latestVersion}`}</span>
           </button>
         ) : (
-          <span
-            style={{
-              fontSize: '10px',
-              color: 'var(--ve-text-muted, #64748b)',
-              fontWeight: 500,
-            }}
-            title="lux is up to date"
-          >
+          <span class="ve-drawer-version" title="lux is up to date">
             v{state.version}
           </span>
         )}
       </div>
 
-      <div class="ve-drawer-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px' }}>
+      <div class="ve-drawer-footer ve-drawer-footer--compact">
         <button
-          class="ve-btn"
-          style={{
-            flex: 1,
-            height: '34px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            fontSize: '12px',
-          }}
+          class="ve-btn ve-footer-btn"
           onClick={() => state.revertAll()}
           title="Revert all visual edits and delete all comments"
         >
@@ -544,26 +238,38 @@ export function EditReviewDrawer() {
         </button>
 
         <button
-          class="ve-btn primary"
-          style={{
-            flex: 1.4,
-            height: '34px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            fontSize: '12px',
-          }}
+          class="ve-btn ve-footer-btn"
           onClick={handleCopyPrompt}
-          disabled={totalItems === 0 && !state.userPrompt.trim()}
+          disabled={totalItems === 0}
           title="Copy formatted prompt to clipboard"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          <span>{copiedToast ? 'Copied!' : 'Copy Prompt'}</span>
+          <span>{copiedToast ? 'Copied!' : 'Copy'}</span>
         </button>
+
+        {!isLive && (
+          <button
+            class="ve-btn primary ve-footer-btn ve-footer-btn--submit"
+            onClick={() => state.submitBatch()}
+            disabled={totalItems === 0}
+            style={{ opacity: state.sessionStatus === 'submitted' ? 0.85 : 1 }}
+            title={state.sessionStatus === 'submitted' ? 'Review submitted to agent. Click again to resubmit.' : 'Submit review to waiting agent'}
+          >
+            {state.sessionStatus === 'submitted' ? (
+              <Fragment>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>Submitted</span>
+              </Fragment>
+            ) : (
+              <span>Submit Review</span>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

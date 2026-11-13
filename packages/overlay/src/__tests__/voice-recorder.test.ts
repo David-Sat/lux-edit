@@ -145,4 +145,43 @@ describe('VoiceRecorder', () => {
       }
     }
   });
+
+  it('splits spoken dictation into target-pinned sections and groups Shift+click targets', async () => {
+    const recorder = VoiceRecorder.getInstance();
+    recorder.start();
+
+    // Click Target 1 and speak about it
+    recorder.addPin({
+      selector: '#card-1',
+      htmlSnippet: '<div id="card-1">Card 1</div>',
+    });
+    // Shift+click Target 2 to group into the same section
+    recorder.addPin(
+      {
+        selector: '#card-2',
+        htmlSnippet: '<div id="card-2">Card 2</div>',
+      },
+      { appendToCurrentSection: true }
+    );
+    mockRecognition.simulateSpeech('Make these two cards the same height');
+
+    // Click Target 3 without Shift to start Section 2
+    recorder.addPin({
+      selector: 'button.submit',
+      htmlSnippet: '<button class="submit">Submit</button>',
+    });
+    mockRecognition.simulateSpeech('and change this button to emerald green');
+
+    const review = await recorder.stop();
+    expect(review).not.toBeNull();
+    expect(review?.sections).toHaveLength(2);
+
+    const sec1 = review!.sections![0];
+    expect(sec1.targets.map((t) => t.targetSelector)).toEqual(['#card-1', '#card-2']);
+    expect(sec1.transcript).toBe('Make these two cards the same height');
+
+    const sec2 = review!.sections![1];
+    expect(sec2.targets.map((t) => t.targetSelector)).toEqual(['button.submit']);
+    expect(sec2.transcript).toBe('and change this button to emerald green');
+  });
 });

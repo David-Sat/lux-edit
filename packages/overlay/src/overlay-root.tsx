@@ -9,7 +9,8 @@ import { CommentPins } from './inspector/comment-pins.js';
 import { VoicePins } from './inspector/voice-pins.js';
 import { DockMenu } from './inspector/dock-menu.js';
 import { EditReviewDrawer } from './drawer/edit-review-drawer.js';
-import { ThemePanel } from './inspector/theme-panel.js';
+import { VariantSwitcher } from './inspector/variant-switcher.js';
+import { VerificationHalo } from './inspector/verification-halo.js';
 
 export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const state = OverlayStateManager.getInstance();
@@ -17,7 +18,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   useEffect(() => {
     const isInsideShadow = (e: Event): boolean => {
@@ -27,8 +28,11 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           if (node === shadowRoot) return true;
           const el = node as HTMLElement;
           if (el && el.tagName && el.tagName.toLowerCase() === 'visual-edit-overlay') return true;
+          if (el && el.dataset && el.dataset.luxWorkbenchUi !== undefined) return true;
         }
-      } catch (err) {}
+      } catch (err) {
+        console.debug('[lux] Failed to inspect composedPath:', err);
+      }
       return false;
     };
 
@@ -76,7 +80,9 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
                 },
               });
             }
-          } catch (err) {}
+          } catch (err) {
+            console.debug('[lux] Failed to capture selected text range:', err);
+          }
         }
       }
     };
@@ -120,7 +126,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           }
         }
       } else if (state.activeTool === 'voice') {
-        state.recordVoicePin(target);
+        const isMulti = Boolean(e.shiftKey || e.metaKey || e.ctrlKey);
+        state.recordVoicePin(target, isMulti);
+      } else if (state.activeTool === 'screenshot') {
+        state.snapElementToComposer(target);
       }
     };
 
@@ -140,7 +149,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
       try {
         target.contentEditable = 'plaintext-only';
-      } catch (err) {
+      } catch {
         target.contentEditable = 'true';
       }
       target.spellcheck = false;
@@ -152,7 +161,9 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         const sel = window.getSelection();
         sel?.removeAllRanges();
         sel?.addRange(range);
-      } catch (err) {}
+      } catch (err) {
+        console.debug('[lux] Failed to preselect inline-edited element text:', err);
+      }
 
       const prevOutline = target.style.outline;
       const prevOutlineOffset = target.style.outlineOffset;
@@ -212,10 +223,6 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
           state.setDrawerOpen(false);
           return;
         }
-        if (state.isThemePanelOpen) {
-          state.setThemePanelOpen(false);
-          return;
-        }
         if (state.activeElement) {
           state.setActiveElement(null);
           return;
@@ -256,6 +263,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         e.preventDefault();
         state.setDockMenuOpen(true);
         state.setTool(state.activeTool === 'voice' ? 'none' : 'voice');
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        state.setDockMenuOpen(true);
+        state.setTool(state.activeTool === 'screenshot' ? 'none' : 'screenshot');
       }
     };
 
@@ -275,7 +286,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       document.removeEventListener('dblclick', handleDblClick, { capture: true });
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [shadowRoot]);
+  }, [shadowRoot, state]);
 
   const dockPos = state.dockPosition;
   const isLeft = dockPos.side === 'left';
@@ -296,9 +307,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       <CommentComposer />
       <CommentPins />
       <VoicePins />
+      <VariantSwitcher />
+      <VerificationHalo />
       <DockMenu />
       <EditReviewDrawer />
-      <ThemePanel />
     </div>
   );
 }

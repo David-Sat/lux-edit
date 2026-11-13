@@ -1,6 +1,6 @@
 ---
 name: lux
-description: In-browser visual review and UI editing with lux for local projects, dev servers (localhost/127.0.0.1), and static HTML files where code changes will be applied directly to the user's codebase. Use when the user wants to visually edit or review their own app, or runs /lux. Do NOT use for external third-party websites or online articles (use /lux-web instead).
+description: In-browser visual review, live/batch UI editing, visual screenshot verification, and component variant exploration with lux for local projects, dev servers (localhost/127.0.0.1), and static HTML files where code changes will be applied directly to the user's codebase. Use when the user wants to visually edit or review their own app, or runs /lux. Do NOT use for external third-party websites or online articles (use /lux-web instead).
 ---
 
 # lux visual review and UI editing
@@ -8,11 +8,11 @@ description: In-browser visual review and UI editing with lux for local projects
 > [!NOTE]
 > **User-Hosted Apps Only:** `lux` is for reviewing and visually modifying the user's own codebase (running local dev servers like `http://localhost:3000` or local files). For exploring or tearing down external, third-party websites and online articles, use `/lux-web`.
 
-lux runs an in-browser visual editing overlay on running web apps, dev servers, and static HTML files.
+lux runs an in-browser visual editing overlay on running web apps, dev servers, and static HTML files with **Live Streaming Mode**, **Batch Review Mode**, **Multi-Target Voice Walkthroughs**, **Visual Capture (`lux_capture_visual`)**, and **Component Variants (`lux_propose_variants`)**.
 
 ## Workflow for `/lux`
 
-When the user runs `/lux`, or asks to review visual edits and comments:
+When the user runs `/lux`, asks to review visual edits/comments, or when woken automatically by a lifecycle hook:
 
 ### 1. Check for pending review
 Call `lux_get_pending_review`. Always pass `workspaceDir` with the absolute path of your current workspace root:
@@ -26,13 +26,17 @@ Call `lux_get_pending_review`. Always pass `workspaceDir` with the absolute path
 }
 ```
 
-Passing `workspaceDir` ensures lux finds `.visual-edit/sessions.jsonl` even when your IDE starts the MCP server from a global plugin folder.
+Passing `workspaceDir` ensures lux finds `.visual-edit/sessions.jsonl` and connects to the active server even when started from a global plugin folder.
 
-### 2. When comments or edits exist
-1. Read the returned annotations and style mutations.
-2. Find the relevant component files in the project (React/JSX/TSX, HTML, Tailwind classes, or CSS).
-3. Apply the requested code edits directly to the codebase.
-4. Save the files. The file watcher detects changes, resolves the active review, and reloads the browser.
+### 2. When comments, voice sections, variant decisions, or edits exist
+1. Read the returned mutations, pinned comments, sectioned voice walkthroughs, and approved component variants. Note the `revisionHash` and `nextCursor`.
+2. If the user asks you to explore multiple visual designs for an element, call `lux_propose_variants` with 2–4 named options so the user can toggle and pick one live in the browser.
+3. Find the relevant component files in the project (React/JSX/TSX, Vue, Svelte, HTML, Tailwind classes, or CSS) and apply the requested code edits directly.
+4. Optionally call `lux_capture_visual` to visually inspect the rendered pixels and verify there are no layout overflow issues.
+5. Call `lux_resolve_review` (passing `expectedHash` and `modifiedSelectors`) or save the source files so the browser highlights the updated elements with a Green Verification Halo.
+6. **Seamless Live & Batch Wakeup:**
+   - **In Claude Code / Codex:** Lifecycle hooks (`PostToolUse` + `Stop`) automatically hold and wake you when the user submits new Live or Batch feedback—simply finish your turn.
+   - **In Antigravity:** To avoid locking the Antigravity chat in `"Working"` state while still waking immediately on browser edits, launch `npx lux-edit hook wait` via `run_command` with `WaitMsBeforeAsync: 500` and `IsDaemon: false`, then immediately finish your turn.
 
 ### 3. When no pending edits are found
 Do not restart or kill the lux server if it is already running. Restarting drops active browser sessions and clears pinned comments.
@@ -40,8 +44,9 @@ Do not restart or kill the lux server if it is already running. Restarting drops
 Check whether a review server is already running on port 4320:
 
 - **If the server is running:**
-  Tell the user:
-  "The lux review server is running at `http://127.0.0.1:4320`. No submitted comments or edits were found. Save your comment pins or click Submit Review in the drawer, then run `/lux` again."
+  1. In Antigravity, if no background waiter is active yet, start `npx lux-edit hook wait` (`WaitMsBeforeAsync: 500, IsDaemon: false`) so browser submissions wake you automatically while leaving the chat input free.
+  2. Tell the user:
+     "The lux review server is running at `http://127.0.0.1:4320`. Switch between **Live** and **Batch** mode in the dock, press **V** to edit styles, **C** to drop comment pins, **S** to capture element screenshots, or **R** for multi-target voice dictation."
 
 - **If the server is not running:**
   1. Find the running dev server URL (e.g. `http://localhost:3000`, `http://localhost:5173`) or static HTML file (e.g. `./index.html`).
@@ -49,5 +54,6 @@ Check whether a review server is already running on port 4320:
      ```bash
      lux <url-or-file> --port 4320
      ```
-  3. Tell the user:
-     "Open `http://127.0.0.1:4320` in your browser. Press C to drop comment pins, R to record a voice walkthrough, or V to adjust styles. When finished, run `/lux` again and I will apply your changes to the code."
+  3. In Antigravity, also start the background review waiter (`npx lux-edit hook wait` with `WaitMsBeforeAsync: 500, IsDaemon: false`) so browser feedback wakes you automatically.
+  4. Tell the user:
+     "Open `http://127.0.0.1:4320` in your browser. Press V to adjust styles, C to drop comment pins, S to capture visual screenshots, or R to record a sectioned voice walkthrough. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."

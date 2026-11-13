@@ -70,8 +70,44 @@ export function getDefaultUpdateCachePath(): string {
     if (home) {
       return path.join(home, '.lux', 'update-cache.json');
     }
-  } catch {}
+  } catch {
+    // Fall back to system tmpdir when user home directory is unavailable.
+  }
   return path.join(os.tmpdir(), '.lux-update-cache.json');
+}
+
+interface CachedUpdateFile {
+  latestVersion?: unknown;
+  checkedAt?: unknown;
+}
+
+function readCachedUpdate(
+  cacheFilePath: string,
+  currentVersion: string,
+  maxAgeMs?: number
+): UpdateCheckResult | null {
+  if (!fs.existsSync(cacheFilePath)) return null;
+  try {
+    const raw = fs.readFileSync(cacheFilePath, 'utf-8');
+    const cached = JSON.parse(raw) as CachedUpdateFile;
+    if (!cached || typeof cached.latestVersion !== 'string') {
+      return null;
+    }
+    const checkedAt = typeof cached.checkedAt === 'number' ? cached.checkedAt : undefined;
+    if (maxAgeMs !== undefined && (checkedAt === undefined || Date.now() - checkedAt >= maxAgeMs)) {
+      return null;
+    }
+    return {
+      updateAvailable: isNewerVersion(currentVersion, cached.latestVersion),
+      currentVersion,
+      latestVersion: cached.latestVersion,
+      changelogUrl: `https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v${cached.latestVersion}`,
+      checkedAt,
+    };
+  } catch {
+    // Ignore corrupt or unreadable cache files and re-fetch when online.
+    return null;
+  }
 }
 
 /**
@@ -96,26 +132,9 @@ export async function checkForUpdates(
   };
 
   // 1. Try reading valid unexpired cache
-  if (!options.force && fs.existsSync(cacheFilePath)) {
-    try {
-      const raw = fs.readFileSync(cacheFilePath, 'utf-8');
-      const cached = JSON.parse(raw);
-      if (
-        cached &&
-        typeof cached.latestVersion === 'string' &&
-        typeof cached.checkedAt === 'number' &&
-        Date.now() - cached.checkedAt < ttlMs
-      ) {
-        const updateAvailable = isNewerVersion(currentVersion, cached.latestVersion);
-        return {
-          updateAvailable,
-          currentVersion,
-          latestVersion: cached.latestVersion,
-          changelogUrl: `https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v${cached.latestVersion}`,
-          checkedAt: cached.checkedAt,
-        };
-      }
-    } catch {}
+  if (!options.force) {
+    const freshCache = readCachedUpdate(cacheFilePath, currentVersion, ttlMs);
+    if (freshCache) return freshCache;
   }
 
   // 2. Query registry with timeout
@@ -134,7 +153,7 @@ export async function checkForUpdates(
     clearTimeout(timer);
 
     if (res.ok) {
-      const data: any = await res.json();
+      const data = (await res.json()) as { version?: unknown };
       const latestVersion = data?.version;
 
       if (latestVersion && typeof latestVersion === 'string') {
@@ -162,28 +181,17 @@ export async function checkForUpdates(
               2
             ) + '\n'
           );
-        } catch {}
+        } catch {
+          // Cache write failure is non-fatal (e.g., read-only filesystem).
+        }
 
         return result;
       }
     }
-  } catch (err) {
+  } catch {
     // Offline, timeout, or network issue - try fallback to cached version even if expired
-    if (fs.existsSync(cacheFilePath)) {
-      try {
-        const raw = fs.readFileSync(cacheFilePath, 'utf-8');
-        const cached = JSON.parse(raw);
-        if (cached && typeof cached.latestVersion === 'string') {
-          return {
-            updateAvailable: isNewerVersion(currentVersion, cached.latestVersion),
-            currentVersion,
-            latestVersion: cached.latestVersion,
-            changelogUrl: `https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v${cached.latestVersion}`,
-            checkedAt: cached.checkedAt,
-          };
-        }
-      } catch {}
-    }
+    const staleCache = readCachedUpdate(cacheFilePath, currentVersion);
+    if (staleCache) return staleCache;
   }
 
   return defaultResult;

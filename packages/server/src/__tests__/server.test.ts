@@ -104,7 +104,7 @@ describe('Server & EventStore Integration', () => {
       agentId: 'agent-alpha',
       message: 'Applied text-6xl to main-headline in styles.css',
     });
-    expect(updateRes).toBe(true);
+    expect(updateRes.updated).toBe(true);
 
     const updatedSession = store.getSession('test_session_123');
     expect(updatedSession?.status).toBe('implemented');
@@ -114,7 +114,7 @@ describe('Server & EventStore Integration', () => {
   it('automatically adds .visual-edit/ to .gitignore if not present', () => {
     const gitignorePath = path.join(testDir, '.gitignore');
     fs.writeFileSync(gitignorePath, 'node_modules/\ndist/\n');
-    const store = new EventStore(testDir);
+    new EventStore(testDir);
     const content = fs.readFileSync(gitignorePath, 'utf-8');
     expect(content).toContain('.visual-edit/');
   });

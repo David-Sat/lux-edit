@@ -3,133 +3,96 @@ import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
+import {
+  AdaptiveTextEditor,
+  ColorSwatchesRow,
+  OriginSliderRow,
+  getElementCleanText,
+} from './toolbar-widgets.js';
+import {
+  ClassesTab,
+  DomActionsTab,
+  LayoutTab,
+  SpacingTab,
+  StyleTab,
+  ToolbarTabId,
+  TypographyTab,
+} from './toolbar-tabs.js';
 
-function getElementCleanText(el: HTMLElement | null): string {
-  if (!el) return '';
-  const raw = el.textContent || el.innerText || '';
-  // If the raw text starts with newline and indentation (classic formatted HTML file artifact),
-  // strip leading and trailing whitespace so paragraphs don't open with 10 empty spaces!
-  if (/^\s*[\r\n]/.test(raw)) {
-    return (el.innerText || raw).trim();
-  }
-  return raw;
-}
+const DEFAULT_PALETTE = [
+  '#6366f1',
+  '#3b82f6',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#0f172a',
+  '#1e293b',
+  '#f8fafc',
+  '#ffffff',
+];
 
-interface AdaptiveTextEditorProps {
-  initialValue: string;
-  isParagraphLike: boolean;
-  isHeading: boolean;
-  tag: string;
-  onUpdate: (val: string) => void;
-}
+const TOOLBAR_TABS: Array<{ id: ToolbarTabId; label: string; title: string }> = [
+  { id: 'quick', label: 'Smart', title: 'Smart Context-Aware Controls' },
+  { id: 'spacing', label: 'Spacing', title: 'Padding & Margin' },
+  { id: 'type', label: 'Type', title: 'Typography & Fonts' },
+  { id: 'layout', label: 'Layout', title: 'Flex, Grid, Display' },
+  { id: 'style', label: 'Styles', title: 'Colors, Borders, Radius' },
+  { id: 'class', label: 'Classes', title: 'Tailwind & CSS Classes' },
+  { id: 'actions', label: 'DOM', title: 'DOM Tree Operations' },
+];
 
-function AdaptiveTextEditor({ initialValue, isParagraphLike, isHeading, tag, onUpdate }: AdaptiveTextEditorProps) {
-  const [value, setValue] = useState(initialValue);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isFocusedRef = useRef(false);
-
-  // Sync external changes (e.g. from undo or element re-selection), but NEVER while the user is actively focused/typing
-  useEffect(() => {
-    if (!isFocusedRef.current && initialValue !== value) {
-      setValue(initialValue);
-    }
-  }, [initialValue]);
-
-  const adjustHeight = () => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = 'auto';
-    const isMulti = isParagraphLike || value.length > 60 || value.includes('\n');
-    const minHeight = isParagraphLike ? 84 : isHeading ? 34 : (isMulti ? 68 : 34);
-    const maxHeight = 240;
-    const computedHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
-    textarea.style.height = `${computedHeight}px`;
-  };
-
-  useEffect(() => {
-    adjustHeight();
-  }, [value, isParagraphLike, isHeading]);
-
-  const isMulti = isParagraphLike || value.length > 60 || value.includes('\n');
-  const label = isParagraphLike ? 'Paragraph' : isHeading ? `Heading (${tag})` : 'Text';
-
-  if (!isMulti && !isParagraphLike) {
-    return (
-      <div class="ve-row" style={{ alignItems: 'flex-start' }}>
-        <span class="ve-label" style={{ paddingTop: '6px' }}>{label}</span>
-        <textarea
-          ref={textareaRef}
-          class="ve-textarea-adaptive"
-          rows={1}
-          value={value}
-          placeholder="Edit text content..."
-          onFocus={() => {
-            isFocusedRef.current = true;
-          }}
-          onBlur={() => {
-            isFocusedRef.current = false;
-          }}
-          onInput={(e) => {
-            const nextVal = (e.target as HTMLTextAreaElement).value;
-            setValue(nextVal);
-            adjustHeight();
-            onUpdate(nextVal);
-          }}
-          style={{ minHeight: '32px', maxHeight: '80px' }}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div class="ve-field-group">
-      <div class="ve-field-header">
-        <span class="ve-label">{label}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span class="ve-badge-subtle">{value.length} chars</span>
-          {tag && <span class="ve-badge-subtle" style={{ textTransform: 'uppercase' }}>{tag}</span>}
-        </div>
-      </div>
-      <textarea
-        ref={textareaRef}
-        class="ve-textarea-adaptive"
-        rows={isParagraphLike ? 4 : 2}
-        value={value}
-        placeholder="Edit text content..."
-        onFocus={() => {
-          isFocusedRef.current = true;
-        }}
-        onBlur={() => {
-          isFocusedRef.current = false;
-        }}
-        onInput={(e) => {
-          const nextVal = (e.target as HTMLTextAreaElement).value;
-          setValue(nextVal);
-          adjustHeight();
-          onUpdate(nextVal);
-        }}
-        style={{ minHeight: isParagraphLike ? '84px' : '64px' }}
-      />
-    </div>
-  );
+function parseNumericPx(str?: string): number {
+  if (!str) return 0;
+  const num = parseFloat(str);
+  return Number.isNaN(num) ? 0 : num;
 }
 
 export function FloatingToolbar() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
-  const [activeTab, setActiveTab] = useState<'quick' | 'spacing' | 'type' | 'layout' | 'style' | 'class' | 'actions'>('quick');
+  const [activeTab, setActiveTab] = useState<ToolbarTabId>('quick');
   const [newClassInput, setNewClassInput] = useState('');
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   const el = state.activeElement;
 
   const tag = el ? (el.tagName || '').toUpperCase() : '';
-  const isButton = el ? tag === 'BUTTON' || (tag === 'A' && el.children.length > 0) || (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type)) : false;
-  const isText = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'P', 'SPAN', 'BLOCKQUOTE', 'STRONG', 'EM', 'LABEL', 'B', 'I', 'TEXT', 'TSPAN', 'A', 'LI', 'TD', 'TH', 'CODE', 'PRE'].includes(tag) || (!isButton && el.children.length === 0 && (el.textContent || el.innerText || '').trim().length > 0) : false;
+  const isButton = el
+    ? tag === 'BUTTON' ||
+      (tag === 'A' && el.children.length > 0) ||
+      (tag === 'INPUT' && ['button', 'submit'].includes((el as HTMLInputElement).type))
+    : false;
+  const isText = el
+    ? [
+        'H1',
+        'H2',
+        'H3',
+        'H4',
+        'H5',
+        'H6',
+        'P',
+        'SPAN',
+        'BLOCKQUOTE',
+        'STRONG',
+        'EM',
+        'LABEL',
+        'B',
+        'I',
+        'TEXT',
+        'TSPAN',
+        'A',
+        'LI',
+        'TD',
+        'TH',
+        'CODE',
+        'PRE',
+      ].includes(tag) ||
+      (!isButton && el.children.length === 0 && (el.textContent || el.innerText || '').trim().length > 0)
+    : false;
   const isParagraphLike = el ? ['P', 'BLOCKQUOTE', 'ARTICLE', 'SECTION', 'PRE'].includes(tag) : false;
   const isHeading = el ? ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(tag) : false;
   const currentTextContent = el ? getElementCleanText(el) : '';
@@ -140,30 +103,38 @@ export function FloatingToolbar() {
 
   const appColors = useMemo(() => {
     const colors = new Set<string>();
+    const addVisibleColor = (color: string | undefined) => {
+      if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') {
+        colors.add(color);
+      }
+    };
+
     try {
+      if (el) {
+        const activeCs = window.getComputedStyle(el);
+        addVisibleColor(activeCs.backgroundColor);
+        addVisibleColor(activeCs.color);
+      }
+
       const rootStyles = window.getComputedStyle(document.documentElement);
       const bodyStyles = window.getComputedStyle(document.body);
-      
-      [rootStyles.backgroundColor, bodyStyles.backgroundColor, rootStyles.color, bodyStyles.color].forEach((c) => {
-        if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') colors.add(c);
-      });
+      addVisibleColor(rootStyles.backgroundColor);
+      addVisibleColor(bodyStyles.backgroundColor);
+      addVisibleColor(rootStyles.color);
+      addVisibleColor(bodyStyles.color);
 
       const sampleEls = document.querySelectorAll('button, h1, h2, a, [class*="bg-"], [class*="primary"]');
       sampleEls.forEach((sample, idx) => {
         if (idx > 15) return;
         const cs = window.getComputedStyle(sample);
-        if (cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent') {
-          colors.add(cs.backgroundColor);
-        }
-        if (cs.color && cs.color !== 'rgba(0, 0, 0, 0)' && cs.color !== 'transparent') {
-          colors.add(cs.color);
-        }
+        addVisibleColor(cs.backgroundColor);
+        addVisibleColor(cs.color);
       });
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] Failed to sample page color palette:', err);
+    }
 
-    const defaults = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#0f172a', '#1e293b', '#f8fafc', '#ffffff'];
-    defaults.forEach((d) => colors.add(d));
-
+    DEFAULT_PALETTE.forEach((d) => colors.add(d));
     return Array.from(colors).slice(0, 8);
   }, [el]);
 
@@ -215,20 +186,16 @@ export function FloatingToolbar() {
 
   const hasDraftedEdits = state.mutations.some((m) => m.targetSelector === sourceLoc.selector);
 
-  const parseNum = (str?: string) => {
-    if (!str) return 0;
-    const num = parseFloat(str);
-    return isNaN(num) ? 0 : num;
-  };
+  const fontSizeNum = parseNumericPx(el.style.fontSize || computed.fontSize);
+  const originFontSize = parseNumericPx(snapshot?.styles['font-size']);
 
-  const fontSizeNum = parseNum(el.style.fontSize || computed.fontSize);
-  const originFontSize = parseNum(snapshot?.styles['font-size']);
+  const gapNum = parseNumericPx(el.style.gap || computed.gap);
+  const originGap = parseNumericPx(snapshot?.styles['gap']);
 
-  const gapNum = parseNum(el.style.gap || computed.gap);
-  const originGap = parseNum(snapshot?.styles['gap']);
+  const radiusNum = parseNumericPx(el.style.borderRadius || computed.borderRadius);
+  const originRadius = parseNumericPx(snapshot?.styles['border-radius']);
 
-  const radiusNum = parseNum(el.style.borderRadius || computed.borderRadius);
-  const originRadius = parseNum(snapshot?.styles['border-radius']);
+  const tabProps = { el, computed, state, toggleStyle, handleStyleChange };
 
   return (
     <div
@@ -239,92 +206,47 @@ export function FloatingToolbar() {
     >
       {/* Toolbar Header */}
       <div class="ve-toolbar-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+        <div class="ve-toolbar-title-wrap">
           <span class="ve-target-tag">
             {sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.tag}
             {sourceLoc.fileName ? ` (${sourceLoc.fileName.split('/').pop()}:${sourceLoc.lineNumber || 1})` : ''}
           </span>
-          {hasDraftedEdits && (
-            <span style={{ fontSize: '9px', background: '#3b82f6', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
-              Edited
-            </span>
-          )}
+          {hasDraftedEdits && <span class="ve-edited-pill">Edited</span>}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <button
-            class="ve-close-btn"
-            onClick={() => state.setActiveElement(null)}
-            title="Deselect (Esc)"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
+        <button
+          class="ve-close-btn"
+          onClick={() => state.setActiveElement(null)}
+          title="Deselect (Esc)"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       {/* Tabs Bar */}
       <div class="ve-toolbar-tabs">
-        <button
-          class={`ve-tab-btn ${activeTab === 'quick' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('quick')}
-          title="Smart Context-Aware Controls"
-        >
-          Smart
-        </button>
-        <button
-          class={`ve-tab-btn ${activeTab === 'spacing' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('spacing')}
-          title="Padding & Margin"
-        >
-          Spacing
-        </button>
-        <button
-          class={`ve-tab-btn ${activeTab === 'type' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('type')}
-          title="Typography & Fonts"
-        >
-          Type
-        </button>
-        <button
-          class={`ve-tab-btn ${activeTab === 'layout' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('layout')}
-          title="Flex, Grid, Display"
-        >
-          Layout
-        </button>
-        <button
-          class={`ve-tab-btn ${activeTab === 'style' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('style')}
-          title="Colors, Borders, Radius"
-        >
-          Styles
-        </button>
-        <button
-          class={`ve-tab-btn ${activeTab === 'class' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('class')}
-          title="Tailwind & CSS Classes"
-        >
-          Classes
-        </button>
-        <button
-          class={`ve-tab-btn ${activeTab === 'actions' ? 've-active' : ''}`}
-          onClick={() => setActiveTab('actions')}
-          title="DOM Tree Operations"
-        >
-          DOM
-        </button>
+        {TOOLBAR_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            class={`ve-tab-btn ${activeTab === tab.id ? 've-active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+            title={tab.title}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Tab Content */}
       <div class="ve-toolbar-content">
         {activeTab === 'quick' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div class="ve-toolbar-stack ve-toolbar-stack--lg">
             {/* Quick Text / Heading Options */}
             {isText && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div class="ve-toolbar-stack">
                 <AdaptiveTextEditor
                   key={sourceLoc.selector || el.tagName}
                   initialValue={getElementCleanText(el)}
@@ -334,42 +256,17 @@ export function FloatingToolbar() {
                   onUpdate={(val) => state.updateElementText(val)}
                 />
 
-                {/* Font Size with Slider, Origin Tick & Double Click Reset */}
-                <div class="ve-slider-row">
-                  <span
-                    class="ve-label"
-                    title="Double-click to reset to original size"
-                    onDblClick={() => state.resetElementProperty(el, 'font-size')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    Size
-                  </span>
-                  <div class="ve-slider-wrap">
-                    <input
-                      type="range"
-                      min="10"
-                      max="72"
-                      step="1"
-                      class="ve-slider"
-                      value={fontSizeNum}
-                      onInput={(e) => handleStyleChange('font-size', `${(e.target as HTMLInputElement).value}px`)}
-                    />
-                    {originFontSize >= 10 && originFontSize <= 72 && (
-                      <div
-                        class="ve-origin-tick"
-                        style={{ left: `${((originFontSize - 10) / (72 - 10)) * 100}%` }}
-                        title={`Original: ${originFontSize}px`}
-                      />
-                    )}
-                  </div>
-                  <span
-                    class="ve-slider-val"
-                    title="Double-click to reset"
-                    onDblClick={() => state.resetElementProperty(el, 'font-size')}
-                  >
-                    {fontSizeNum}px
-                  </span>
-                </div>
+                <OriginSliderRow
+                  label="Size"
+                  min={10}
+                  max={72}
+                  step={1}
+                  value={fontSizeNum}
+                  originValue={originFontSize}
+                  resetTitle="Double-click to reset to original size"
+                  onChange={(nextPx) => handleStyleChange('font-size', nextPx)}
+                  onReset={() => state.resetElementProperty(el, 'font-size')}
+                />
 
                 {/* Weight Chips with Deselect Toggle */}
                 <div class="ve-row">
@@ -393,41 +290,19 @@ export function FloatingToolbar() {
                   </div>
                 </div>
 
-                {/* Text Color Swatches & Picker */}
-                <div class="ve-row">
-                  <span class="ve-label">Color</span>
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1, overflowX: 'auto', padding: '2px 0' }}>
-                    {appColors.map((color) => (
-                      <button
-                        key={color}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          borderRadius: '4px',
-                          background: color,
-                          border: computed.color === color ? '2px solid #38bdf8' : '1px solid rgba(255,255,255,0.2)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                        onClick={() => toggleStyle('color', color)}
-                        title={`Apply color: ${color} (click again to reset)`}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      style={{ width: '22px', height: '22px', border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }}
-                      value={computed.color}
-                      onChange={(e) => handleStyleChange('color', (e.target as HTMLInputElement).value)}
-                      title="Custom Color"
-                    />
-                  </div>
-                </div>
+                <ColorSwatchesRow
+                  label="Color"
+                  appColors={appColors}
+                  currentColor={computed.color}
+                  onToggleColor={(color) => toggleStyle('color', color)}
+                  onChangeColor={(color) => handleStyleChange('color', color)}
+                />
               </div>
             )}
 
             {/* Quick Button Options */}
             {isButton && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div class="ve-toolbar-stack">
                 <div class="ve-row">
                   <span class="ve-label">Label</span>
                   <input
@@ -496,39 +371,19 @@ export function FloatingToolbar() {
                   </div>
                 </div>
 
-                <div class="ve-row">
-                  <span class="ve-label">Background</span>
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flex: 1, overflowX: 'auto' }}>
-                    {appColors.map((color) => (
-                      <button
-                        key={color}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          borderRadius: '4px',
-                          background: color,
-                          border: computed.backgroundColor === color ? '2px solid #38bdf8' : '1px solid rgba(255,255,255,0.2)',
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                        onClick={() => toggleStyle('background-color', color)}
-                        title={`Apply background: ${color} (click again to reset)`}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      style={{ width: '22px', height: '22px', border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }}
-                      value={computed.backgroundColor}
-                      onChange={(e) => handleStyleChange('background-color', (e.target as HTMLInputElement).value)}
-                    />
-                  </div>
-                </div>
+                <ColorSwatchesRow
+                  label="Background"
+                  appColors={appColors}
+                  currentColor={computed.backgroundColor}
+                  onToggleColor={(color) => toggleStyle('background-color', color)}
+                  onChangeColor={(color) => handleStyleChange('background-color', color)}
+                />
               </div>
             )}
 
             {/* Quick Image / Media Options */}
             {isImage && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div class="ve-toolbar-stack">
                 {tag === 'IMG' && (
                   <div class="ve-row">
                     <span class="ve-label">Source</span>
@@ -585,7 +440,7 @@ export function FloatingToolbar() {
 
             {/* Quick Container / Layout Block Options */}
             {isContainer && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div class="ve-toolbar-stack">
                 <div class="ve-row">
                   <span class="ve-label">Display</span>
                   <div class="ve-btn-group">
@@ -624,87 +479,36 @@ export function FloatingToolbar() {
                   </div>
                 )}
 
-                {/* Gap Slider with Origin Indicator */}
-                <div class="ve-slider-row">
-                  <span
-                    class="ve-label"
-                    title="Double-click to reset gap"
-                    onDblClick={() => state.resetElementProperty(el, 'gap')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    Gap
-                  </span>
-                  <div class="ve-slider-wrap">
-                    <input
-                      type="range"
-                      min="0"
-                      max="64"
-                      step="2"
-                      class="ve-slider"
-                      value={gapNum}
-                      onInput={(e) => handleStyleChange('gap', `${(e.target as HTMLInputElement).value}px`)}
-                    />
-                    {originGap >= 0 && originGap <= 64 && (
-                      <div
-                        class="ve-origin-tick"
-                        style={{ left: `${(originGap / 64) * 100}%` }}
-                        title={`Original: ${originGap}px`}
-                      />
-                    )}
-                  </div>
-                  <span
-                    class="ve-slider-val"
-                    title="Double-click to reset"
-                    onDblClick={() => state.resetElementProperty(el, 'gap')}
-                  >
-                    {gapNum}px
-                  </span>
-                </div>
+                <OriginSliderRow
+                  label="Gap"
+                  min={0}
+                  max={64}
+                  step={2}
+                  value={gapNum}
+                  originValue={originGap}
+                  resetTitle="Double-click to reset gap"
+                  onChange={(nextPx) => handleStyleChange('gap', nextPx)}
+                  onReset={() => state.resetElementProperty(el, 'gap')}
+                />
 
-                {/* Radius Slider with Origin Indicator */}
-                <div class="ve-slider-row">
-                  <span
-                    class="ve-label"
-                    title="Double-click to reset radius"
-                    onDblClick={() => state.resetElementProperty(el, 'border-radius')}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    Radius
-                  </span>
-                  <div class="ve-slider-wrap">
-                    <input
-                      type="range"
-                      min="0"
-                      max="48"
-                      step="2"
-                      class="ve-slider"
-                      value={radiusNum}
-                      onInput={(e) => handleStyleChange('border-radius', `${(e.target as HTMLInputElement).value}px`)}
-                    />
-                    {originRadius >= 0 && originRadius <= 48 && (
-                      <div
-                        class="ve-origin-tick"
-                        style={{ left: `${(originRadius / 48) * 100}%` }}
-                        title={`Original: ${originRadius}px`}
-                      />
-                    )}
-                  </div>
-                  <span
-                    class="ve-slider-val"
-                    title="Double-click to reset"
-                    onDblClick={() => state.resetElementProperty(el, 'border-radius')}
-                  >
-                    {radiusNum}px
-                  </span>
-                </div>
+                <OriginSliderRow
+                  label="Radius"
+                  min={0}
+                  max={48}
+                  step={2}
+                  value={radiusNum}
+                  originValue={originRadius}
+                  resetTitle="Double-click to reset radius"
+                  onChange={(nextPx) => handleStyleChange('border-radius', nextPx)}
+                  onReset={() => state.resetElementProperty(el, 'border-radius')}
+                />
               </div>
             )}
 
             {/* Quick Action Ribbon with Clean Vector SVG Icons & Tooltips */}
-            <div style={{ borderTop: '1px solid #334155', paddingTop: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <div class="ve-action-ribbon">
               <button
-                class="ve-mini-btn"
-                style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                class="ve-mini-btn ve-icon-btn"
                 onClick={() => state.moveElement('up')}
                 title="Move element up (↑)"
               >
@@ -715,8 +519,7 @@ export function FloatingToolbar() {
               </button>
 
               <button
-                class="ve-mini-btn"
-                style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                class="ve-mini-btn ve-icon-btn"
                 onClick={() => state.moveElement('down')}
                 title="Move element down (↓)"
               >
@@ -727,8 +530,7 @@ export function FloatingToolbar() {
               </button>
 
               <button
-                class="ve-mini-btn"
-                style={{ padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                class="ve-mini-btn ve-icon-btn"
                 onClick={() => state.duplicateElement()}
                 title="Duplicate this element"
               >
@@ -739,8 +541,7 @@ export function FloatingToolbar() {
               </button>
 
               <button
-                class="ve-mini-btn"
-                style={{ padding: '6px', color: 'var(--ve-accent-text, #0284c7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                class="ve-mini-btn ve-icon-btn ve-icon-btn--accent"
                 onClick={() => {
                   state.setCommentTarget(el);
                   state.setActiveElement(null);
@@ -753,8 +554,7 @@ export function FloatingToolbar() {
               </button>
 
               <button
-                class="ve-mini-btn"
-                style={{ padding: '6px', color: '#f43f5e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                class="ve-mini-btn ve-icon-btn ve-icon-btn--danger"
                 onClick={() => state.deleteElement()}
                 title="Delete this element"
               >
@@ -766,314 +566,19 @@ export function FloatingToolbar() {
             </div>
           </div>
         )}
-        {activeTab === 'spacing' && (
-          <div>
-            <div class="ve-box-model">
-              <div class="ve-box-field">
-                <span>Padding Top</span>
-                <input
-                  class="ve-input"
-                  value={el.style.paddingTop || computed.paddingTop}
-                  onChange={(e) => handleStyleChange('padding-top', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-              <div class="ve-box-field">
-                <span>Padding Bottom</span>
-                <input
-                  class="ve-input"
-                  value={el.style.paddingBottom || computed.paddingBottom}
-                  onChange={(e) => handleStyleChange('padding-bottom', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-              <div class="ve-box-field">
-                <span>Padding Left</span>
-                <input
-                  class="ve-input"
-                  value={el.style.paddingLeft || computed.paddingLeft}
-                  onChange={(e) => handleStyleChange('padding-left', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-              <div class="ve-box-field">
-                <span>Padding Right</span>
-                <input
-                  class="ve-input"
-                  value={el.style.paddingRight || computed.paddingRight}
-                  onChange={(e) => handleStyleChange('padding-right', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-            </div>
-
-            <div class="ve-box-model" style={{ marginTop: '8px' }}>
-              <div class="ve-box-field">
-                <span>Margin Top</span>
-                <input
-                  class="ve-input"
-                  value={el.style.marginTop || computed.marginTop}
-                  onChange={(e) => handleStyleChange('margin-top', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-              <div class="ve-box-field">
-                <span>Margin Bottom</span>
-                <input
-                  class="ve-input"
-                  value={el.style.marginBottom || computed.marginBottom}
-                  onChange={(e) => handleStyleChange('margin-bottom', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-              <div class="ve-box-field">
-                <span>Margin Left</span>
-                <input
-                  class="ve-input"
-                  value={el.style.marginLeft || computed.marginLeft}
-                  onChange={(e) => handleStyleChange('margin-left', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-              <div class="ve-box-field">
-                <span>Margin Right</span>
-                <input
-                  class="ve-input"
-                  value={el.style.marginRight || computed.marginRight}
-                  onChange={(e) => handleStyleChange('margin-right', (e.target as HTMLInputElement).value)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTab === 'type' && (
-          <div>
-            <div class="ve-row">
-              <span class="ve-label">Font Size</span>
-              <input
-                class="ve-input"
-                value={el.style.fontSize || computed.fontSize}
-                onChange={(e) => handleStyleChange('font-size', (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Weight</span>
-              <div class="ve-btn-group">
-                {['400', '500', '600', '700'].map((w) => (
-                  <button
-                    key={w}
-                    class={`ve-mini-btn ${(el.style.fontWeight || computed.fontWeight) === w ? 've-active' : ''}`}
-                    onClick={() => toggleStyle('font-weight', w)}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Color</span>
-              <input
-                type="color"
-                style={{ width: '32px', height: '26px', border: 'none', background: 'none', cursor: 'pointer' }}
-                value={computed.color}
-                onChange={(e) => handleStyleChange('color', (e.target as HTMLInputElement).value)}
-              />
-              <input
-                class="ve-input"
-                value={el.style.color || computed.color}
-                onChange={(e) => handleStyleChange('color', (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Align</span>
-              <div class="ve-btn-group">
-                {['left', 'center', 'right'].map((al) => (
-                  <button
-                    key={al}
-                    class={`ve-mini-btn ${(el.style.textAlign || computed.textAlign) === al ? 've-active' : ''}`}
-                    onClick={() => toggleStyle('text-align', al)}
-                  >
-                    {al}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTab === 'layout' && (
-          <div>
-            <div class="ve-row">
-              <span class="ve-label">Display</span>
-              <div class="ve-btn-group">
-                {['block', 'flex', 'grid', 'inline-block'].map((d) => (
-                  <button
-                    key={d}
-                    class={`ve-mini-btn ${(el.style.display || computed.display) === d ? 've-active' : ''}`}
-                    onClick={() => toggleStyle('display', d)}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Direction</span>
-              <div class="ve-btn-group">
-                {['row', 'column'].map((dir) => (
-                  <button
-                    key={dir}
-                    class={`ve-mini-btn ${(el.style.flexDirection || computed.flexDirection) === dir ? 've-active' : ''}`}
-                    onClick={() => toggleStyle('flex-direction', dir)}
-                  >
-                    {dir}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Gap</span>
-              <input
-                class="ve-input"
-                value={el.style.gap || computed.gap}
-                onChange={(e) => handleStyleChange('gap', (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Justify</span>
-              <div class="ve-btn-group">
-                {['flex-start', 'center', 'space-between'].map((j) => (
-                  <button
-                    key={j}
-                    class={`ve-mini-btn ${(el.style.justifyContent || computed.justifyContent) === j ? 've-active' : ''}`}
-                    onClick={() => toggleStyle('justify-content', j)}
-                  >
-                    {j.replace('flex-', '')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTab === 'style' && (
-          <div>
-            <div class="ve-row">
-              <span class="ve-label">Background</span>
-              <input
-                type="color"
-                style={{ width: '32px', height: '26px', border: 'none', background: 'none', cursor: 'pointer' }}
-                value={computed.backgroundColor}
-                onChange={(e) => handleStyleChange('background-color', (e.target as HTMLInputElement).value)}
-              />
-              <input
-                class="ve-input"
-                value={el.style.backgroundColor || computed.backgroundColor}
-                onChange={(e) => handleStyleChange('background-color', (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Radius</span>
-              <input
-                class="ve-input"
-                value={el.style.borderRadius || computed.borderRadius}
-                onChange={(e) => handleStyleChange('border-radius', (e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div class="ve-row" style={{ marginTop: '8px' }}>
-              <span class="ve-label">Border</span>
-              <input
-                class="ve-input"
-                value={el.style.borderWidth || computed.borderWidth}
-                onChange={(e) => handleStyleChange('border-width', (e.target as HTMLInputElement).value)}
-              />
-            </div>
-          </div>
-        )}
+        {activeTab === 'spacing' && <SpacingTab {...tabProps} />}
+        {activeTab === 'type' && <TypographyTab {...tabProps} />}
+        {activeTab === 'layout' && <LayoutTab {...tabProps} />}
+        {activeTab === 'style' && <StyleTab {...tabProps} />}
         {activeTab === 'class' && (
-          <div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
-              {Array.from(el.classList).map((c) => (
-                <span
-                  key={c}
-                  style={{
-                    fontSize: '11px',
-                    background: '#1e293b',
-                    border: '1px solid #475569',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  {c}
-                  <button
-                    style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', fontSize: '11px', padding: 0 }}
-                    onClick={() => state.removeClass(c)}
-                    title="Remove class"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div class="ve-row">
-              <input
-                class="ve-input"
-                placeholder="Add class (e.g. shadow-lg, text-center)..."
-                value={newClassInput}
-                onInput={(e) => setNewClassInput((e.target as HTMLInputElement).value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newClassInput.trim()) {
-                    state.addClass(newClassInput.trim());
-                    setNewClassInput('');
-                  }
-                }}
-              />
-              <button
-                class="ve-mini-btn primary"
-                style={{ flex: 'none', padding: '5px 10px' }}
-                onClick={() => {
-                  if (newClassInput.trim()) {
-                    state.addClass(newClassInput.trim());
-                    setNewClassInput('');
-                  }
-                }}
-              >
-                Add
-              </button>
-            </div>
-          </div>
+          <ClassesTab
+            el={el}
+            state={state}
+            newClassInput={newClassInput}
+            onChangeNewClassInput={setNewClassInput}
+          />
         )}
-        {activeTab === 'actions' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                class="ve-mini-btn"
-                onClick={() => state.moveElement('up')}
-                title="Move element before previous sibling"
-              >
-                ↑ Move Up
-              </button>
-              <button
-                class="ve-mini-btn"
-                onClick={() => state.moveElement('down')}
-                title="Move element after next sibling"
-              >
-                ↓ Move Down
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                class="ve-mini-btn"
-                onClick={() => state.duplicateElement()}
-                title="Create clone of this element"
-              >
-                Duplicate
-              </button>
-              <button
-                class="ve-mini-btn"
-                style={{ color: '#f43f5e' }}
-                onClick={() => state.deleteElement()}
-                title="Remove element from page"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        )}
+        {activeTab === 'actions' && <DomActionsTab state={state} />}
       </div>
     </div>
   );

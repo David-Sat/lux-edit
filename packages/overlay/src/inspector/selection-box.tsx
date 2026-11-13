@@ -9,7 +9,7 @@ export function SelectionBox() {
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
-  }, []);
+  }, [state]);
 
   if (state.activeTool === 'none') return null;
 
@@ -24,10 +24,11 @@ export function SelectionBox() {
 
     const dim = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
     const isCommentMode = state.activeTool === 'comment';
+    const isScreenshotMode = state.activeTool === 'screenshot';
 
     return (
       <div
-        class={`ve-highlight-box ${isActive ? 've-active' : ''} ${isCommentMode ? 've-comment-mode' : ''}`}
+        class={`ve-highlight-box ${isActive ? 've-active' : ''} ${isCommentMode ? 've-comment-mode' : ''} ${isScreenshotMode ? 've-screenshot-mode' : ''}`}
         style={{
           top: `${rect.top}px`,
           left: `${rect.left}px`,
@@ -36,7 +37,7 @@ export function SelectionBox() {
         }}
       >
         <div class="ve-badge">
-          <span>{isCommentMode ? `💬 ${label}` : label}</span>
+          {isScreenshotMode ? <span>[Snap Screenshot] {label}</span> : <span>{label}</span>}
           <span class="ve-badge-dim">{dim}</span>
         </div>
       </div>

@@ -1,4 +1,12 @@
-import { VoiceTargetPin, VoiceReviewWalkthrough, formatVoiceTargetTag, SourceLocation } from '@visual-edit/core';
+import {
+  VoiceTargetPin,
+  VoiceSection,
+  VoiceReviewWalkthrough,
+  AnnotationTarget,
+  formatVoiceTargetTag,
+  SourceLocation,
+  computeTargetHash,
+} from '@visual-edit/core';
 import { getRouteFromLocation } from './route-utils.js';
 
 export interface VoiceRecorderState {
@@ -9,29 +17,77 @@ export interface VoiceRecorderState {
   interimTranscript: string;
   annotatedTranscript: string;
   pins: VoiceTargetPin[];
+  sections: VoiceSection[];
   error?: string;
+}
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  readonly [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  lang: string;
+  onstart: (() => void) | null;
+  onaudiostart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+}
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const speechWin = window as SpeechRecognitionWindow;
+  return speechWin.SpeechRecognition || speechWin.webkitSpeechRecognition;
 }
 
 export class VoiceRecorder {
   private static instance: VoiceRecorder;
-  private recognition: any = null;
+  private recognition: SpeechRecognitionInstance | null = null;
   private isRecording = false;
   private isReady = false;
   private startTime = 0;
-  private timerInterval: any = null;
-  private readyTimeout: any = null;
+  private timerInterval: ReturnType<typeof setInterval> | null = null;
+  private readyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private transcript = '';
   private interimTranscript = '';
   private annotatedTranscript = '';
   private lastProcessedLength = 0;
+  private activeSectionStartLength = 0;
   private pins: VoiceTargetPin[] = [];
+  private sections: VoiceSection[] = [];
   private listeners = new Set<(state: VoiceRecorderState) => void>();
   private error?: string;
+  private workbenchOverride: VoiceRecorderState | null = null;
 
   public static isSupported(): boolean {
-    if (typeof window === 'undefined') return false;
-    return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    return Boolean(getSpeechRecognitionConstructor());
   }
 
   public static getInstance(): VoiceRecorder {
@@ -46,8 +102,7 @@ export class VoiceRecorder {
   }
 
   private initRecognition(): void {
-    if (typeof window === 'undefined') return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognitionConstructor();
     if (!SpeechRecognition) return;
 
     try {
@@ -58,8 +113,8 @@ export class VoiceRecorder {
       let defaultLang = 'en-US';
       if (typeof navigator !== 'undefined' && navigator?.language) {
         defaultLang = navigator.language;
-      } else if (typeof window !== 'undefined' && (window as any).navigator?.language) {
-        defaultLang = (window as any).navigator.language;
+      } else if (typeof window !== 'undefined' && window.navigator?.language) {
+        defaultLang = window.navigator.language;
       }
       recognition.lang = defaultLang;
 
@@ -79,7 +134,7 @@ export class VoiceRecorder {
         this.notify();
       };
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         let interim = '';
         let finalChunk = '';
 
@@ -106,7 +161,7 @@ export class VoiceRecorder {
         this.notify();
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         if (event.error === 'no-speech') {
           return;
         }
@@ -124,13 +179,15 @@ export class VoiceRecorder {
         if (this.isRecording) {
           try {
             recognition.start();
-          } catch (e) {}
+          } catch (err) {
+            console.debug('[lux] Failed to auto-restart speech recognition:', err);
+          }
         }
       };
 
       this.recognition = recognition;
-    } catch (err: any) {
-      this.error = err?.message || 'Failed to initialize speech recognition';
+    } catch (err: unknown) {
+      this.error = err instanceof Error ? err.message : 'Failed to initialize speech recognition';
     }
   }
 
@@ -145,7 +202,34 @@ export class VoiceRecorder {
     this.listeners.forEach((fn) => fn(s));
   }
 
+  public setWorkbenchState(mock: Partial<VoiceRecorderState> | null): void {
+    if (!mock) {
+      this.workbenchOverride = null;
+      this.notify();
+      return;
+    }
+    this.workbenchOverride = {
+      isRecording: mock.isRecording ?? true,
+      isReady: mock.isReady ?? true,
+      durationMs: mock.durationMs ?? 0,
+      transcript: mock.transcript ?? '',
+      interimTranscript: mock.interimTranscript ?? '',
+      annotatedTranscript: mock.annotatedTranscript ?? '',
+      pins: mock.pins ? [...mock.pins] : [],
+      sections: mock.sections ? mock.sections.map((s) => ({ ...s, targets: [...s.targets] })) : [],
+      error: mock.error,
+    };
+    this.notify();
+  }
+
   public getState(): VoiceRecorderState {
+    if (this.workbenchOverride) {
+      return {
+        ...this.workbenchOverride,
+        pins: [...this.workbenchOverride.pins],
+        sections: this.workbenchOverride.sections.map((s) => ({ ...s, targets: [...s.targets] })),
+      };
+    }
     const durationMs =
       this.isRecording && this.isReady && this.startTime > 0
         ? Math.round(performance.now() - this.startTime)
@@ -158,6 +242,7 @@ export class VoiceRecorder {
       interimTranscript: this.interimTranscript,
       annotatedTranscript: this.buildCurrentAnnotatedTranscript(),
       pins: [...this.pins],
+      sections: this.sections.map((s) => ({ ...s, targets: [...s.targets] })),
       error: this.error,
     };
   }
@@ -169,7 +254,9 @@ export class VoiceRecorder {
     this.interimTranscript = '';
     this.annotatedTranscript = '';
     this.lastProcessedLength = 0;
+    this.activeSectionStartLength = 0;
     this.pins = [];
+    this.sections = [];
     this.startTime = 0;
     this.isRecording = true;
     this.isReady = false;
@@ -182,9 +269,9 @@ export class VoiceRecorder {
 
     try {
       this.initRecognition();
-      this.recognition.start();
-    } catch (e: any) {
-      this.error = e?.message || 'Could not start recording';
+      this.recognition?.start();
+    } catch (e: unknown) {
+      this.error = e instanceof Error ? e.message : 'Could not start recording';
       this.notify();
     }
 
@@ -210,22 +297,31 @@ export class VoiceRecorder {
     return true;
   }
 
-  public addPin(target: {
-    selector: string;
-    sourceLocation?: SourceLocation;
-    htmlSnippet?: string;
-    bounds?: { x: number; y: number; width: number; height: number };
-    pathname?: string;
-  }): VoiceTargetPin {
+  public addPin(
+    target: {
+      selector: string;
+      sourceLocation?: SourceLocation;
+      htmlSnippet?: string;
+      bounds?: { x: number; y: number; width: number; height: number };
+      pathname?: string;
+    },
+    options?: { appendToCurrentSection?: boolean }
+  ): VoiceTargetPin {
     const order = this.pins.length + 1;
+    const targetHash = computeTargetHash({
+      selector: target.selector,
+      htmlSnippet: target.htmlSnippet,
+    });
+    const timestampMs = this.startTime > 0 ? Math.round(performance.now() - this.startTime) : 0;
     const pin: VoiceTargetPin = {
       id: `vpin_${Date.now()}_${order}`,
       order,
       targetSelector: target.selector,
+      targetHash,
       sourceLocation: target.sourceLocation,
       htmlSnippet: target.htmlSnippet,
       bounds: target.bounds,
-      timestampMs: this.startTime > 0 ? Math.round(performance.now() - this.startTime) : 0,
+      timestampMs,
       pathname: target.pathname || getRouteFromLocation(),
     };
 
@@ -247,6 +343,59 @@ export class VoiceRecorder {
       this.annotatedTranscript += ' ';
     }
     this.annotatedTranscript += tag;
+
+    const annTarget: AnnotationTarget = {
+      targetSelector: target.selector,
+      targetHash,
+      sourceLocation: target.sourceLocation,
+      htmlSnippet: target.htmlSnippet,
+      bounds: target.bounds,
+      pathname: target.pathname || getRouteFromLocation(),
+    };
+
+    if (options?.appendToCurrentSection && this.sections.length > 0) {
+      const currentSec = this.sections[this.sections.length - 1];
+      const existingIdx = currentSec.targets.findIndex((t) => t.targetSelector === target.selector);
+      if (existingIdx !== -1 && currentSec.targets.length > 1) {
+        currentSec.targets.splice(existingIdx, 1);
+      } else if (existingIdx === -1) {
+        currentSec.targets.push(annTarget);
+      }
+      currentSec.endTimeMs = timestampMs;
+    } else if (this.sections.length === 0) {
+      const secOrder = 1;
+      this.sections.push({
+        id: `vsec_${Date.now()}_${secOrder}`,
+        order: secOrder,
+        targets: [annTarget],
+        transcript: newSpoken,
+        timestampMs,
+        startTimeMs: 0,
+        endTimeMs: timestampMs,
+      });
+      this.activeSectionStartLength = currentSpoken.length;
+    } else {
+      const prevSec = this.sections[this.sections.length - 1];
+      const sectionSpoken = currentSpoken.slice(this.activeSectionStartLength).trim();
+      if (sectionSpoken) {
+        prevSec.transcript = prevSec.transcript
+          ? `${prevSec.transcript} ${sectionSpoken}`
+          : sectionSpoken;
+      }
+      prevSec.endTimeMs = timestampMs;
+
+      const secOrder = this.sections.length + 1;
+      this.sections.push({
+        id: `vsec_${Date.now()}_${secOrder}`,
+        order: secOrder,
+        targets: [annTarget],
+        transcript: '',
+        timestampMs,
+        startTimeMs: timestampMs,
+        endTimeMs: timestampMs,
+      });
+      this.activeSectionStartLength = currentSpoken.length;
+    }
 
     this.lastProcessedLength = currentSpoken.length;
     this.notify();
@@ -292,7 +441,9 @@ export class VoiceRecorder {
       if (this.recognition) {
         this.recognition.stop();
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] SpeechRecognition stop threw during finish:', err);
+    }
 
     const flushDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 500;
     if (flushDelay > 0) {
@@ -316,6 +467,27 @@ export class VoiceRecorder {
       return null;
     }
 
+    if (this.sections.length > 0) {
+      const lastSec = this.sections[this.sections.length - 1];
+      const remainingSpoken = finalRawTranscript.slice(this.activeSectionStartLength).trim();
+      if (remainingSpoken) {
+        lastSec.transcript = lastSec.transcript
+          ? `${lastSec.transcript} ${remainingSpoken}`
+          : remainingSpoken;
+      }
+      lastSec.endTimeMs = totalDurationMs;
+    } else if (finalRawTranscript) {
+      this.sections.push({
+        id: `vsec_${Date.now()}_1`,
+        order: 1,
+        targets: [],
+        transcript: finalRawTranscript,
+        timestampMs: totalDurationMs,
+        startTimeMs: 0,
+        endTimeMs: totalDurationMs,
+      });
+    }
+
     const review: VoiceReviewWalkthrough = {
       id: `voice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
@@ -323,6 +495,7 @@ export class VoiceRecorder {
       transcript: finalRawTranscript,
       annotatedTranscript: finalAnnotated || finalRawTranscript,
       pins: [...this.pins],
+      sections: this.sections.map((s) => ({ ...s, targets: [...s.targets] })),
       url: typeof window !== 'undefined' ? window.location.href : undefined,
       pathname: pathnameOverride || getRouteFromLocation(),
       pageTitle: typeof document !== 'undefined' ? document.title : undefined,
@@ -333,6 +506,7 @@ export class VoiceRecorder {
   }
 
   public cancel(): void {
+    this.workbenchOverride = null;
     this.isRecording = false;
     this.isReady = false;
     if (this.readyTimeout) {
@@ -347,12 +521,16 @@ export class VoiceRecorder {
       if (this.recognition) {
         this.recognition.stop();
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] SpeechRecognition stop threw during finish:', err);
+    }
     this.transcript = '';
     this.interimTranscript = '';
     this.annotatedTranscript = '';
     this.pins = [];
+    this.sections = [];
     this.lastProcessedLength = 0;
+    this.activeSectionStartLength = 0;
     this.notify();
   }
 }

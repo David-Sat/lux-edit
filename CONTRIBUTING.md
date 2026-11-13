@@ -30,6 +30,12 @@ Thank you for your interest in contributing to LUX (Live User eXperience)! We we
    pnpm --filter react-tailwind-app dev
    ```
 
+6. **Inspect overlay UI states in isolation (UX Workbench):**
+   ```bash
+   pnpm workbench
+   ```
+   Opens the Vite UX workbench (`packages/overlay/workbench/`) with 25+ presets across light, dark, and gradient host backdrops. See [`packages/overlay/workbench/README.md`](./packages/overlay/workbench/README.md) for details.
+
 ## Commit Convention
 
 We use [Conventional Commits](https://www.conventionalcommits.org/) for automated release management via Release Please:

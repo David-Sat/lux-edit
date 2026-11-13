@@ -1,5 +1,6 @@
 import { h, Fragment } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { SourceLocation } from '@visual-edit/core';
 import { OverlayStateManager } from './state.js';
 import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
 
@@ -60,7 +61,7 @@ function EditCommentTextarea({
 
 function locateElementOrBounds(
   targetSelector?: string,
-  sourceLoc?: any,
+  sourceLoc?: SourceLocation,
   bounds?: { x: number; y: number; width?: number; height?: number }
 ): { x: number; y: number; rect: DOMRect | { top: number; left: number; width: number; height: number } | null } {
   const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
@@ -74,7 +75,9 @@ function locateElementOrBounds(
         const r = el.getBoundingClientRect();
         return { x: r.left + 12, y: r.top + 12, rect: r };
       }
-    } catch {}
+    } catch {
+      // Ignore invalid selector syntax; fall back to id/xpath/bounds below.
+    }
   }
 
   // 2. Try ID if known
@@ -85,7 +88,9 @@ function locateElementOrBounds(
         const r = el.getBoundingClientRect();
         return { x: r.left + 12, y: r.top + 12, rect: r };
       }
-    } catch {}
+    } catch {
+      // Ignore DOM lookup errors when resolving pin fallback ID.
+    }
   }
 
   // 3. Try XPath if known
@@ -96,7 +101,9 @@ function locateElementOrBounds(
         const r = result.singleNodeValue.getBoundingClientRect();
         return { x: r.left + 12, y: r.top + 12, rect: r };
       }
-    } catch {}
+    } catch {
+      // Ignore invalid XPath expressions; fall back to stored bounds below.
+    }
   }
 
   // 4. Fallback to stored document bounds
@@ -161,7 +168,7 @@ export function CommentPins() {
       window.removeEventListener('keydown', handleKeyDown);
       unsub();
     };
-  }, []);
+  }, [state]);
 
   const currentPath = state.getCurrentPathname();
   const prevPathRef = useRef(currentPath);
@@ -452,7 +459,9 @@ export function CommentPins() {
                       }}
                       title="Dismiss and resolve this comment"
                     >
-                      <span>✓</span>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
                       <span>Resolve</span>
                     </button>
                   </div>

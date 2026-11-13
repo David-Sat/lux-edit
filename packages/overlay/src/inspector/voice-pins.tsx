@@ -20,7 +20,7 @@ export function VoicePins() {
       window.removeEventListener('resize', handleUpdate);
       unsub();
     };
-  }, []);
+  }, [state]);
 
   const currentPath = state.getCurrentPathname();
   const hasVoicePins =
@@ -66,7 +66,9 @@ export function VoicePins() {
         x = rect.left + window.scrollX;
         y = rect.top + window.scrollY;
       }
-    } catch (e) {}
+    } catch {
+      // Fall back to stored pin coordinates when selector is invalid or not mounted.
+    }
 
     return {
       pin,

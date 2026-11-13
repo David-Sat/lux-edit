@@ -2,9 +2,15 @@ import { h, render } from 'preact';
 import { OverlayRoot } from './overlay-root.js';
 import { OverlayStateManager } from './inspector/state.js';
 
+interface LuxWindow extends Window {
+  __LUX_OVERLAY_INITIALIZED__?: boolean;
+}
+
+type PatchedHistoryMethod = History['pushState'] & { __luxPatched?: boolean };
+
 class VisualEditOverlayElement extends HTMLElement {
   private shadow: ShadowRoot;
-  private teardownTimeout: any = null;
+  private teardownTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     super();
@@ -34,7 +40,7 @@ if (typeof window !== 'undefined') {
     customElements.define('visual-edit-overlay', VisualEditOverlayElement);
   }
 
-  const luxWin = window as any;
+  const luxWin = window as LuxWindow;
   if (!luxWin.__LUX_OVERLAY_INITIALIZED__) {
     luxWin.__LUX_OVERLAY_INITIALIZED__ = true;
 
@@ -71,7 +77,9 @@ if (typeof window !== 'undefined') {
       mountOverlay();
       try {
         OverlayStateManager.getInstance().handleRouteChange();
-      } catch {}
+      } catch (err) {
+        console.debug('[lux] Route change sync failed:', err);
+      }
     };
 
     if (document.readyState === 'loading') {
@@ -95,20 +103,22 @@ if (typeof window !== 'undefined') {
     // 4. Intercept history.pushState / history.replaceState for React Router, Next.js, Vue Router
     try {
       const wrapHistoryMethod = (type: 'pushState' | 'replaceState') => {
-        const orig = history[type];
-        if (typeof orig === 'function' && !(orig as any).__luxPatched) {
-          const wrapped = function (this: History, ...args: [any, string, (string | URL | null)?]) {
+        const orig = history[type] as PatchedHistoryMethod;
+        if (typeof orig === 'function' && !orig.__luxPatched) {
+          const wrapped: PatchedHistoryMethod = function (this: History, ...args: Parameters<History['pushState']>) {
             const result = orig.apply(this, args);
             queueMicrotask(handleNavigation);
             return result;
           };
-          (wrapped as any).__luxPatched = true;
+          wrapped.__luxPatched = true;
           history[type] = wrapped;
         }
       };
       wrapHistoryMethod('pushState');
       wrapHistoryMethod('replaceState');
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] History navigation hooks unavailable in this environment:', err);
+    }
 
     // 5. MutationObserver fallback to re-attach if body is replaced or cleared
     try {
@@ -132,7 +142,9 @@ if (typeof window !== 'undefined') {
       } else {
         observeBody();
       }
-    } catch (e) {}
+    } catch (err) {
+      console.debug('[lux] Failed to attach overlay MutationObserver:', err);
+    }
   }
 }
 

@@ -1,5 +1,21 @@
 import { SourceLocation } from '@visual-edit/core';
 
+interface ReactFiberType {
+  displayName?: string;
+  name?: string;
+  render?: { name?: string };
+}
+
+interface ReactFiberNode {
+  type?: ReactFiberType | string | null;
+  _debugSource?: {
+    fileName?: string;
+    lineNumber?: number;
+    columnNumber?: number;
+  };
+  return?: ReactFiberNode | null;
+}
+
 export function resolveReactSource(element: HTMLElement): Partial<SourceLocation> | null {
   try {
     const fiberKey = Object.keys(element).find(
@@ -7,17 +23,15 @@ export function resolveReactSource(element: HTMLElement): Partial<SourceLocation
     );
     if (!fiberKey) return null;
 
-    let fiber = (element as any)[fiberKey];
+    let fiber: ReactFiberNode | null | undefined = (
+      element as unknown as Record<string, ReactFiberNode | undefined>
+    )[fiberKey];
     let sourceLoc: Partial<SourceLocation> | null = null;
     let componentName: string | undefined;
 
     while (fiber) {
-      if (!componentName && fiber.type) {
-        if (typeof fiber.type === 'function') {
-          componentName = fiber.type.displayName || fiber.type.name;
-        } else if (typeof fiber.type === 'object' && fiber.type !== null) {
-          componentName = fiber.type.displayName || fiber.type.name || fiber.type.render?.name;
-        }
+      if (!componentName && fiber.type && typeof fiber.type !== 'string') {
+        componentName = fiber.type.displayName || fiber.type.name || fiber.type.render?.name;
       }
 
       if (fiber._debugSource) {

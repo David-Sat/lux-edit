@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createVisualEditMcpServer } from '../server.js';
-import { EventStore } from '@visual-edit/server';
+import { EventStore, VisualEditServer } from '@visual-edit/server';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import path from 'node:path';
@@ -72,6 +72,16 @@ describe('MCP Server Tools & Prompts', () => {
     expect(textContent).toContain('mcp_test_batch_1');
     expect(textContent).toContain('src/components/PricingCard.tsx:22');
     expect(textContent).toContain('bg-indigo-500');
+    // Token efficiency: omits raw JSON dump by default
+    expect(textContent).not.toContain('### Raw payload:');
+
+    // Opt-in raw JSON payload
+    const rawRes = await client.callTool({
+      name: 'lux_get_pending_review',
+      arguments: { includeRawJson: true },
+    });
+    const rawText = (rawRes.content as any)[0].text;
+    expect(rawText).toContain('### Raw payload:');
   });
 
   it('retrieves active comments via alias lux_get_comments', async () => {
@@ -423,6 +433,207 @@ describe('MCP Server Tools & Prompts', () => {
     expect(res.content).toBeDefined();
     const text = (res.content as any)[0].text;
     expect(text).toContain('marked as resolved');
+  });
+
+  it('proposes component variants via lux_propose_variants and rejects stale expectedHash', async () => {
+    const varDir = path.resolve(process.cwd(), '.test-mcp-store-variants');
+    if (fs.existsSync(varDir)) {
+      fs.rmSync(varDir, { recursive: true, force: true });
+    }
+    const store = EventStore.getInstance(varDir);
+    store.saveBatch({
+      id: 'var_batch_1',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm1', type: 'TEXT_EDIT', targetSelector: '.cta', before: 'A', after: 'B' }],
+    });
+    const saved = store.getSession('var_batch_1')!;
+
+    // 1. Stale expectedHash should return isError: true
+    const conflictRes = await client.callTool({
+      name: 'lux_propose_variants',
+      arguments: {
+        workspaceDir: varDir,
+        targetSelector: '.cta',
+        expectedHash: 'deadbeef00000000',
+        variants: [
+          { name: 'V1', styles: { color: 'red' }, rationale: 'Option 1' },
+          { name: 'V2', styles: { color: 'blue' }, rationale: 'Option 2' },
+        ],
+      },
+    });
+    expect(conflictRes.isError).toBe(true);
+    expect((conflictRes.content as any)[0].text).toContain('Stale revision conflict');
+
+    // 2. Valid expectedHash should register variants
+    const okRes = await client.callTool({
+      name: 'lux_propose_variants',
+      arguments: {
+        workspaceDir: varDir,
+        targetSelector: '.cta',
+        expectedHash: saved.revisionHash,
+        variants: [
+          { name: 'Solid Indigo', styles: { 'background-color': '#4f46e5' }, rationale: 'High contrast' },
+          { name: 'Glass Pill', styles: { 'backdrop-filter': 'blur(8px)' }, rationale: 'Modern aesthetic' },
+        ],
+      },
+    });
+    expect(okRes.isError).toBeFalsy();
+    expect((okRes.content as any)[0].text).toContain('Proposed 2 variants for `.cta`');
+    expect(store.getVariantSets()).toHaveLength(1);
+
+    fs.rmSync(varDir, { recursive: true, force: true });
+  });
+
+  it('rejects stale expectedHash in lux_resolve_review', async () => {
+    const staleDir = path.resolve(process.cwd(), '.test-mcp-store-stale');
+    if (fs.existsSync(staleDir)) {
+      fs.rmSync(staleDir, { recursive: true, force: true });
+    }
+    const store = EventStore.getInstance(staleDir);
+    store.saveBatch({
+      id: 'stale_batch_1',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm1', type: 'TEXT_EDIT', targetSelector: 'h1', before: 'Old', after: 'New' }],
+    });
+
+    const res = await client.callTool({
+      name: 'lux_resolve_review',
+      arguments: {
+        workspaceDir: staleDir,
+        sessionId: 'stale_batch_1',
+        status: 'implemented',
+        expectedHash: '0000111122223333',
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect((res.content as any)[0].text).toContain('Stale revision conflict');
+
+    fs.rmSync(staleDir, { recursive: true, force: true });
+  });
+
+  it('writes single reply via live HTTP server, resolves atomically with lux_propose_variants, and wakes lux_wait_for_feedback', async () => {
+    const liveDir = path.resolve(process.cwd(), '.test-mcp-live-e2e');
+    if (fs.existsSync(liveDir)) {
+      fs.rmSync(liveDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(liveDir, { recursive: true });
+    fs.writeFileSync(path.join(liveDir, 'index.html'), '<html><body><button id="cta">Go</button></body></html>');
+
+    const livePort = 4489;
+    const liveServer = new VisualEditServer({
+      target: liveDir,
+      port: livePort,
+      host: '127.0.0.1',
+      rootDir: liveDir,
+    });
+    const serverUrl = await liveServer.listen();
+    try {
+      // 1. Submit initial batch over HTTP
+      await fetch(`${serverUrl}/__visual_edit__/api/edits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'live_sess_1',
+          timestamp: Date.now(),
+          route: '/',
+          status: 'submitted',
+          mutations: [{ id: 'm_live', type: 'TEXT_EDIT', targetSelector: '#cta', before: 'Go', after: 'Start' }],
+        }),
+      });
+
+      // 2. Resolve through MCP and confirm only ONE reply is persisted
+      const resolveRes = await client.callTool({
+        name: 'lux_resolve_review',
+        arguments: {
+          workspaceDir: liveDir,
+          serverUrl,
+          sessionId: 'live_sess_1',
+          status: 'implemented',
+          reply: 'Updated CTA copy once',
+          modifiedSelectors: ['#cta'],
+        },
+      });
+      expect(resolveRes.isError).toBeFalsy();
+
+      const liveStore = EventStore.getInstance(liveDir);
+      const updated = liveStore.getSession('live_sess_1');
+      expect(updated?.replies).toHaveLength(1);
+      expect(updated?.replies?.[0].message).toBe('Updated CTA copy once');
+
+      // 3. Submit another batch, then propose variants + resolve atomically via lux_propose_variants
+      await fetch(`${serverUrl}/__visual_edit__/api/edits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'live_sess_2',
+          timestamp: Date.now(),
+          route: '/',
+          status: 'submitted',
+          annotations: [{ id: 'a_live', timestamp: Date.now(), type: 'element', targetSelector: '#cta', comment: 'Need options' }],
+        }),
+      });
+
+      const propRes = await client.callTool({
+        name: 'lux_propose_variants',
+        arguments: {
+          workspaceDir: liveDir,
+          serverUrl,
+          targetSelector: '#cta',
+          label: 'CTA Options',
+          resolveSessionId: 'live_sess_2',
+          reply: 'Proposed two options',
+          variants: [
+            { name: 'Violet', rationale: 'Violet CTA', styles: { background: '#7c3aed' }, text: 'Launch' },
+            { name: 'Teal', rationale: 'Teal CTA', styles: { background: '#0d9488' } },
+          ],
+        },
+      });
+      expect(propRes.isError).toBeFalsy();
+      expect((propRes.content as any)[0].text).toContain('Also marked prior session `live_sess_2` as implemented.');
+      expect(liveStore.getSession('live_sess_2')?.status).toBe('implemented');
+      expect(liveStore.getSession('live_sess_2')?.replies).toHaveLength(1);
+
+      // 4. lux_wait_for_feedback wakes immediately on incoming HTTP submission
+      const afterCursor = liveStore.getLatestCursor();
+      const waitPromise = client.callTool({
+        name: 'lux_wait_for_feedback',
+        arguments: {
+          workspaceDir: liveDir,
+          serverUrl,
+          afterCursor,
+          waitMs: 4000,
+        },
+      });
+
+      setTimeout(() => {
+        fetch(`${serverUrl}/__visual_edit__/api/edits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: 'live_sess_3',
+            timestamp: Date.now(),
+            route: '/',
+            status: 'submitted',
+            annotations: [{ id: 'a_wake', timestamp: Date.now(), type: 'element', targetSelector: '#cta', comment: 'Woke waiter' }],
+          }),
+        }).catch(() => {});
+      }, 60);
+
+      const waitRes = await waitPromise;
+      expect(waitRes.isError).toBeFalsy();
+      const waitText = (waitRes.content as any)[0].text;
+      expect(waitText).toContain('live_sess_3');
+      expect(waitText).toContain('Woke waiter');
+      expect(waitText).toContain('lux_wait_for_feedback');
+      expect(waitText).not.toContain('Antigravity');
+    } finally {
+      await liveServer.close();
+      fs.rmSync(liveDir, { recursive: true, force: true });
+    }
   });
 });
 

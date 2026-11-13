@@ -4,20 +4,48 @@ import {
   CommentAnnotation,
   MutationRecord,
   SessionStatus,
-  SourceLocation,
   VisualEditBatch,
   VoiceReviewWalkthrough,
   VoiceTargetPin,
-  STORAGE_KEYS,
   API_ROUTES,
   DockPosition,
+  ReviewMode,
+  HookLeaseStatus,
+  ElementVariantSet,
+  VariantDecision,
+  VerificationTarget,
+  computeTargetHash,
+  computeBatchRevisionHash,
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
-import { computeStyleDiff, computeTextDiff, computeClassDiff } from '@visual-edit/core';
 import { VoiceRecorder } from './voice-recorder.js';
-import { getRouteFromLocation, isAnnotationOnRoute, normalizeRoute } from './route-utils.js';
+import { getRouteFromLocation, normalizeRoute } from './route-utils.js';
+import { captureVisualSnapshot } from './visual-capture.js';
+import { DomMutationManager, ElementSnapshot } from './dom-mutations.js';
+import { VariantManager } from './variant-manager.js';
+import {
+  clearPersistedDraft,
+  clearVerificationTargets,
+  consumeVerificationTargets,
+  loadPersistedState,
+  persistVerificationTargets,
+  saveComposerDraft,
+  saveDockPosition,
+  savePersistedDraft,
+  saveReviewMode,
+} from './storage.js';
+import { StatusChangePayload, WsSyncClient } from './ws-sync.js';
 
-export type { DockPosition };
+export type { DockPosition, ElementSnapshot };
+
+interface LuxGlobalWindow extends Window {
+  __LUX_VERSION__?: string;
+  __LUX_APP_ID__?: string;
+}
+
+function getLuxWindow(): LuxGlobalWindow | undefined {
+  return typeof window !== 'undefined' ? (window as LuxGlobalWindow) : undefined;
+}
 
 // Derive prefix dynamically from script loading URL for reverse proxies
 const BASE_PATH_PREFIX = (() => {
@@ -32,29 +60,39 @@ const BASE_PATH_PREFIX = (() => {
   }
 })();
 
-export type ActiveTool = 'none' | 'edit' | 'comment' | 'area' | 'voice';
+export type ActiveTool = 'none' | 'edit' | 'comment' | 'voice' | 'screenshot';
 
-export interface ElementSnapshot {
-  text: string;
-  styles: Record<string, string>;
-  classes: string[];
-  sourceLocation: SourceLocation;
-  originalStyleAttr?: string | null;
-}
-
-function isWebSocketOpen(ws: WebSocket | null): ws is WebSocket {
-  if (!ws) return false;
-  const openState = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1;
-  return ws.readyState === openState;
+function flashElementHighlight(el: HTMLElement, boxShadow: string, transition: string, durationMs: number): void {
+  try {
+    const origTransition = el.style.transition;
+    const origBoxShadow = el.style.boxShadow;
+    el.style.transition = transition;
+    el.style.boxShadow = boxShadow;
+    setTimeout(() => {
+      el.style.boxShadow = origBoxShadow;
+      el.style.transition = origTransition;
+    }, durationMs);
+  } catch (err) {
+    console.debug('[lux] Failed to apply highlight flash animation:', err);
+  }
 }
 
 export class OverlayStateManager {
   private static instance?: OverlayStateManager;
+  private static resizeHandler: (() => void) | null = null;
+  private static workbenchMode = false;
+
+  public static setWorkbenchMode(enabled: boolean): void {
+    OverlayStateManager.workbenchMode = enabled;
+  }
+
+  public static isWorkbenchMode(): boolean {
+    return OverlayStateManager.workbenchMode;
+  }
 
   public activeTool: ActiveTool = 'none';
   public isDockMenuOpen = false;
   public isDrawerOpen = false;
-  public isThemePanelOpen = false;
   public dockPosition: DockPosition = {
     side: 'right',
     verticalAnchor: 'bottom',
@@ -69,28 +107,30 @@ export class OverlayStateManager {
   public commentTargetBounds?: { x: number; y: number; width: number; height: number };
   public commentDraftText: string = '';
   public pendingPageReload: boolean = false;
+  public commentPendingScreenshot?: string;
 
   public userPrompt = '';
   public sessionId = `session_${Date.now().toString(36)}`;
   public sessionStatus: SessionStatus = 'draft';
+  public reviewMode: ReviewMode = 'batch';
+  public hookLease: HookLeaseStatus = {
+    connected: false,
+    agentState: 'idle',
+    seenCursor: 0,
+    latestCursor: 0,
+  };
+  public variantSets: ElementVariantSet[] = [];
+  public variantDecisions: VariantDecision[] = [];
+  public activeVariantPreview = new Map<string, string | null>();
+  public verificationTargets: VerificationTarget[] = [];
+
   public mutations: MutationRecord[] = [];
   public annotations: CommentAnnotation[] = [];
   public voiceReviews: VoiceReviewWalkthrough[] = [];
   public activeVoicePins: VoiceTargetPin[] = [];
   public agentReplies: AgentReply[] = [];
-  public themeTokens: Record<string, string> = {
-    primary: '#6366f1',
-    accent: '#38bdf8',
-    background: '#0f172a',
-    textColor: '#f8fafc',
-    radius: '8px',
-    fontFamily: 'Inter, system-ui, sans-serif',
-  };
 
-  public version: string =
-    typeof window !== 'undefined' && (window as any).__LUX_VERSION__
-      ? (window as any).__LUX_VERSION__
-      : '0.13.0';
+  public version: string = getLuxWindow()?.__LUX_VERSION__ || '0.15.1';
   public currentPathname: string = getRouteFromLocation();
   public updateInfo: {
     updateAvailable: boolean;
@@ -99,27 +139,229 @@ export class OverlayStateManager {
     changelogUrl: string;
   } | null = null;
 
-  private initialThemeSnapshot: Record<string, string> = {};
-  private snapshots = new Map<HTMLElement, ElementSnapshot>();
+  private domMutations = new DomMutationManager();
+  private variantManager: VariantManager;
+  private wsSync: WsSyncClient;
+  private get ws(): WebSocket | null {
+    return this.wsSync.getWebSocket();
+  }
   private listeners = new Set<() => void>();
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private reconnectTimer: any = null;
+  private liveMutationTimer: ReturnType<typeof setTimeout> | null = null;
+  private verificationTimer: ReturnType<typeof setTimeout> | null = null;
 
   private constructor() {
-    this.captureInitialTheme();
-    this.loadFromStorage();
-    this.initWebSocket();
-    this.fetchVersionInfo();
+    this.wsSync = new WsSyncClient(BASE_PATH_PREFIX, {
+      getReviewMode: () => this.reviewMode,
+      onStatusChange: (payload) => this.handleServerStatusChange(payload),
+      onAgentReply: (reply) => {
+        this.agentReplies.push(reply);
+        this.notify();
+      },
+      onAgentStatus: (lease) => {
+        this.hookLease = lease;
+        this.notify();
+      },
+      onSetReviewMode: (mode) => {
+        this.reviewMode = mode;
+        if (mode === 'batch') {
+          this.sessionStatus = 'draft';
+        }
+        saveReviewMode(this.reviewMode);
+        this.notify();
+      },
+      onSyncVariants: (list) => {
+        this.variantSets = list.filter((s) => s.status === 'pending');
+        this.notify();
+      },
+      onProposeVariants: (incoming) => {
+        const idx = this.variantSets.findIndex((s) => s.id === incoming.id);
+        if (idx !== -1) {
+          this.variantSets[idx] = incoming;
+        } else {
+          this.variantSets.push(incoming);
+        }
+        this.notify();
+      },
+      onSupersedeVariants: (incoming) => {
+        const idx = this.variantSets.findIndex((s) => s.id === incoming.id);
+        if (idx !== -1) {
+          this.variantSets[idx] = incoming;
+        }
+        if (this.activeVariantPreview.has(incoming.id)) {
+          this.previewVariant(incoming.id, null);
+        }
+        this.notify();
+      },
+      onReloadPage: (payload) => {
+        if (Array.isArray(payload?.verificationTargets) && payload.verificationTargets.length > 0) {
+          persistVerificationTargets(payload.verificationTargets);
+        }
+        clearPersistedDraft();
+
+        if (this.isComposingComment()) {
+          this.pendingPageReload = true;
+          this.notify();
+        } else if (typeof window !== 'undefined') {
+          window.location.reload();
+        }
+      },
+    });
+
+    this.variantManager = new VariantManager({
+      getSessionId: () => this.sessionId,
+      getVariantSets: () => this.variantSets,
+      setVariantSets: (sets) => {
+        this.variantSets = sets;
+      },
+      getVariantDecisions: () => this.variantDecisions,
+      setVariantDecisions: (decisions) => {
+        this.variantDecisions = decisions;
+      },
+      getActiveVariantPreview: () => this.activeVariantPreview,
+      getReviewMode: () => this.reviewMode,
+      getWebSocket: () => this.wsSync.getWebSocket(),
+      submitBatch: () => this.submitBatch(),
+      autoSync: () => this.autoSync(),
+      notify: () => this.notify(),
+      basePathPrefix: BASE_PATH_PREFIX,
+    });
+    if (!OverlayStateManager.workbenchMode) {
+      this.loadFromStorage();
+      this.restoreVerificationTargets();
+      this.wsSync.connect();
+      this.fetchVersionInfo();
+    }
     if (typeof window !== 'undefined') {
-      const prevResizeHandler = (OverlayStateManager as any)._resizeHandler;
-      if (prevResizeHandler) {
-        window.removeEventListener('resize', prevResizeHandler);
+      if (OverlayStateManager.resizeHandler) {
+        window.removeEventListener('resize', OverlayStateManager.resizeHandler);
       }
       const resizeHandler = () => OverlayStateManager.instance?.clampDockPosition();
-      (OverlayStateManager as any)._resizeHandler = resizeHandler;
+      OverlayStateManager.resizeHandler = resizeHandler;
       window.addEventListener('resize', resizeHandler);
     }
+  }
+
+  private handleServerStatusChange(payload: StatusChangePayload): void {
+    this.sessionStatus = payload.status;
+    if (Array.isArray(payload.verificationTargets) && payload.verificationTargets.length > 0) {
+      persistVerificationTargets(payload.verificationTargets);
+      this.triggerVerificationHalo(payload.verificationTargets);
+    }
+    if (payload.status === 'implemented' || payload.status === 'resolved') {
+      this.mutations = [];
+      this.annotations = [];
+      this.voiceReviews = [];
+      this.activeVoicePins = [];
+      this.variantDecisions = [];
+      const pendingSets = this.variantSets.filter((s) => s.status === 'pending');
+      const pendingSetIds = new Set(pendingSets.map((s) => s.id));
+      this.variantSets = pendingSets;
+      for (const id of this.activeVariantPreview.keys()) {
+        if (!pendingSetIds.has(id)) {
+          this.activeVariantPreview.delete(id);
+        }
+      }
+      this.variantManager.clearOriginalSnapshots(pendingSetIds);
+      this.userPrompt = '';
+      this.activeElement = null;
+      this.domMutations.clear();
+      this.sessionId = `session_${Date.now().toString(36)}`;
+      this.sessionStatus = 'draft';
+      clearPersistedDraft();
+    }
+    if (payload.replies) {
+      this.agentReplies = payload.replies;
+    }
+    this.notify();
+  }
+
+  private hasPendingFeedback(): boolean {
+    return (
+      this.mutations.length > 0 ||
+      this.annotations.length > 0 ||
+      this.voiceReviews.length > 0 ||
+      this.variantDecisions.length > 0 ||
+      this.userPrompt.trim().length > 0
+    );
+  }
+
+  public setReviewMode(mode: ReviewMode): void {
+    this.reviewMode = mode;
+    if (mode === 'batch') {
+      this.sessionStatus = 'draft';
+    }
+    if (!OverlayStateManager.workbenchMode) {
+      saveReviewMode(mode);
+      this.wsSync.send('SET_REVIEW_MODE', { reviewMode: mode, mode });
+    }
+    if (mode === 'live' && this.hasPendingFeedback()) {
+      this.submitBatch();
+      return;
+    }
+    this.notify();
+  }
+
+  public endLiveReview(): void {
+    if (!OverlayStateManager.workbenchMode) {
+      this.wsSync.send('END_LIVE_REVIEW', {});
+    }
+    this.hookLease = {
+      ...this.hookLease,
+      connected: false,
+      endedByUser: true,
+      agentState: 'idle',
+    };
+    this.notify();
+  }
+
+  public previewVariant(setId: string, variantId: string | null): void {
+    this.variantManager.previewVariant(setId, variantId);
+  }
+
+  public decideVariant(setId: string, variantId: string, userNote?: string): void {
+    this.variantManager.decideVariant(setId, variantId, userNote);
+  }
+
+  public revertVariantDecision(setId: string): void {
+    this.variantManager.revertVariantDecision(setId);
+  }
+
+  public deleteVariantDecision(setId: string): void {
+    this.variantManager.deleteVariantDecision(setId);
+  }
+
+  public dismissVariantSet(setId: string): void {
+    this.variantManager.dismissVariantSet(setId);
+  }
+
+  public triggerVerificationHalo(targets: VerificationTarget[]): void {
+    if (!targets || targets.length === 0) return;
+    this.verificationTargets = targets;
+    if (this.verificationTimer) clearTimeout(this.verificationTimer);
+    this.verificationTimer = setTimeout(() => {
+      this.verificationTargets = [];
+      clearVerificationTargets();
+      this.notify();
+    }, 6000);
+    this.notify();
+  }
+
+  private restoreVerificationTargets(): void {
+    const targets = consumeVerificationTargets();
+    if (targets) {
+      this.triggerVerificationHalo(targets);
+    }
+  }
+
+  private scheduleLiveMutationSubmit(): void {
+    if (this.reviewMode !== 'live') {
+      this.sessionStatus = 'draft';
+      return;
+    }
+    if (this.liveMutationTimer) clearTimeout(this.liveMutationTimer);
+    this.liveMutationTimer = setTimeout(() => {
+      this.submitBatch();
+    }, 800);
   }
 
   public async fetchVersionInfo(): Promise<void> {
@@ -135,113 +377,28 @@ export class OverlayStateManager {
           this.notify();
         }
       }
-    } catch {}
-  }
-
-  private captureInitialTheme(): void {
-    try {
-      const rootStyle = window.getComputedStyle(document.documentElement);
-      const bodyStyle = window.getComputedStyle(document.body);
-      this.initialThemeSnapshot = {
-        primary: rootStyle.getPropertyValue('--primary') || '',
-        accent: rootStyle.getPropertyValue('--accent') || '',
-        background: bodyStyle.backgroundColor || '',
-        textColor: bodyStyle.color || '',
-        radius: rootStyle.getPropertyValue('--radius') || '',
-        fontFamily: bodyStyle.fontFamily || '',
-      };
-    } catch (e) {}
-  }
-
-  private getStorageKey(): string {
-    const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
-    return `${STORAGE_KEYS.DRAFT_PREFIX}${appId || 'default'}`;
+    } catch (err) {
+      console.debug('[lux] Failed to fetch version status:', err);
+    }
   }
 
   private loadFromStorage(): void {
-    try {
-      const key = this.getStorageKey();
-      // Load current scoped key, falling back to legacy keys for migration
-      let saved = localStorage.getItem(key);
-      if (!saved) {
-        const appId = typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined;
-        if (appId) {
-          saved = localStorage.getItem(`${STORAGE_KEYS.LEGACY_APP_DRAFT_PREFIX}${appId}`);
-        }
-        if (!saved) {
-          saved = localStorage.getItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-        }
-        // If recovered from legacy key, clean it up
-        if (saved) {
-          try {
-            if (appId) localStorage.removeItem(`${STORAGE_KEYS.LEGACY_APP_DRAFT_PREFIX}${appId}`);
-            localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-          } catch {}
-        }
-      }
-
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.status !== 'implemented' && data.status !== 'resolved') {
-          this.sessionId = data.id || this.sessionId;
-          this.sessionStatus = data.status || 'draft';
-          this.mutations = data.mutations || [];
-          this.annotations = data.annotations || [];
-          this.voiceReviews = data.voiceReviews || [];
-          this.userPrompt = data.userPrompt || '';
-        }
-      }
-    } catch (e) {}
-
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const savedPos = localStorage.getItem(STORAGE_KEYS.DOCK_POSITION);
-        if (savedPos) {
-          const parsed = JSON.parse(savedPos);
-          if (
-            (parsed.side === 'left' || parsed.side === 'right') &&
-            (parsed.verticalAnchor === 'top' || parsed.verticalAnchor === 'bottom') &&
-            typeof parsed.offsetY === 'number'
-          ) {
-            this.dockPosition = {
-              side: parsed.side,
-              verticalAnchor: parsed.verticalAnchor,
-              offsetY: Math.max(10, parsed.offsetY),
-            };
-          }
-        }
-      }
-    } catch (e) {}
-
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        const savedDraft = sessionStorage.getItem(STORAGE_KEYS.COMPOSER_DRAFT);
-        if (savedDraft) {
-          this.commentDraftText = savedDraft;
-        }
-      }
-    } catch (e) {}
+    const loaded = loadPersistedState();
+    if (loaded.reviewMode) this.reviewMode = loaded.reviewMode;
+    if (loaded.sessionId) this.sessionId = loaded.sessionId;
+    if (loaded.sessionStatus) this.sessionStatus = loaded.sessionStatus;
+    if (loaded.mutations) this.mutations = loaded.mutations;
+    if (loaded.annotations) this.annotations = loaded.annotations;
+    if (loaded.voiceReviews) this.voiceReviews = loaded.voiceReviews;
+    if (loaded.variantDecisions) this.variantDecisions = loaded.variantDecisions;
+    if (loaded.userPrompt !== undefined) this.userPrompt = loaded.userPrompt;
+    if (loaded.dockPosition) this.dockPosition = loaded.dockPosition;
+    if (loaded.commentDraftText !== undefined) this.commentDraftText = loaded.commentDraftText;
   }
 
   private saveToStorage(): void {
-    try {
-      const key = this.getStorageKey();
-      const hasContent =
-        this.mutations.length > 0 ||
-        this.annotations.length > 0 ||
-        this.voiceReviews.length > 0 ||
-        this.userPrompt.trim().length > 0;
-
-      if (
-        this.sessionStatus === 'implemented' ||
-        this.sessionStatus === 'resolved' ||
-        (!hasContent && this.sessionStatus === 'draft')
-      ) {
-        localStorage.removeItem(key);
-      } else {
-        localStorage.setItem(key, JSON.stringify(this.getBatch()));
-      }
-    } catch (e) {}
+    if (OverlayStateManager.workbenchMode) return;
+    savePersistedDraft(this.getBatch(), this.hasPendingFeedback(), this.sessionStatus);
   }
 
   public static getInstance(): OverlayStateManager {
@@ -263,21 +420,81 @@ export class OverlayStateManager {
       clearTimeout(this.syncTimer);
       this.syncTimer = null;
     }
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+    if (this.liveMutationTimer) {
+      clearTimeout(this.liveMutationTimer);
+      this.liveMutationTimer = null;
     }
-    if (this.ws) {
-      try {
-        this.ws.onclose = null;
-        this.ws.onerror = null;
-        this.ws.onmessage = null;
-        this.ws.onopen = null;
-        this.ws.close();
-      } catch {}
-      this.ws = null;
+    if (this.verificationTimer) {
+      clearTimeout(this.verificationTimer);
+      this.verificationTimer = null;
     }
+    if (typeof window !== 'undefined' && OverlayStateManager.resizeHandler) {
+      window.removeEventListener('resize', OverlayStateManager.resizeHandler);
+      OverlayStateManager.resizeHandler = null;
+    }
+    this.wsSync.close();
     this.listeners.clear();
+  }
+
+  public resetForWorkbench(): void {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    if (this.liveMutationTimer) {
+      clearTimeout(this.liveMutationTimer);
+      this.liveMutationTimer = null;
+    }
+    if (this.verificationTimer) {
+      clearTimeout(this.verificationTimer);
+      this.verificationTimer = null;
+    }
+
+    this.activeTool = 'none';
+    this.isDockMenuOpen = false;
+    this.isDrawerOpen = false;
+    this.dockPosition = {
+      side: 'right',
+      verticalAnchor: 'bottom',
+      offsetY: 24,
+    };
+    this.activeElement = null;
+    this.hoveredElement = null;
+    this.commentTargetElement = null;
+    this.commentTargetElements = [];
+    this.commentTargetSelectedText = undefined;
+    this.commentTargetBounds = undefined;
+    this.commentDraftText = '';
+    this.pendingPageReload = false;
+    this.commentPendingScreenshot = undefined;
+    this.userPrompt = '';
+    this.sessionId = `workbench_${Date.now().toString(36)}`;
+    this.sessionStatus = 'draft';
+    this.reviewMode = 'batch';
+    this.hookLease = {
+      connected: false,
+      agentState: 'idle',
+      seenCursor: 0,
+      latestCursor: 0,
+    };
+    this.variantSets = [];
+    this.variantDecisions = [];
+    this.activeVariantPreview.clear();
+    this.verificationTargets = [];
+    this.mutations = [];
+    this.annotations = [];
+    this.voiceReviews = [];
+    this.activeVoicePins = [];
+    this.agentReplies = [];
+    this.updateInfo = null;
+    this.isStoppingVoice = false;
+    this.currentPathname = getRouteFromLocation();
+
+    this.domMutations.clear();
+    this.variantManager.clearOriginalSnapshots();
+    VoiceRecorder.getInstance().setWorkbenchState(null);
+
+    this.notify();
   }
 
   public getCurrentPathname(): string {
@@ -365,18 +582,14 @@ export class OverlayStateManager {
 
   public notify(): void {
     this.listeners.forEach((fn) => fn());
+    if (OverlayStateManager.workbenchMode) return;
     this.saveToStorage();
-    const hasContent =
-      this.mutations.length > 0 ||
-      this.annotations.length > 0 ||
-      this.voiceReviews.length > 0 ||
-      this.userPrompt.trim().length > 0;
-    if (hasContent || this.sessionStatus !== 'draft') {
+    if (this.hasPendingFeedback() || this.sessionStatus !== 'draft') {
       this.scheduleAutoSync();
     }
   }
 
-  private syncTimer: any = null;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
   public scheduleAutoSync(): void {
     if (this.syncTimer) clearTimeout(this.syncTimer);
     this.syncTimer = setTimeout(() => {
@@ -385,28 +598,18 @@ export class OverlayStateManager {
   }
 
   public async autoSync(): Promise<void> {
+    if (OverlayStateManager.workbenchMode) return;
     const batch = this.getBatch();
-    const hasContent =
-      (batch.mutations && batch.mutations.length > 0) ||
-      (batch.annotations && batch.annotations.length > 0) ||
-      (batch.voiceReviews && batch.voiceReviews.length > 0) ||
-      (batch.userPrompt && batch.userPrompt.trim().length > 0);
+    const hasContent = this.hasPendingFeedback();
 
     if (!hasContent && batch.status === 'draft') {
       return;
     }
 
-    if (isWebSocketOpen(this.ws)) {
-      this.ws.send(JSON.stringify({ type: 'SYNC_SESSION', payload: batch }));
-    } else {
-      try {
-        await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(batch),
-        });
-      } catch (e) {}
-    }
+    await this.wsSync.sendBatch('SYNC_SESSION', batch, {
+      allowHttpFallback: hasContent,
+      swallowErrors: true,
+    });
   }
 
   public setTool(tool: ActiveTool): void {
@@ -480,6 +683,7 @@ export class OverlayStateManager {
           type: 'voice',
           comment: review.annotatedTranscript || review.transcript,
           targetSelector: primaryPin?.targetSelector,
+          targetHash: primaryPin?.targetHash,
           sourceLocation: primaryPin?.sourceLocation,
           htmlSnippet: primaryPin?.htmlSnippet,
           bounds: primaryPin?.bounds,
@@ -488,15 +692,23 @@ export class OverlayStateManager {
           pageTitle: review.pageTitle,
           targets: review.pins.map((p) => ({
             targetSelector: p.targetSelector,
+            targetHash: p.targetHash,
             sourceLocation: p.sourceLocation,
             htmlSnippet: p.htmlSnippet,
             bounds: p.bounds,
             pathname: p.pathname,
           })),
+          voiceSections: review.sections,
         };
         this.annotations.push(annotation);
-        this.scheduleAutoSync();
-        this.isDrawerOpen = true;
+        this.voiceReviews.push(review);
+        if (this.reviewMode === 'live') {
+          await this.submitBatch();
+        } else {
+          this.sessionStatus = 'draft';
+          this.scheduleAutoSync();
+          this.isDrawerOpen = true;
+        }
       }
       this.activeTool = 'none';
       this.activeVoicePins = [];
@@ -513,7 +725,7 @@ export class OverlayStateManager {
     this.notify();
   }
 
-  public recordVoicePin(targetEl: HTMLElement): void {
+  public recordVoicePin(targetEl: HTMLElement, appendToCurrentSection: boolean = false): void {
     const recorder = VoiceRecorder.getInstance();
     const sourceLocation = resolveSourceLocation(targetEl);
     const rect = targetEl.getBoundingClientRect();
@@ -532,33 +744,35 @@ export class OverlayStateManager {
 
     const snippet = targetEl.outerHTML.slice(0, 200);
 
-    const pin = recorder.addPin({
-      selector,
-      sourceLocation,
-      htmlSnippet: snippet,
-      bounds,
-      pathname: this.getCurrentPathname(),
-    });
+    const pin = recorder.addPin(
+      {
+        selector,
+        sourceLocation,
+        htmlSnippet: snippet,
+        bounds,
+        pathname: this.getCurrentPathname(),
+      },
+      { appendToCurrentSection }
+    );
 
     this.activeVoicePins = [...this.activeVoicePins, pin];
 
     // Visual ripple effect on clicked element
-    try {
-      const origTransition = targetEl.style.transition;
-      const origBoxShadow = targetEl.style.boxShadow;
-      targetEl.style.transition = 'box-shadow 0.2s ease, transform 0.2s ease';
-      targetEl.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)';
-      setTimeout(() => {
-        targetEl.style.boxShadow = origBoxShadow;
-        targetEl.style.transition = origTransition;
-      }, 400);
-    } catch (e) {}
+    flashElementHighlight(
+      targetEl,
+      '0 0 0 4px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)',
+      'box-shadow 0.2s ease, transform 0.2s ease',
+      400
+    );
 
     this.notify();
   }
 
   public deleteVoiceReview(id: string): void {
     this.voiceReviews = this.voiceReviews.filter((v) => v.id !== id);
+    this.annotations = this.annotations.filter((a) => a.id !== id);
+    this.activeVoicePins = [];
+    if (this.reviewMode === 'batch') this.sessionStatus = 'draft';
     this.notify();
   }
 
@@ -569,11 +783,9 @@ export class OverlayStateManager {
 
   public setDockPosition(pos: DockPosition): void {
     this.dockPosition = pos;
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEYS.DOCK_POSITION, JSON.stringify(pos));
-      }
-    } catch {}
+    if (!OverlayStateManager.workbenchMode) {
+      saveDockPosition(pos);
+    }
     this.notify();
   }
 
@@ -591,68 +803,19 @@ export class OverlayStateManager {
 
   public setDrawerOpen(val: boolean): void {
     this.isDrawerOpen = val;
-    if (val) this.isThemePanelOpen = false;
-    this.notify();
-  }
-
-  public setThemePanelOpen(val: boolean): void {
-    this.isThemePanelOpen = val;
-    if (val) this.isDrawerOpen = false;
     this.notify();
   }
 
   public getSnapshotForElement(el: HTMLElement): ElementSnapshot | undefined {
-    return this.snapshots.get(el);
+    return this.domMutations.getSnapshot(el);
   }
 
   public resetElementProperty(el: HTMLElement, property: string): void {
-    const snapshot = this.snapshots.get(el);
-    if (snapshot && snapshot.styles[property] !== undefined && snapshot.styles[property] !== '') {
-      el.style.setProperty(property, snapshot.styles[property]);
-    } else {
-      el.style.removeProperty(property);
-    }
+    this.domMutations.resetElementProperty(el, property);
     this.syncMutationsForElement(el);
     this.notify();
   }
 
-  public updateThemeToken(token: string, value: string): void {
-    this.themeTokens[token] = value;
-    try {
-      if (token === 'primary') {
-        document.documentElement.style.setProperty('--primary', value);
-        document.documentElement.style.setProperty('--color-primary', value);
-      } else if (token === 'accent') {
-        document.documentElement.style.setProperty('--accent', value);
-        document.documentElement.style.setProperty('--color-accent', value);
-      } else if (token === 'background') {
-        document.body.style.backgroundColor = value;
-        document.documentElement.style.setProperty('--bg', value);
-        document.documentElement.style.setProperty('--background', value);
-      } else if (token === 'textColor') {
-        document.body.style.color = value;
-        document.documentElement.style.setProperty('--text', value);
-        document.documentElement.style.setProperty('--foreground', value);
-      } else if (token === 'radius') {
-        document.documentElement.style.setProperty('--radius', value);
-        document.documentElement.style.setProperty('--border-radius', value);
-      } else if (token === 'fontFamily') {
-        document.body.style.fontFamily = value;
-      }
-    } catch (e) {}
-
-    this.mutations = this.mutations.filter((m) => !(m.type === 'THEME_CHANGE' && m.property === token));
-    this.mutations.push({
-      id: `mut_theme_${token}_${Date.now()}`,
-      type: 'THEME_CHANGE',
-      targetSelector: ':root',
-      property: token,
-      before: 'initial',
-      after: value,
-      ...this.getPageMetadata(),
-    });
-    this.notify();
-  }
 
   public setHoveredElement(el: HTMLElement | null): void {
     if (this.hoveredElement === el) return;
@@ -684,25 +847,20 @@ export class OverlayStateManager {
 
   public setCommentDraftText(text: string): void {
     this.commentDraftText = text;
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        if (text.trim()) {
-          sessionStorage.setItem(STORAGE_KEYS.COMPOSER_DRAFT, text);
-        } else {
-          sessionStorage.removeItem(STORAGE_KEYS.COMPOSER_DRAFT);
-        }
-      }
-    } catch {}
+    if (!OverlayStateManager.workbenchMode) {
+      saveComposerDraft(text.trim() ? text : '');
+    }
   }
 
   public setCommentTarget(
     el: HTMLElement | null,
-    options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number } }
+    options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number }; screenshot?: string }
   ): void {
     this.commentTargetElement = el;
     this.commentTargetElements = el ? [el] : [];
     this.commentTargetSelectedText = options?.selectedText;
     this.commentTargetBounds = options?.bounds;
+    this.commentPendingScreenshot = options?.screenshot;
 
     if (!el) {
       this.setCommentDraftText('');
@@ -716,6 +874,11 @@ export class OverlayStateManager {
       }
     }
 
+    this.notify();
+  }
+
+  public setPendingScreenshot(screenshot?: string): void {
+    this.commentPendingScreenshot = screenshot;
     this.notify();
   }
 
@@ -759,9 +922,11 @@ export class OverlayStateManager {
   public addComment(
     comment: string,
     el?: HTMLElement,
-    options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number } }
+    options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number }; screenshot?: string }
   ): void {
-    if (!comment.trim()) return;
+    const commentText = comment.trim();
+    const screenshot = options?.screenshot || this.commentPendingScreenshot;
+    if (!commentText && !screenshot) return;
 
     const targetsList =
       this.commentTargetElements.length > 1
@@ -798,13 +963,19 @@ export class OverlayStateManager {
           height: Math.round(primaryElBounds.height),
         }
       : undefined;
+    const primarySnippet = primaryLoc?.htmlSnippet || (primaryTarget ? primaryTarget.outerHTML.slice(0, 300) : undefined);
+    const primaryHash = primaryLoc?.selector
+      ? computeTargetHash({ selector: primaryLoc.selector, htmlSnippet: primarySnippet })
+      : undefined;
 
     const annotationTargets: AnnotationTarget[] | undefined = isMulti
       ? targetsList.map((targetEl) => {
           const loc = resolveSourceLocation(targetEl);
           const b = targetEl.getBoundingClientRect();
+          const snippet = loc.htmlSnippet || targetEl.outerHTML.slice(0, 300);
           return {
             targetSelector: loc.selector,
+            targetHash: computeTargetHash({ selector: loc.selector, htmlSnippet: snippet }),
             sourceLocation: loc,
             bounds: {
               x: Math.round(b.left + scrollX),
@@ -812,24 +983,29 @@ export class OverlayStateManager {
               width: Math.round(b.width),
               height: Math.round(b.height),
             },
-            htmlSnippet: loc.htmlSnippet || targetEl.outerHTML.slice(0, 300),
+            htmlSnippet: snippet,
             pathname: this.getCurrentPathname(),
           };
         })
       : undefined;
 
+    const componentLabel = primaryLoc?.componentName ? `<${primaryLoc.componentName}>` : primaryLoc?.selector || 'element';
+    const finalComment = commentText || `Visual snapshot of ${componentLabel}`;
+
     const annotation: CommentAnnotation = {
       id: `ann_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: Date.now(),
-      type: isMulti ? 'multi' : selectedText ? 'text' : 'element',
+      type: screenshot ? 'screenshot' : isMulti ? 'multi' : selectedText ? 'text' : 'element',
       targets: annotationTargets,
       targetSelector: primaryLoc?.selector,
+      targetHash: primaryHash,
       sourceLocation: primaryLoc,
-      htmlSnippet: primaryLoc?.htmlSnippet || (primaryTarget ? primaryTarget.outerHTML.slice(0, 300) : undefined),
+      htmlSnippet: primarySnippet,
       ...this.getPageMetadata(),
       bounds: primaryBounds,
       selectedText,
-      comment: comment.trim(),
+      screenshot,
+      comment: finalComment,
     };
 
     this.annotations.push(annotation);
@@ -837,9 +1013,9 @@ export class OverlayStateManager {
     this.commentTargetElements = [];
     this.commentTargetSelectedText = undefined;
     this.commentTargetBounds = undefined;
+    this.commentPendingScreenshot = undefined;
     this.setCommentDraftText('');
     this.activeTool = 'none';
-    this.notify();
 
     if (this.pendingPageReload) {
       this.pendingPageReload = false;
@@ -849,18 +1025,83 @@ export class OverlayStateManager {
         }
       }, 150);
     }
+
+    if (this.reviewMode === 'live') {
+      this.submitBatch();
+    } else {
+      this.sessionStatus = 'draft';
+      this.notify();
+    }
+  }
+
+  private async captureElementSnapshotWithFlash(el: HTMLElement): Promise<{
+    loc: ReturnType<typeof resolveSourceLocation>;
+    targetSelector: string;
+    screenshotDataUrl: string;
+  }> {
+    const loc = resolveSourceLocation(el);
+    const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
+
+    let screenshotDataUrl = '';
+    try {
+      const snap = await captureVisualSnapshot({
+        selector: targetSelector,
+        resolution: 'draft',
+        includeOverlay: false,
+      });
+      if (snap && snap.success && snap.imageBase64) {
+        screenshotDataUrl = snap.imageBase64;
+      }
+    } catch (err) {
+      console.debug('[lux] Element screenshot capture failed, continuing without snapshot:', err);
+    }
+
+    // Flash shutter feedback after clean capture snapshot has been recorded
+    flashElementHighlight(
+      el,
+      '0 0 0 3px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.6)',
+      'box-shadow 0.15s ease, outline 0.15s ease',
+      350
+    );
+
+    return { loc, targetSelector, screenshotDataUrl };
+  }
+
+  public async snapElementToComposer(el: HTMLElement): Promise<void> {
+    if (!el || typeof document === 'undefined') return;
+    const { screenshotDataUrl } = await this.captureElementSnapshotWithFlash(el);
+    // Open comment composer anchored to el with the captured screenshot
+    this.setCommentTarget(el, { screenshot: screenshotDataUrl });
+  }
+
+  public async captureElementScreenshot(el: HTMLElement, commentText?: string): Promise<CommentAnnotation | null> {
+    if (!el || typeof document === 'undefined') return null;
+    const { loc, targetSelector, screenshotDataUrl } = await this.captureElementSnapshotWithFlash(el);
+
+    const componentLabel = loc.componentName ? `<${loc.componentName}>` : targetSelector;
+    const defaultComment = (commentText || '').trim() || `Visual snapshot of ${componentLabel}`;
+
+    this.addComment(defaultComment, el, { screenshot: screenshotDataUrl });
+    if (this.reviewMode !== 'live') {
+      this.setDrawerOpen(true);
+    }
+    return this.annotations[this.annotations.length - 1] || null;
   }
 
   public updateAnnotation(id: string, newText: string): void {
     const ann = this.annotations.find((a) => a.id === id);
     if (ann && newText.trim()) {
       ann.comment = newText.trim();
+      if (this.reviewMode === 'batch') this.sessionStatus = 'draft';
       this.notify();
     }
   }
 
   public deleteAnnotation(id: string): void {
     this.annotations = this.annotations.filter((a) => a.id !== id);
+    this.voiceReviews = this.voiceReviews.filter((v) => v.id !== id);
+    this.activeVoicePins = [];
+    if (this.reviewMode === 'batch') this.sessionStatus = 'draft';
     this.notify();
   }
 
@@ -870,242 +1111,81 @@ export class OverlayStateManager {
   }
 
   public captureInitialSnapshot(el: HTMLElement): void {
-    if (this.snapshots.has(el)) return;
-
-    const sourceLocation = resolveSourceLocation(el);
-    const computed = window.getComputedStyle(el);
-    const styles: Record<string, string> = {
-      padding: computed.padding,
-      'padding-top': computed.paddingTop,
-      'padding-bottom': computed.paddingBottom,
-      'padding-left': computed.paddingLeft,
-      'padding-right': computed.paddingRight,
-      margin: computed.margin,
-      'margin-top': computed.marginTop,
-      'margin-bottom': computed.marginBottom,
-      'margin-left': computed.marginLeft,
-      'margin-right': computed.marginRight,
-      'font-size': computed.fontSize,
-      'font-weight': computed.fontWeight,
-      color: computed.color,
-      'background-color': computed.backgroundColor,
-      display: computed.display,
-      'flex-direction': computed.flexDirection,
-      gap: computed.gap,
-      'justify-content': computed.justifyContent,
-      'align-items': computed.alignItems,
-      'border-radius': computed.borderRadius,
-      'border-width': computed.borderWidth,
-      'text-align': computed.textAlign,
-    };
-
-    const classes = typeof el.className === 'string'
-      ? el.className.trim().split(/\s+/).filter(Boolean)
-      : [];
-
-    this.snapshots.set(el, {
-      text: (el.textContent || el.innerText || '').trim(),
-      styles,
-      classes,
-      sourceLocation,
-      originalStyleAttr: el.getAttribute('style'),
-    });
+    this.domMutations.captureInitialSnapshot(el);
   }
 
   public updateElementStyle(property: string, value: string): void {
     if (!this.activeElement) return;
-    this.activeElement.style.setProperty(property, value);
+    this.domMutations.updateElementStyle(this.activeElement, property, value);
     this.syncMutationsForElement(this.activeElement);
+    this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public updateElementText(newText: string): void {
     if (!this.activeElement) return;
-    if (newText.includes('\n') && this.activeElement.style.whiteSpace !== 'pre-wrap') {
-      this.activeElement.style.whiteSpace = 'pre-wrap';
-    }
-    this.activeElement.textContent = newText;
+    this.domMutations.updateElementText(this.activeElement, newText);
     this.syncMutationsForElement(this.activeElement);
+    this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public addClass(className: string): void {
     if (!this.activeElement || !className.trim()) return;
-    this.activeElement.classList.add(className.trim());
+    this.domMutations.addClass(this.activeElement, className);
     this.syncMutationsForElement(this.activeElement);
+    this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public removeClass(className: string): void {
     if (!this.activeElement || !className.trim()) return;
-    this.activeElement.classList.remove(className.trim());
+    this.domMutations.removeClass(this.activeElement, className);
     this.syncMutationsForElement(this.activeElement);
+    this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public deleteElement(): void {
     if (!this.activeElement) return;
-    const el = this.activeElement;
-    const sourceLocation = resolveSourceLocation(el);
-    const selector = sourceLocation.selector;
-    const outerHtml = el.outerHTML;
-
-    el.remove();
-    this.mutations.push({
-      id: `mut_del_${Date.now()}`,
-      type: 'DOM_REMOVE',
-      targetSelector: selector,
-      sourceLocation,
-      before: outerHtml,
-      after: '',
-      ...this.getPageMetadata(),
-    });
+    const mutation = this.domMutations.deleteElement(this.activeElement, this.getPageMetadata());
+    this.mutations.push(mutation);
     this.setActiveElement(null);
+    this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public duplicateElement(): void {
     if (!this.activeElement || !this.activeElement.parentElement) return;
-    const clone = this.activeElement.cloneNode(true) as HTMLElement;
-    if (clone.id) {
-      clone.id = `${clone.id}-copy`;
-    }
-    clone.querySelectorAll('[id]').forEach((child) => {
-      if (child.id) child.id = `${child.id}-copy`;
-    });
-    this.activeElement.parentElement.insertBefore(clone, this.activeElement.nextSibling);
-
-    const sourceLocation = resolveSourceLocation(clone);
-    this.mutations.push({
-      id: `mut_dup_${Date.now()}`,
-      type: 'DOM_INSERT',
-      targetSelector: sourceLocation.selector,
-      sourceLocation,
-      before: '',
-      after: clone.outerHTML,
-      ...this.getPageMetadata(),
-    });
+    const { clone, mutation } = this.domMutations.duplicateElement(this.activeElement, this.getPageMetadata());
+    this.mutations.push(mutation);
     this.setActiveElement(clone);
+    this.scheduleLiveMutationSubmit();
     this.notify();
   }
 
   public revertMutation(mutationId: string): void {
-    const mutation = this.mutations.find((m) => m.id === mutationId);
-    if (!mutation) return;
-
-    if (mutation.type === 'THEME_CHANGE' && mutation.property) {
-      const token = mutation.property;
-      const originalVal = this.initialThemeSnapshot[token] || '';
-      try {
-        if (token === 'primary') {
-          if (originalVal) document.documentElement.style.setProperty('--primary', originalVal);
-          else document.documentElement.style.removeProperty('--primary');
-          document.documentElement.style.removeProperty('--color-primary');
-        } else if (token === 'accent') {
-          if (originalVal) document.documentElement.style.setProperty('--accent', originalVal);
-          else document.documentElement.style.removeProperty('--accent');
-          document.documentElement.style.removeProperty('--color-accent');
-        } else if (token === 'background') {
-          if (originalVal) document.body.style.backgroundColor = originalVal;
-          else document.body.style.removeProperty('background-color');
-          document.documentElement.style.removeProperty('--bg');
-          document.documentElement.style.removeProperty('--background');
-        } else if (token === 'textColor') {
-          if (originalVal) document.body.style.color = originalVal;
-          else document.body.style.removeProperty('color');
-          document.documentElement.style.removeProperty('--text');
-          document.documentElement.style.removeProperty('--foreground');
-        } else if (token === 'radius') {
-          if (originalVal) document.documentElement.style.setProperty('--radius', originalVal);
-          else document.documentElement.style.removeProperty('--radius');
-        }
-      } catch (err) {}
-      this.mutations = this.mutations.filter((m) => m.id !== mutationId);
-      this.notify();
-      return;
+    const res = this.domMutations.revertMutation(
+      mutationId,
+      this.mutations,
+      this.getCurrentPathname(),
+      this.activeElement
+    );
+    this.mutations = res.remainingMutations;
+    if (res.clearActive) {
+      this.setActiveElement(null);
+    } else if (res.needSyncTarget) {
+      this.syncMutationsForElement(res.needSyncTarget);
     }
-
-    let targetEl: HTMLElement | null = null;
-    const isMutationOnCurrentRoute =
-      !mutation.pathname ||
-      isAnnotationOnRoute({ pathname: mutation.pathname, url: mutation.url }, this.getCurrentPathname());
-
-    if (mutation.targetSelector && isMutationOnCurrentRoute && typeof document !== 'undefined') {
-      try {
-        targetEl = document.querySelector(mutation.targetSelector) as HTMLElement | null;
-      } catch (e) {}
-    }
-
-    if (targetEl) {
-      const snapshot = this.snapshots.get(targetEl);
-      if (mutation.type === 'CLASS_CHANGE' && mutation.details) {
-        if (mutation.details.added) {
-          (mutation.details.added as string[]).forEach((c: string) => targetEl!.classList.remove(c));
-        }
-        if (mutation.details.removed) {
-          (mutation.details.removed as string[]).forEach((c: string) => targetEl!.classList.add(c));
-        }
-      } else if (mutation.type === 'STYLE_CHANGE' && mutation.property) {
-        if (snapshot && snapshot.styles[mutation.property] !== undefined && snapshot.styles[mutation.property] !== '') {
-          targetEl.style.setProperty(mutation.property, snapshot.styles[mutation.property]);
-        } else {
-          targetEl.style.removeProperty(mutation.property);
-        }
-      } else if (mutation.type === 'TEXT_EDIT') {
-        if (snapshot) {
-          if ('innerText' in targetEl && targetEl.tagName.toLowerCase() !== 'text' && targetEl.tagName.toLowerCase() !== 'tspan') {
-            targetEl.innerText = snapshot.text;
-          } else {
-            targetEl.textContent = snapshot.text;
-          }
-        } else if (mutation.before) {
-          if ('innerText' in targetEl && targetEl.tagName.toLowerCase() !== 'text' && targetEl.tagName.toLowerCase() !== 'tspan') {
-            targetEl.innerText = mutation.before;
-          } else {
-            targetEl.textContent = mutation.before;
-          }
-        }
-      } else if (mutation.type === 'DOM_INSERT') {
-        targetEl.remove();
-        if (this.activeElement === targetEl) {
-          this.setActiveElement(null);
-        }
-      }
-
-      if (this.activeElement === targetEl && document.body.contains(targetEl)) {
-        this.syncMutationsForElement(targetEl);
-      } else {
-        this.mutations = this.mutations.filter((m) => m.id !== mutationId);
-      }
-    } else {
-      this.mutations = this.mutations.filter((m) => m.id !== mutationId);
-    }
-
     this.notify();
   }
 
   public revertAll(): void {
-    for (const [el, snapshot] of this.snapshots.entries()) {
-      if (document.body.contains(el)) {
-        el.innerText = snapshot.text;
-        el.className = snapshot.classes.join(' ');
-        if (snapshot.originalStyleAttr !== null && snapshot.originalStyleAttr !== undefined) {
-          el.setAttribute('style', snapshot.originalStyleAttr);
-        } else {
-          el.removeAttribute('style');
-        }
-      }
-    }
-
-    // Revert all theme tokens
-    try {
-      ['--primary', '--color-primary', '--accent', '--color-accent', '--bg', '--background', '--text', '--foreground', '--radius', '--border-radius'].forEach((prop) => {
-        document.documentElement.style.removeProperty(prop);
-      });
-      document.body.style.removeProperty('background-color');
-      document.body.style.removeProperty('color');
-      document.body.style.removeProperty('font-family');
-    } catch (e) {}
+    this.domMutations.revertAll();
+    this.variantManager.revertAll();
+    this.activeVariantPreview.clear();
+    this.variantDecisions = [];
+    this.variantSets = [];
 
     this.mutations = [];
     this.annotations = [];
@@ -1119,107 +1199,26 @@ export class OverlayStateManager {
   }
 
   public moveElement(direction: 'up' | 'down'): void {
-    if (!this.activeElement || !this.activeElement.parentElement) return;
-    const parent = this.activeElement.parentElement;
-    const siblings = Array.from(parent.children);
-    const currentIndex = siblings.indexOf(this.activeElement);
-
-    if (direction === 'up' && currentIndex > 0) {
-      parent.insertBefore(this.activeElement, siblings[currentIndex - 1]);
-      this.recordReorder(currentIndex, currentIndex - 1);
-    } else if (direction === 'down' && currentIndex < siblings.length - 1) {
-      parent.insertBefore(this.activeElement, siblings[currentIndex + 1].nextSibling);
-      this.recordReorder(currentIndex, currentIndex + 1);
-    }
-  }
-
-  private recordReorder(beforeIndex: number, afterIndex: number): void {
     if (!this.activeElement) return;
-    const sourceLocation = resolveSourceLocation(this.activeElement);
-    this.mutations.push({
-      id: `mut_reord_${Date.now()}`,
-      type: 'DOM_REORDER',
-      targetSelector: sourceLocation.selector,
-      sourceLocation,
-      before: `${beforeIndex}`,
-      after: `${afterIndex}`,
-      ...this.getPageMetadata(),
-    });
-    this.notify();
+    const mutation = this.domMutations.moveElement(this.activeElement, direction, this.getPageMetadata());
+    if (mutation) {
+      this.mutations.push(mutation);
+      this.scheduleLiveMutationSubmit();
+      this.notify();
+    }
   }
 
   public syncMutationsForElement(el: HTMLElement): void {
-    const snapshot = this.snapshots.get(el);
-    if (!snapshot) return;
-
-    const sourceLocation = resolveSourceLocation(el);
-    const selector = sourceLocation.selector;
-    const pageMeta = this.getPageMetadata();
-    const currentNormRoute = normalizeRoute(pageMeta.pathname);
-
-    this.mutations = this.mutations.filter((m) => {
-      if (
-        m.type === 'DOM_REMOVE' ||
-        m.type === 'DOM_REORDER' ||
-        m.type === 'DOM_INSERT' ||
-        m.type === 'THEME_CHANGE'
-      ) {
-        return true;
-      }
-      const sameRoute = !m.pathname || normalizeRoute(m.pathname) === currentNormRoute;
-      return !(m.targetSelector === selector && sameRoute);
-    });
-
-    const textDiff = computeTextDiff(snapshot.text, el.innerText || '', selector, sourceLocation);
-    if (textDiff) {
-      Object.assign(textDiff, pageMeta);
-      this.mutations.push(textDiff);
-    }
-
-    const currentComputed = window.getComputedStyle(el);
-    const currentStyles: Record<string, string> = {
-      padding: currentComputed.padding,
-      'padding-top': currentComputed.paddingTop,
-      'padding-bottom': currentComputed.paddingBottom,
-      'padding-left': currentComputed.paddingLeft,
-      'padding-right': currentComputed.paddingRight,
-      margin: currentComputed.margin,
-      'margin-top': currentComputed.marginTop,
-      'margin-bottom': currentComputed.marginBottom,
-      'margin-left': currentComputed.marginLeft,
-      'margin-right': currentComputed.marginRight,
-      'font-size': currentComputed.fontSize,
-      'font-weight': currentComputed.fontWeight,
-      color: currentComputed.color,
-      'background-color': currentComputed.backgroundColor,
-      display: currentComputed.display,
-      'flex-direction': currentComputed.flexDirection,
-      gap: currentComputed.gap,
-      'justify-content': currentComputed.justifyContent,
-      'align-items': currentComputed.alignItems,
-      'border-radius': currentComputed.borderRadius,
-      'border-width': currentComputed.borderWidth,
-      'text-align': currentComputed.textAlign,
-    };
-
-    const styleDiffs = computeStyleDiff(snapshot.styles, currentStyles, selector, sourceLocation);
-    styleDiffs.forEach((m: MutationRecord) => {
-      Object.assign(m, pageMeta);
-    });
-    this.mutations.push(...styleDiffs);
-
-    const currentClasses = typeof el.className === 'string'
-      ? el.className.trim().split(/\s+/).filter(Boolean)
-      : [];
-    const classDiffs = computeClassDiff(snapshot.classes, currentClasses, selector, sourceLocation);
-    classDiffs.forEach((m: MutationRecord) => {
-      Object.assign(m, pageMeta);
-    });
-    this.mutations.push(...classDiffs);
+    this.mutations = this.domMutations.syncMutationsForElement(el, this.mutations, this.getPageMetadata());
   }
 
   public getBatch(): VisualEditBatch {
-    if (this.activeElement && typeof document !== 'undefined' && document.body?.contains(this.activeElement)) {
+    if (
+      this.activeElement &&
+      typeof document !== 'undefined' &&
+      document.body?.contains(this.activeElement) &&
+      !this.variantManager.isElementVariantTarget(this.activeElement)
+    ) {
       this.syncMutationsForElement(this.activeElement);
     }
 
@@ -1250,22 +1249,28 @@ export class OverlayStateManager {
       v.pins?.forEach((p) => addVisited(p.pathname));
     });
 
-    return {
+    const batch: VisualEditBatch = {
       id: this.sessionId,
       timestamp: Date.now(),
       route: routeWithSearch,
       url: pageMeta.url,
       pageTitle: pageMeta.pageTitle,
       pagesVisited: Array.from(visitedByNorm.values()),
-      appId: typeof window !== 'undefined' ? (window as any).__LUX_APP_ID__ : undefined,
+      appId: getLuxWindow()?.__LUX_APP_ID__,
       status: this.sessionStatus,
+      reviewMode: this.reviewMode,
       userPrompt: this.userPrompt,
       primarySource,
       mutations: this.mutations,
       annotations: this.annotations,
       voiceReviews: this.voiceReviews,
+      variantSets: this.variantSets,
+      variantDecisions: this.variantDecisions,
       replies: this.agentReplies,
     };
+
+    batch.revisionHash = computeBatchRevisionHash(batch);
+    return batch;
   }
 
   public async submitBatch(): Promise<void> {
@@ -1273,79 +1278,10 @@ export class OverlayStateManager {
     this.sessionStatus = 'submitted';
     batch.status = 'submitted';
 
-    if (isWebSocketOpen(this.ws)) {
-      this.ws.send(JSON.stringify({ type: 'SUBMIT_BATCH', payload: batch }));
-    } else {
-      await fetch(`${BASE_PATH_PREFIX}/__visual_edit__/api/edits`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(batch),
-      });
+    if (!OverlayStateManager.workbenchMode) {
+      await this.wsSync.sendBatch('SUBMIT_BATCH', batch);
     }
 
     this.notify();
-  }
-
-  private initWebSocket(): void {
-    try {
-      if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}${BASE_PATH_PREFIX}${API_ROUTES.WS}`;
-      this.ws = new WebSocket(wsUrl);
-
-      this.ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'STATUS_CHANGE') {
-            this.sessionStatus = data.payload.status;
-            if (data.payload.status === 'implemented' || data.payload.status === 'resolved') {
-              this.mutations = [];
-              this.annotations = [];
-              this.voiceReviews = [];
-              this.activeVoicePins = [];
-              this.userPrompt = '';
-              this.sessionId = `session_${Date.now().toString(36)}`;
-              this.sessionStatus = 'draft';
-              try {
-                localStorage.removeItem(this.getStorageKey());
-                localStorage.removeItem(STORAGE_KEYS.LEGACY_ACTIVE_DRAFT);
-              } catch (e) {}
-            }
-            if (data.payload.replies) {
-              this.agentReplies = data.payload.replies;
-            }
-            this.notify();
-          } else if (data.type === 'AGENT_REPLY') {
-            this.agentReplies.push(data.payload);
-            this.notify();
-          } else if (data.type === 'RELOAD_PAGE') {
-            if (this.isComposingComment()) {
-              this.pendingPageReload = true;
-              this.notify();
-            } else {
-              window.location.reload();
-            }
-          }
-        } catch (e) {
-          console.error('[visual-edit] WebSocket error parsing message:', e);
-        }
-      };
-
-      this.ws.onerror = () => {};
-
-      this.ws.onopen = () => {
-        this.reconnectAttempts = 0;
-      };
-
-      this.ws.onclose = () => {
-        if (this.reconnectAttempts < 10) {
-          this.reconnectAttempts++;
-          const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 15000);
-          this.reconnectTimer = setTimeout(() => this.initWebSocket(), delay);
-        }
-      };
-    } catch {
-      console.debug('[lux] WebSocket connection not available');
-    }
   }
 }

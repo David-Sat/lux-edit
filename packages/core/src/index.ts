@@ -3,4 +3,5 @@ export * from './constants.js';
 export * from './tailwind-mapper.js';
 export * from './diff.js';
 export * from './route.js';
+export * from './hash.js';
 export * from './update-checker.js';

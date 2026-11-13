@@ -21,7 +21,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
         fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')
       );
       currentVersion = pkg.version || currentVersion;
-    } catch {}
+    } catch {
+      // Fall back to default version when package.json cannot be read.
+    }
   }
 
   log('\nChecking for updates to lux-edit...');
@@ -34,19 +36,19 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
       log(`Changelog:        ${result.changelogUrl}`);
       log(`Run 'lux update' to upgrade automatically.\n`);
     } else {
-      log(`\n✓ lux-edit is up to date (v${displayCurrent})\n`);
+      log(`\n[ok] lux-edit is up to date (v${displayCurrent})\n`);
     }
     return result;
   }
 
   if (!result.updateAvailable && !options.force) {
-    log(`\n✓ lux-edit is already up to date (v${displayCurrent})`);
+    log(`\n[ok] lux-edit is already up to date (v${displayCurrent})`);
     log('\nRefreshing agent skills and MCP settings to ensure latest configs...');
     try {
       await runInit({ yes: true, global: true, autoUpdate: options.autoUpdate, logger: log });
-      log('✓ Agent skills and MCP settings are up to date.\n');
-    } catch (err: any) {
-      log(`Note: Skill refresh skipped: ${err.message}\n`);
+      log('[ok] Agent skills and MCP settings are up to date.\n');
+    } catch (err: unknown) {
+      log(`Note: Skill refresh skipped: ${err instanceof Error ? err.message : String(err)}\n`);
     }
     return result;
   }
@@ -58,9 +60,9 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
   try {
     log('Upgrading lux-edit via npm...');
     execSync('npm install -g lux-edit@latest', { stdio: 'inherit' });
-    log('✓ Successfully upgraded global lux-edit package');
-  } catch (err: any) {
-    log(`Note: Global npm install skipped or not run as root (${err.message})`);
+    log('[ok] Successfully upgraded global lux-edit package');
+  } catch (err: unknown) {
+    log(`Note: Global npm install skipped or not run as root (${err instanceof Error ? err.message : String(err)})`);
     log('If you run lux via npx, the new version will be used automatically on next run.');
   }
 
@@ -68,11 +70,11 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateChec
   log('\nRe-syncing agent skills and MCP configurations with latest templates...');
   try {
     await runInit({ yes: true, global: true, autoUpdate: options.autoUpdate, logger: log });
-    log('✓ Refreshed agent skills and MCP settings');
-  } catch (err: any) {
-    log(`Warning: Failed to refresh agent skills: ${err.message}`);
+    log('[ok] Refreshed agent skills and MCP settings');
+  } catch (err: unknown) {
+    log(`Warning: Failed to refresh agent skills: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  log('\n✓ Update complete! Run `lux` to start visual editing.\n');
+  log('\n[ok] Update complete! Run `lux` to start visual editing.\n');
   return result;
 }
