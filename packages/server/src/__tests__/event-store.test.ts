@@ -227,4 +227,80 @@ describe('EventStore: Cursors, Live/Batch Mode, Variants, Hooks, and Stale Guard
     expect(res1.superseded).toBe(true);
     expect(res1.batch).toBeNull();
   });
+
+  it('does not inflate cursors or overwrite in_progress on repeated identical live SYNC_SESSION saves', () => {
+    store.setReviewMode('live');
+    const firstSaved = store.saveBatch(
+      {
+        id: 'b_live_idempotent',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        reviewMode: 'live',
+        mutations: [],
+        annotations: [{ id: 'a_idem', timestamp: 1000, type: 'element', comment: 'Keep cursor steady' }],
+      },
+      { forceSubmit: true }
+    );
+    expect(firstSaved).toBe(true);
+    const cursorAfterFirst = store.getLatestCursor();
+    const sessionAfterFirst = store.getSession('b_live_idempotent')!;
+    expect(sessionAfterFirst.latestCursor).toBe(cursorAfterFirst);
+
+    // Simulated browser re-sync with identical content (items omit cursor metadata as sent from UI)
+    const secondSaved = store.saveBatch(
+      {
+        id: 'b_live_idempotent',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        reviewMode: 'live',
+        mutations: [],
+        annotations: [{ id: 'a_idem', timestamp: 1000, type: 'element', comment: 'Keep cursor steady' }],
+      },
+      { forceSubmit: true }
+    );
+    expect(secondSaved).toBe(false);
+    expect(store.getLatestCursor()).toBe(cursorAfterFirst);
+    expect(store.getSession('b_live_idempotent')?.latestCursor).toBe(cursorAfterFirst);
+
+    // Claim session as in_progress; passive live sync with unchanged content must preserve in_progress & cursor
+    store.updateStatus('b_live_idempotent', 'in_progress');
+    const thirdSaved = store.saveBatch(
+      {
+        id: 'b_live_idempotent',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        reviewMode: 'live',
+        mutations: [],
+        annotations: [{ id: 'a_idem', timestamp: 1000, type: 'element', comment: 'Keep cursor steady' }],
+      },
+      { forceSubmit: true }
+    );
+    expect(thirdSaved).toBe(false);
+    expect(store.getLatestCursor()).toBe(cursorAfterFirst);
+    expect(store.getSession('b_live_idempotent')?.status).toBe('in_progress');
+
+    // Adding a genuinely new annotation DOES advance cursor and mark submitted (plus stale)
+    const fourthSaved = store.saveBatch(
+      {
+        id: 'b_live_idempotent',
+        timestamp: Date.now(),
+        route: '/',
+        status: 'submitted',
+        reviewMode: 'live',
+        mutations: [],
+        annotations: [
+          { id: 'a_idem', timestamp: 1000, type: 'element', comment: 'Keep cursor steady' },
+          { id: 'a_new', timestamp: 2000, type: 'element', comment: 'Second comment' },
+        ],
+      },
+      { forceSubmit: true }
+    );
+    expect(fourthSaved).toBe(true);
+    expect(store.getLatestCursor()).toBeGreaterThan(cursorAfterFirst);
+    expect(store.getSession('b_live_idempotent')?.status).toBe('submitted');
+    expect(store.getSession('b_live_idempotent')?.stale).toBe(true);
+  });
 });

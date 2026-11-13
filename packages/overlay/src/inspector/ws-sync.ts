@@ -67,12 +67,12 @@ export class WsSyncClient {
     wsType: 'SUBMIT_BATCH' | 'SYNC_SESSION',
     batch: VisualEditBatch,
     options?: { allowHttpFallback?: boolean; swallowErrors?: boolean }
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (this.send(wsType, batch)) {
-      return;
+      return true;
     }
     if (options?.allowHttpFallback === false) {
-      return;
+      return false;
     }
     const doFetch = () =>
       fetch(`${this.basePathPrefix}/__visual_edit__/api/edits`, {
@@ -83,12 +83,15 @@ export class WsSyncClient {
 
     if (options?.swallowErrors) {
       try {
-        await doFetch();
+        const res = await doFetch();
+        return res.ok;
       } catch (err) {
         console.debug('[lux] HTTP batch sync fallback failed:', err);
+        return false;
       }
     } else {
-      await doFetch();
+      const res = await doFetch();
+      return res.ok;
     }
   }
 

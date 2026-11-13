@@ -1,6 +1,5 @@
 import {
   AgentReply,
-  AnnotationTarget,
   CommentAnnotation,
   MutationRecord,
   SessionStatus,
@@ -14,22 +13,21 @@ import {
   ElementVariantSet,
   VariantDecision,
   VerificationTarget,
-  computeTargetHash,
   computeBatchRevisionHash,
 } from '@visual-edit/core';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { VoiceRecorder } from './voice-recorder.js';
 import { getRouteFromLocation, normalizeRoute } from './route-utils.js';
-import { captureVisualSnapshot } from './visual-capture.js';
 import { DomMutationManager, ElementSnapshot } from './dom-mutations.js';
 import { VariantManager } from './variant-manager.js';
+import { VoiceReviewManager } from './voice-review-manager.js';
+import { AnnotationManager } from './annotation-manager.js';
 import {
   clearPersistedDraft,
   clearVerificationTargets,
   consumeVerificationTargets,
   loadPersistedState,
   persistVerificationTargets,
-  saveComposerDraft,
   saveDockPosition,
   savePersistedDraft,
   saveReviewMode,
@@ -61,21 +59,6 @@ const BASE_PATH_PREFIX = (() => {
 })();
 
 export type ActiveTool = 'none' | 'edit' | 'comment' | 'voice' | 'screenshot';
-
-function flashElementHighlight(el: HTMLElement, boxShadow: string, transition: string, durationMs: number): void {
-  try {
-    const origTransition = el.style.transition;
-    const origBoxShadow = el.style.boxShadow;
-    el.style.transition = transition;
-    el.style.boxShadow = boxShadow;
-    setTimeout(() => {
-      el.style.boxShadow = origBoxShadow;
-      el.style.transition = origTransition;
-    }, durationMs);
-  } catch (err) {
-    console.debug('[lux] Failed to apply highlight flash animation:', err);
-  }
-}
 
 export class OverlayStateManager {
   private static instance?: OverlayStateManager;
@@ -141,6 +124,8 @@ export class OverlayStateManager {
 
   private domMutations = new DomMutationManager();
   private variantManager: VariantManager;
+  private voiceReviewManager: VoiceReviewManager;
+  private annotationManager: AnnotationManager;
   private wsSync: WsSyncClient;
   private get ws(): WebSocket | null {
     return this.wsSync.getWebSocket();
@@ -225,6 +210,103 @@ export class OverlayStateManager {
       notify: () => this.notify(),
       basePathPrefix: BASE_PATH_PREFIX,
     });
+    this.voiceReviewManager = new VoiceReviewManager({
+      getCurrentPathname: () => this.getCurrentPathname(),
+      getReviewMode: () => this.reviewMode,
+      getAnnotations: () => this.annotations,
+      setAnnotations: (next) => {
+        this.annotations = next;
+      },
+      getVoiceReviews: () => this.voiceReviews,
+      setVoiceReviews: (next) => {
+        this.voiceReviews = next;
+      },
+      getActiveVoicePins: () => this.activeVoicePins,
+      setActiveVoicePins: (pins) => {
+        this.activeVoicePins = pins;
+      },
+      getIsStoppingVoice: () => this.isStoppingVoice,
+      setIsStoppingVoice: (val) => {
+        this.isStoppingVoice = val;
+      },
+      onStartVoiceMode: () => {
+        this.activeTool = 'voice';
+        this.activeVoicePins = [];
+        this.hoveredElement = null;
+        this.setActiveElement(null);
+        this.commentTargetElement = null;
+        this.commentTargetElements = [];
+      },
+      clearToolToNone: () => {
+        this.activeTool = 'none';
+      },
+      setSessionStatus: (status) => {
+        this.sessionStatus = status;
+      },
+      setDrawerOpen: (open) => {
+        this.isDrawerOpen = open;
+      },
+      submitBatch: () => this.submitBatch(),
+      scheduleAutoSync: () => this.scheduleAutoSync(),
+      notify: () => this.notify(),
+    });
+    this.annotationManager = new AnnotationManager({
+      isWorkbenchMode: () => OverlayStateManager.workbenchMode,
+      getCurrentPathname: () => this.getCurrentPathname(),
+      getPageMetadata: () => this.getPageMetadata(),
+      getReviewMode: () => this.reviewMode,
+      isCommentToolActive: () => this.activeTool === 'comment',
+      clearToolToNone: () => {
+        this.activeTool = 'none';
+      },
+      setSessionStatus: (status) => {
+        this.sessionStatus = status;
+      },
+      setDrawerOpen: (open) => {
+        this.isDrawerOpen = open;
+      },
+      getAnnotations: () => this.annotations,
+      setAnnotations: (next) => {
+        this.annotations = next;
+      },
+      getVoiceReviews: () => this.voiceReviews,
+      setVoiceReviews: (next) => {
+        this.voiceReviews = next;
+      },
+      setActiveVoicePins: (pins) => {
+        this.activeVoicePins = pins;
+      },
+      getCommentDraftText: () => this.commentDraftText,
+      setCommentDraftTextField: (text) => {
+        this.commentDraftText = text;
+      },
+      getCommentTargetElement: () => this.commentTargetElement,
+      setCommentTargetElement: (el) => {
+        this.commentTargetElement = el;
+      },
+      getCommentTargetElements: () => this.commentTargetElements,
+      setCommentTargetElements: (els) => {
+        this.commentTargetElements = els;
+      },
+      getCommentTargetSelectedText: () => this.commentTargetSelectedText,
+      setCommentTargetSelectedText: (val) => {
+        this.commentTargetSelectedText = val;
+      },
+      getCommentTargetBounds: () => this.commentTargetBounds,
+      setCommentTargetBounds: (bounds) => {
+        this.commentTargetBounds = bounds;
+      },
+      getCommentPendingScreenshot: () => this.commentPendingScreenshot,
+      setCommentPendingScreenshot: (screenshot) => {
+        this.commentPendingScreenshot = screenshot;
+      },
+      getPendingPageReload: () => this.pendingPageReload,
+      setPendingPageReload: (val) => {
+        this.pendingPageReload = val;
+      },
+      submitBatch: () => this.submitBatch(),
+      notify: () => this.notify(),
+    });
     if (!OverlayStateManager.workbenchMode) {
       this.loadFromStorage();
       this.restoreVerificationTargets();
@@ -242,10 +324,13 @@ export class OverlayStateManager {
   }
 
   private handleServerStatusChange(payload: StatusChangePayload): void {
+    const prevStatus = this.sessionStatus;
+    const hasTargets = Array.isArray(payload.verificationTargets) && payload.verificationTargets.length > 0;
+    const hasReplies = Boolean(payload.replies && payload.replies.length > 0);
     this.sessionStatus = payload.status;
-    if (Array.isArray(payload.verificationTargets) && payload.verificationTargets.length > 0) {
-      persistVerificationTargets(payload.verificationTargets);
-      this.triggerVerificationHalo(payload.verificationTargets);
+    if (hasTargets) {
+      persistVerificationTargets(payload.verificationTargets!);
+      this.triggerVerificationHalo(payload.verificationTargets!);
     }
     if (payload.status === 'implemented' || payload.status === 'resolved') {
       this.mutations = [];
@@ -267,12 +352,22 @@ export class OverlayStateManager {
       this.domMutations.clear();
       this.sessionId = `session_${Date.now().toString(36)}`;
       this.sessionStatus = 'draft';
+      this.lastSyncedDigest = null;
+      if (this.syncTimer) {
+        clearTimeout(this.syncTimer);
+        this.syncTimer = null;
+      }
       clearPersistedDraft();
+    } else {
+      this.lastSyncedDigest = this.computeSyncDigest(this.getBatch());
     }
     if (payload.replies) {
       this.agentReplies = payload.replies;
     }
-    this.notify();
+    if (prevStatus === this.sessionStatus && !hasTargets && !hasReplies) {
+      return;
+    }
+    this.notify({ skipSync: true });
   }
 
   private hasPendingFeedback(): boolean {
@@ -580,19 +675,26 @@ export class OverlayStateManager {
     return () => this.listeners.delete(fn);
   }
 
-  public notify(): void {
+  public notify(options?: { skipSync?: boolean }): void {
     this.listeners.forEach((fn) => fn());
     if (OverlayStateManager.workbenchMode) return;
     this.saveToStorage();
-    if (this.hasPendingFeedback() || this.sessionStatus !== 'draft') {
+    if (!options?.skipSync && (this.hasPendingFeedback() || this.sessionStatus !== 'draft')) {
       this.scheduleAutoSync();
     }
   }
 
+  private lastSyncedDigest: string | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private computeSyncDigest(batch: VisualEditBatch): string {
+    return `${batch.id}:${batch.status}:${batch.reviewMode ?? ''}:${batch.revisionHash ?? ''}`;
+  }
+
   public scheduleAutoSync(): void {
     if (this.syncTimer) clearTimeout(this.syncTimer);
     this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
       this.autoSync();
     }, 200);
   }
@@ -606,10 +708,18 @@ export class OverlayStateManager {
       return;
     }
 
-    await this.wsSync.sendBatch('SYNC_SESSION', batch, {
+    const digest = this.computeSyncDigest(batch);
+    if (digest === this.lastSyncedDigest) {
+      return;
+    }
+
+    const sent = await this.wsSync.sendBatch('SYNC_SESSION', batch, {
       allowHttpFallback: hasContent,
       swallowErrors: true,
     });
+    if (sent) {
+      this.lastSyncedDigest = digest;
+    }
   }
 
   public setTool(tool: ActiveTool): void {
@@ -643,137 +753,26 @@ export class OverlayStateManager {
     this.notify();
   }
 
-  public startVoiceRecording(): void {
-    this.activeTool = 'voice';
-    this.activeVoicePins = [];
-    this.hoveredElement = null;
-    this.setActiveElement(null);
-    this.commentTargetElement = null;
-    this.commentTargetElements = [];
-    VoiceRecorder.getInstance().start();
-    this.notify();
-  }
-
   public isStoppingVoice = false;
 
-  public async stopVoiceRecording(): Promise<void> {
-    if (this.isStoppingVoice) return;
-    this.isStoppingVoice = true;
-    this.notify();
-    try {
-      const currentRoute = this.getCurrentPathname();
-      const review = await VoiceRecorder.getInstance().stop(currentRoute);
-      if (review) {
-        const primaryPin = review.pins[0];
-        const pinRoutes = Array.from(
-          new Set(
-            review.pins
-              .map((p) => p.pathname)
-              .filter((p): p is string => Boolean(p))
-              .map((p) => normalizeRoute(p))
-          )
-        );
-        const resolvedPathname =
-          pinRoutes.length === 1
-            ? review.pins.find((p) => p.pathname)?.pathname || currentRoute
-            : review.pathname || primaryPin?.pathname || currentRoute;
-        const annotation: CommentAnnotation = {
-          id: review.id,
-          timestamp: review.timestamp,
-          type: 'voice',
-          comment: review.annotatedTranscript || review.transcript,
-          targetSelector: primaryPin?.targetSelector,
-          targetHash: primaryPin?.targetHash,
-          sourceLocation: primaryPin?.sourceLocation,
-          htmlSnippet: primaryPin?.htmlSnippet,
-          bounds: primaryPin?.bounds,
-          url: review.url,
-          pathname: resolvedPathname,
-          pageTitle: review.pageTitle,
-          targets: review.pins.map((p) => ({
-            targetSelector: p.targetSelector,
-            targetHash: p.targetHash,
-            sourceLocation: p.sourceLocation,
-            htmlSnippet: p.htmlSnippet,
-            bounds: p.bounds,
-            pathname: p.pathname,
-          })),
-          voiceSections: review.sections,
-        };
-        this.annotations.push(annotation);
-        this.voiceReviews.push(review);
-        if (this.reviewMode === 'live') {
-          await this.submitBatch();
-        } else {
-          this.sessionStatus = 'draft';
-          this.scheduleAutoSync();
-          this.isDrawerOpen = true;
-        }
-      }
-      this.activeTool = 'none';
-      this.activeVoicePins = [];
-    } finally {
-      this.isStoppingVoice = false;
-      this.notify();
-    }
+  public startVoiceRecording(): void {
+    this.voiceReviewManager.startVoiceRecording();
+  }
+
+  public stopVoiceRecording(): Promise<void> {
+    return this.voiceReviewManager.stopVoiceRecording();
   }
 
   public cancelVoiceRecording(): void {
-    VoiceRecorder.getInstance().cancel();
-    this.activeVoicePins = [];
-    this.activeTool = 'none';
-    this.notify();
+    this.voiceReviewManager.cancelVoiceRecording();
   }
 
   public recordVoicePin(targetEl: HTMLElement, appendToCurrentSection: boolean = false): void {
-    const recorder = VoiceRecorder.getInstance();
-    const sourceLocation = resolveSourceLocation(targetEl);
-    const rect = targetEl.getBoundingClientRect();
-    const bounds = {
-      x: rect.left + window.scrollX,
-      y: rect.top + window.scrollY,
-      width: rect.width,
-      height: rect.height,
-    };
-    const selector =
-      targetEl.tagName.toLowerCase() +
-      (targetEl.id ? `#${targetEl.id}` : '') +
-      (targetEl.className && typeof targetEl.className === 'string'
-        ? `.${targetEl.className.trim().split(/\s+/).slice(0, 2).join('.')}`
-        : '');
-
-    const snippet = targetEl.outerHTML.slice(0, 200);
-
-    const pin = recorder.addPin(
-      {
-        selector,
-        sourceLocation,
-        htmlSnippet: snippet,
-        bounds,
-        pathname: this.getCurrentPathname(),
-      },
-      { appendToCurrentSection }
-    );
-
-    this.activeVoicePins = [...this.activeVoicePins, pin];
-
-    // Visual ripple effect on clicked element
-    flashElementHighlight(
-      targetEl,
-      '0 0 0 4px rgba(239, 68, 68, 0.6), 0 0 20px rgba(239, 68, 68, 0.4)',
-      'box-shadow 0.2s ease, transform 0.2s ease',
-      400
-    );
-
-    this.notify();
+    this.voiceReviewManager.recordVoicePin(targetEl, appendToCurrentSection);
   }
 
   public deleteVoiceReview(id: string): void {
-    this.voiceReviews = this.voiceReviews.filter((v) => v.id !== id);
-    this.annotations = this.annotations.filter((a) => a.id !== id);
-    this.activeVoicePins = [];
-    if (this.reviewMode === 'batch') this.sessionStatus = 'draft';
-    this.notify();
+    this.voiceReviewManager.deleteVoiceReview(id);
   }
 
   public setDockMenuOpen(val: boolean): void {
@@ -838,85 +837,30 @@ export class OverlayStateManager {
   }
 
   public isComposingComment(): boolean {
-    return Boolean(
-      this.commentTargetElement ||
-      this.commentTargetElements.length > 0 ||
-      (this.activeTool === 'comment' && this.commentDraftText.trim().length > 0)
-    );
+    return this.annotationManager.isComposingComment();
   }
 
   public setCommentDraftText(text: string): void {
-    this.commentDraftText = text;
-    if (!OverlayStateManager.workbenchMode) {
-      saveComposerDraft(text.trim() ? text : '');
-    }
+    this.annotationManager.setCommentDraftText(text);
   }
 
   public setCommentTarget(
     el: HTMLElement | null,
     options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number }; screenshot?: string }
   ): void {
-    this.commentTargetElement = el;
-    this.commentTargetElements = el ? [el] : [];
-    this.commentTargetSelectedText = options?.selectedText;
-    this.commentTargetBounds = options?.bounds;
-    this.commentPendingScreenshot = options?.screenshot;
-
-    if (!el) {
-      this.setCommentDraftText('');
-      if (this.pendingPageReload) {
-        this.pendingPageReload = false;
-        setTimeout(() => {
-          if (typeof window !== 'undefined') {
-            window.location.reload();
-          }
-        }, 150);
-      }
-    }
-
-    this.notify();
+    this.annotationManager.setCommentTarget(el, options);
   }
 
   public setPendingScreenshot(screenshot?: string): void {
-    this.commentPendingScreenshot = screenshot;
-    this.notify();
+    this.annotationManager.setPendingScreenshot(screenshot);
   }
 
   public toggleCommentTarget(el: HTMLElement): void {
-    if (this.commentTargetSelectedText) {
-      this.setCommentTarget(el);
-      return;
-    }
-
-    const idx = this.commentTargetElements.indexOf(el);
-    if (idx === -1) {
-      this.commentTargetElements.push(el);
-      this.commentTargetElement = el;
-    } else {
-      if (this.commentTargetElements.length > 1) {
-        this.commentTargetElements.splice(idx, 1);
-        this.commentTargetElement = this.commentTargetElements[this.commentTargetElements.length - 1];
-      } else {
-        this.setCommentTarget(null);
-        return;
-      }
-    }
-    this.commentTargetBounds = undefined;
-    this.notify();
+    this.annotationManager.toggleCommentTarget(el);
   }
 
   public removeCommentTarget(el: HTMLElement): void {
-    const idx = this.commentTargetElements.indexOf(el);
-    if (idx !== -1) {
-      this.commentTargetElements.splice(idx, 1);
-      if (this.commentTargetElements.length === 0) {
-        this.setCommentTarget(null);
-        return;
-      } else {
-        this.commentTargetElement = this.commentTargetElements[this.commentTargetElements.length - 1];
-      }
-      this.notify();
-    }
+    this.annotationManager.removeCommentTarget(el);
   }
 
   public addComment(
@@ -924,185 +868,23 @@ export class OverlayStateManager {
     el?: HTMLElement,
     options?: { selectedText?: string; bounds?: { x: number; y: number; width: number; height: number }; screenshot?: string }
   ): void {
-    const commentText = comment.trim();
-    const screenshot = options?.screenshot || this.commentPendingScreenshot;
-    if (!commentText && !screenshot) return;
-
-    const targetsList =
-      this.commentTargetElements.length > 1
-        ? this.commentTargetElements
-        : el
-        ? [el]
-        : this.commentTargetElements.length > 0
-        ? this.commentTargetElements
-        : this.commentTargetElement
-        ? [this.commentTargetElement]
-        : [];
-
-    const isMulti = targetsList.length > 1;
-    const primaryTarget = targetsList[0];
-    const selectedText = options?.selectedText || this.commentTargetSelectedText;
-    const customBounds = options?.bounds || this.commentTargetBounds;
-
-    const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
-    const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
-    const primaryLoc = primaryTarget ? resolveSourceLocation(primaryTarget) : undefined;
-    const primaryElBounds = primaryTarget ? primaryTarget.getBoundingClientRect() : undefined;
-    const primaryBounds = customBounds
-      ? {
-          x: Math.round(customBounds.x + scrollX),
-          y: Math.round(customBounds.y + scrollY),
-          width: Math.round(customBounds.width),
-          height: Math.round(customBounds.height),
-        }
-      : primaryElBounds
-      ? {
-          x: Math.round(primaryElBounds.left + scrollX),
-          y: Math.round(primaryElBounds.top + scrollY),
-          width: Math.round(primaryElBounds.width),
-          height: Math.round(primaryElBounds.height),
-        }
-      : undefined;
-    const primarySnippet = primaryLoc?.htmlSnippet || (primaryTarget ? primaryTarget.outerHTML.slice(0, 300) : undefined);
-    const primaryHash = primaryLoc?.selector
-      ? computeTargetHash({ selector: primaryLoc.selector, htmlSnippet: primarySnippet })
-      : undefined;
-
-    const annotationTargets: AnnotationTarget[] | undefined = isMulti
-      ? targetsList.map((targetEl) => {
-          const loc = resolveSourceLocation(targetEl);
-          const b = targetEl.getBoundingClientRect();
-          const snippet = loc.htmlSnippet || targetEl.outerHTML.slice(0, 300);
-          return {
-            targetSelector: loc.selector,
-            targetHash: computeTargetHash({ selector: loc.selector, htmlSnippet: snippet }),
-            sourceLocation: loc,
-            bounds: {
-              x: Math.round(b.left + scrollX),
-              y: Math.round(b.top + scrollY),
-              width: Math.round(b.width),
-              height: Math.round(b.height),
-            },
-            htmlSnippet: snippet,
-            pathname: this.getCurrentPathname(),
-          };
-        })
-      : undefined;
-
-    const componentLabel = primaryLoc?.componentName ? `<${primaryLoc.componentName}>` : primaryLoc?.selector || 'element';
-    const finalComment = commentText || `Visual snapshot of ${componentLabel}`;
-
-    const annotation: CommentAnnotation = {
-      id: `ann_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: Date.now(),
-      type: screenshot ? 'screenshot' : isMulti ? 'multi' : selectedText ? 'text' : 'element',
-      targets: annotationTargets,
-      targetSelector: primaryLoc?.selector,
-      targetHash: primaryHash,
-      sourceLocation: primaryLoc,
-      htmlSnippet: primarySnippet,
-      ...this.getPageMetadata(),
-      bounds: primaryBounds,
-      selectedText,
-      screenshot,
-      comment: finalComment,
-    };
-
-    this.annotations.push(annotation);
-    this.commentTargetElement = null;
-    this.commentTargetElements = [];
-    this.commentTargetSelectedText = undefined;
-    this.commentTargetBounds = undefined;
-    this.commentPendingScreenshot = undefined;
-    this.setCommentDraftText('');
-    this.activeTool = 'none';
-
-    if (this.pendingPageReload) {
-      this.pendingPageReload = false;
-      setTimeout(() => {
-        if (typeof window !== 'undefined') {
-          window.location.reload();
-        }
-      }, 150);
-    }
-
-    if (this.reviewMode === 'live') {
-      this.submitBatch();
-    } else {
-      this.sessionStatus = 'draft';
-      this.notify();
-    }
+    this.annotationManager.addComment(comment, el, options);
   }
 
-  private async captureElementSnapshotWithFlash(el: HTMLElement): Promise<{
-    loc: ReturnType<typeof resolveSourceLocation>;
-    targetSelector: string;
-    screenshotDataUrl: string;
-  }> {
-    const loc = resolveSourceLocation(el);
-    const targetSelector = loc.selector || (el.id ? `#${el.id}` : el.tagName.toLowerCase());
-
-    let screenshotDataUrl = '';
-    try {
-      const snap = await captureVisualSnapshot({
-        selector: targetSelector,
-        resolution: 'draft',
-        includeOverlay: false,
-      });
-      if (snap && snap.success && snap.imageBase64) {
-        screenshotDataUrl = snap.imageBase64;
-      }
-    } catch (err) {
-      console.debug('[lux] Element screenshot capture failed, continuing without snapshot:', err);
-    }
-
-    // Flash shutter feedback after clean capture snapshot has been recorded
-    flashElementHighlight(
-      el,
-      '0 0 0 3px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.6)',
-      'box-shadow 0.15s ease, outline 0.15s ease',
-      350
-    );
-
-    return { loc, targetSelector, screenshotDataUrl };
+  public snapElementToComposer(el: HTMLElement): Promise<void> {
+    return this.annotationManager.snapElementToComposer(el);
   }
 
-  public async snapElementToComposer(el: HTMLElement): Promise<void> {
-    if (!el || typeof document === 'undefined') return;
-    const { screenshotDataUrl } = await this.captureElementSnapshotWithFlash(el);
-    // Open comment composer anchored to el with the captured screenshot
-    this.setCommentTarget(el, { screenshot: screenshotDataUrl });
-  }
-
-  public async captureElementScreenshot(el: HTMLElement, commentText?: string): Promise<CommentAnnotation | null> {
-    if (!el || typeof document === 'undefined') return null;
-    const { loc, targetSelector, screenshotDataUrl } = await this.captureElementSnapshotWithFlash(el);
-
-    const componentLabel = loc.componentName ? `<${loc.componentName}>` : targetSelector;
-    const defaultComment = (commentText || '').trim() || `Visual snapshot of ${componentLabel}`;
-
-    this.addComment(defaultComment, el, { screenshot: screenshotDataUrl });
-    if (this.reviewMode !== 'live') {
-      this.setDrawerOpen(true);
-    }
-    return this.annotations[this.annotations.length - 1] || null;
+  public captureElementScreenshot(el: HTMLElement, commentText?: string): Promise<CommentAnnotation | null> {
+    return this.annotationManager.captureElementScreenshot(el, commentText);
   }
 
   public updateAnnotation(id: string, newText: string): void {
-    const ann = this.annotations.find((a) => a.id === id);
-    if (ann && newText.trim()) {
-      ann.comment = newText.trim();
-      if (this.reviewMode === 'batch') this.sessionStatus = 'draft';
-      this.notify();
-    }
+    this.annotationManager.updateAnnotation(id, newText);
   }
 
   public deleteAnnotation(id: string): void {
-    this.annotations = this.annotations.filter((a) => a.id !== id);
-    this.voiceReviews = this.voiceReviews.filter((v) => v.id !== id);
-    this.activeVoicePins = [];
-    if (this.reviewMode === 'batch') this.sessionStatus = 'draft';
-    this.notify();
+    this.annotationManager.deleteAnnotation(id);
   }
 
   public setUserPrompt(prompt: string): void {
@@ -1274,14 +1056,21 @@ export class OverlayStateManager {
   }
 
   public async submitBatch(): Promise<void> {
+    if (this.syncTimer) {
+      clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
     const batch = this.getBatch();
     this.sessionStatus = 'submitted';
     batch.status = 'submitted';
 
     if (!OverlayStateManager.workbenchMode) {
-      await this.wsSync.sendBatch('SUBMIT_BATCH', batch);
+      const sent = await this.wsSync.sendBatch('SUBMIT_BATCH', batch);
+      if (sent) {
+        this.lastSyncedDigest = this.computeSyncDigest(batch);
+      }
     }
 
-    this.notify();
+    this.notify({ skipSync: true });
   }
 }

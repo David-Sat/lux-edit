@@ -108,9 +108,13 @@ describe('lux init and multi-agent configuration', () => {
 
       const skill = fs.readFileSync(path.join(pluginDir, 'skills', 'lux', 'SKILL.md'), 'utf-8');
       expect(skill).toContain('name: lux');
+      expect(skill).toContain('lux_wait_for_feedback');
+      expect(skill).toContain('resolveSessionId');
 
       const skillWeb = fs.readFileSync(path.join(pluginDir, 'skills', 'lux-web', 'SKILL.md'), 'utf-8');
       expect(skillWeb).toContain('name: lux-web');
+      expect(skillWeb).toContain('lux_wait_for_feedback');
+      expect(skillWeb).toContain('resolveSessionId');
     });
 
     it('generates a bundle that passes official claude plugin validate if cli is present', () => {

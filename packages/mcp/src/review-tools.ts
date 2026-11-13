@@ -129,7 +129,10 @@ export async function resolveSessionOnServerOrStore(opts: {
         };
       }
       if (res.ok) {
-        return { ok: true, updated: true };
+        const data = (await res.json().catch(() => ({}))) as { updated?: boolean };
+        if (data?.updated !== false) {
+          return { ok: true, updated: true };
+        }
       }
     } catch {
       // Live server unreachable; fall back to local EventStore update below.

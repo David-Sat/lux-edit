@@ -185,18 +185,28 @@ export class WebSocketHub {
     }
     const effectiveMode = payload?.reviewMode || this.eventStore.getReviewMode();
     const isLive = effectiveMode === 'live';
+    const prevSession = payload?.id ? this.eventStore.getSession(payload.id) : undefined;
     if ((markSubmitted || isLive) && payload) {
       payload.status = 'submitted';
     } else if (payload) {
       payload.status = payload.status || 'draft';
     }
-    this.eventStore.saveBatch(payload, { forceSubmit: markSubmitted || isLive });
-    if ((markSubmitted || isLive) && payload?.id) {
-      this.broadcast({
-        type: 'STATUS_CHANGE',
-        sessionId: payload.id,
-        payload: { status: 'submitted' },
-      });
+    const saved = this.eventStore.saveBatch(payload, {
+      forceSubmit: markSubmitted || isLive,
+      explicitSubmit: markSubmitted,
+    });
+    if (saved && (markSubmitted || isLive) && payload?.id) {
+      const updated = this.eventStore.getSession(payload.id);
+      if (
+        updated?.status === 'submitted' &&
+        (markSubmitted || prevSession?.status !== 'submitted' || prevSession?.revisionHash !== updated.revisionHash)
+      ) {
+        this.broadcast({
+          type: 'STATUS_CHANGE',
+          sessionId: payload.id,
+          payload: { status: 'submitted' },
+        });
+      }
     }
   }
 
