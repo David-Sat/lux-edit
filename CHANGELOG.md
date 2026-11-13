@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.0...lux-edit-v0.16.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* stabilize live-mode cursors, update skill docs, and modularize overlay state ([#70](https://github.com/David-Sat/lux-edit/issues/70)) ([bec201a](https://github.com/David-Sat/lux-edit/commit/bec201a80a60fd98c68e569ce68c8b1717f7ef80))
+
 ## [0.16.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.15.1...lux-edit-v0.16.0) (2026-11-13)
 
 
