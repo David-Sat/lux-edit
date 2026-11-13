@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.15.1...lux-edit-v0.16.0) (2026-11-13)
+
+
+### Features
+
+* **overlay:** visual screenshot capture tool, attached comments, and voice recording UX ([#66](https://github.com/David-Sat/lux-edit/issues/66)) ([dc1ee31](https://github.com/David-Sat/lux-edit/commit/dc1ee31530e7c76a0d69007b4b9c356f2b12b92d))
+
 ## [0.15.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.15.0...lux-edit-v0.15.1) (2026-11-12)
 
 
