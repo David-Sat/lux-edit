@@ -26,6 +26,6 @@ Call `lux_get_pending_review({ workspaceDir: "<abs-workspace-root>" })`—it aut
 ### 3. Start / Wait Loop (Live & Batch)
 - **If no server is running:** Start `lux <dev-url-or-file> --port 4320` in the background (use another free port if `4320` is busy) and tell the user to open `http://127.0.0.1:<port>` (**C** comments, **R** voice walkthrough, **V** styles, **S** screenshot; **Live** streams automatically, **Batch** waits for Submit Review).
 - **Waiting for follow-up feedback:**
-  - **Claude Code / Codex:** Lifecycle hooks (`PostToolUse` + `Stop`) wake automatically—end your turn.
+  - **Claude Code / Codex:** Lifecycle hooks (`PostToolUse` + `Stop`) wake automatically—end your turn. Launching `lux` from a shell command or calling any `lux_*` MCP tool binds this session; if the browser shows no agent listening, call `lux_get_pending_review` once to bind it.
   - **Antigravity:** If no waiter is running, launch `npx lux-edit hook wait` (`WaitMsBeforeAsync: 500`, `IsDaemon: false`) and end your turn so chat stays interactive.
   - **Pure-MCP clients:** Call `lux_wait_for_feedback({ afterCursor: <nextCursor>, workspaceDir })`.

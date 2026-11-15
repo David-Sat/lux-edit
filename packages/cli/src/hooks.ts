@@ -80,6 +80,61 @@ export interface NormalizedHookInput {
   seenCursor?: number;
   terminationReason?: string;
   stopReason?: string;
+  /** True when a shell tool call started a lux review server (as opposed to an MCP call or a lux subcommand). */
+  isServerLaunch?: boolean;
+}
+
+const SHELL_TOOL_NAMES = new Set(['bash', 'run_command', 'shell', 'exec_command']);
+const LUX_BINARIES = new Set(['lux', 'lux-edit']);
+const LUX_NON_SERVER_SUBCOMMANDS = new Set([
+  'mcp',
+  'hook',
+  'init',
+  'install',
+  'update',
+  'upgrade',
+  'uninstall',
+  'remove',
+  'help',
+  '-h',
+  '--help',
+  '-V',
+  '--version',
+]);
+/** Launchers and wrappers that may precede the lux binary within one shell subcommand. */
+const COMMAND_PREFIX_WORDS = new Set(['nohup', 'exec', 'env', 'command', 'time', 'sudo', 'npx', 'bunx', 'pnpx', 'dlx']);
+const PACKAGE_RUNNER_WORDS = new Set(['pnpm', 'yarn', 'npm', 'bun']);
+
+/**
+ * Finds a `lux` / `lux-edit` invocation in a shell command, scanning each subcommand separately and
+ * looking only at command position, so `grep -rn lux src` or `cat lux.log` are not treated as lux.
+ * Returns the lux subcommand (or `''` for a server launch), or `null` when lux is not invoked.
+ */
+export function findLuxShellInvocation(command: string): { subcommand: string } | null {
+  if (!command) return null;
+  const segments = command.split(/&&|\|\||[;|&\n()]/);
+  for (const segment of segments) {
+    const words = segment.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < words.length) {
+      const word = words[i];
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || word.startsWith('-') || COMMAND_PREFIX_WORDS.has(word)) {
+        i++;
+        continue;
+      }
+      if (PACKAGE_RUNNER_WORDS.has(word) && ['exec', 'dlx', 'x', 'run'].includes(words[i + 1] ?? '')) {
+        i += 2;
+        continue;
+      }
+      break;
+    }
+    const binary = (words[i] ?? '').replace(/^['"]|['"]$/g, '');
+    const baseName = (binary.split('/').pop() ?? '').replace(/@[^@]*$/, '');
+    if (LUX_BINARIES.has(baseName)) {
+      return { subcommand: words[i + 1] && LUX_NON_SERVER_SUBCOMMANDS.has(words[i + 1]) ? words[i + 1] : '' };
+    }
+  }
+  return null;
 }
 
 const NON_CONTINUABLE_STOP_REASONS = new Set([
@@ -152,15 +207,18 @@ export function normalizeHookPayload(
   const toolResponse = rawPayload.tool_response || rawPayload.toolResponse;
   const terminationReason = rawPayload.terminationReason || rawPayload.termination_reason;
 
-  // For PostToolUse, only attach if the tool call was a lux tool or a command invoking lux
+  // For PostToolUse, only attach if the tool call was a lux tool or a shell command invoking lux.
+  // Harness matchers are only coarse prefilters (Claude Code's `Bash` matcher fires for every shell call).
+  let isServerLaunch = false;
   if (eventName === 'PostToolUse') {
     const lowerTool = toolName.toLowerCase();
-    const cmdStr = String(toolInput?.CommandLine || toolInput?.command || '').toLowerCase();
-    const isLuxCommand =
-      (lowerTool === 'run_command' || lowerTool === 'bash') &&
-      /\b(lux-edit|lux)\b/.test(cmdStr) &&
-      !cmdStr.includes('hook event');
-    if (!lowerTool.includes('lux') && !isLuxCommand) {
+    if (SHELL_TOOL_NAMES.has(lowerTool)) {
+      const command = String(toolInput?.CommandLine || toolInput?.command || '');
+      const invocation = findLuxShellInvocation(command);
+      // `lux hook event` is the hook itself (e.g. a user testing it by hand); never let it bind a lease.
+      if (!invocation || (invocation.subcommand === 'hook' && /\bhook\s+event\b/.test(command))) return null;
+      isServerLaunch = invocation.subcommand === '';
+    } else if (!lowerTool.includes('lux')) {
       return null;
     }
   }
@@ -184,6 +242,7 @@ export function normalizeHookPayload(
     seenCursor,
     terminationReason,
     stopReason,
+    isServerLaunch,
   };
 }
 
@@ -191,6 +250,11 @@ function resolveRunningServerUrl(workspaceDir?: string, explicitUrl?: string): s
   if (explicitUrl && explicitUrl.trim()) {
     return stripTrailingSlashes(explicitUrl.trim());
   }
+  return resolveServerUrlFromMetadata(workspaceDir) ?? DEFAULT_SERVER_URL;
+}
+
+/** Reads `.visual-edit/server.json` written by a live lux server; never guesses a default port. */
+function resolveServerUrlFromMetadata(workspaceDir?: string): string | null {
   const candidates = [workspaceDir, process.cwd()].filter(Boolean) as string[];
   for (const dir of candidates) {
     try {
@@ -212,7 +276,41 @@ function resolveRunningServerUrl(workspaceDir?: string, explicitUrl?: string): s
       // Metadata file missing, unreadable, or invalid; try next candidate directory.
     }
   }
-  return DEFAULT_SERVER_URL;
+  return null;
+}
+
+/**
+ * A shell call that launches lux in the background returns before the server has bound its port,
+ * so the first PostToolUse can arrive too early. Retry briefly (within the 10s hook timeout) until
+ * the new server writes its metadata and accepts the lease binding. Only metadata-discovered URLs
+ * are tried, so an unrelated app that happens to own the default port is never contacted.
+ */
+async function bindLeaseAfterServerLaunch(
+  normalized: NormalizedHookInput,
+  explicitUrl: string | undefined,
+  maxWaitMs: number,
+  retryDelayMs: number
+): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  while (true) {
+    const serverUrl = explicitUrl?.trim()
+      ? stripTrailingSlashes(explicitUrl.trim())
+      : resolveServerUrlFromMetadata(normalized.workspaceDir);
+    if (serverUrl) {
+      try {
+        const result = await postHookApi(
+          serverUrl,
+          { harness: normalized.harness, sessionId: normalized.sessionId, event: 'PostToolUse', waitMs: 0 },
+          1000
+        );
+        if (result?.listening === true) return;
+      } catch {
+        // Server not accepting connections yet; retry until the deadline.
+      }
+    }
+    if (Date.now() + retryDelayMs >= deadline) return;
+    await new Promise((r) => setTimeout(r, retryDelayMs));
+  }
 }
 
 async function fetchHookStatus(serverUrl: string, timeoutMs: number): Promise<HookServerStatusResponse | null> {
@@ -274,10 +372,23 @@ export async function handleHookEvent(
     maxWaitMs?: number;
     pollTickMs?: number;
     forceLongPoll?: boolean;
+    /** How long PostToolUse waits for a just-launched lux server to come up (default 8s). */
+    serverLaunchWaitMs?: number;
+    serverLaunchRetryMs?: number;
   }
 ): Promise<HookDecisionOutput> {
   const normalized = normalizeHookPayload(rawPayload, options.harness || 'auto', options.event);
   if (!normalized) {
+    return {};
+  }
+
+  if (normalized.event === 'PostToolUse' && normalized.isServerLaunch) {
+    await bindLeaseAfterServerLaunch(
+      normalized,
+      options.serverUrl,
+      options.serverLaunchWaitMs ?? 8000,
+      options.serverLaunchRetryMs ?? 250
+    );
     return {};
   }
 

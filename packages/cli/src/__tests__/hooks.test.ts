@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import {
   normalizeHookPayload,
+  findLuxShellInvocation,
   formatStopContinuationOutput,
   mergeHarnessHooksConfig,
   removeHarnessHooksConfig,
@@ -130,7 +131,7 @@ describe('Multi-Harness Lifecycle Hooks (Antigravity, Claude Code, Codex)', () =
     const merged = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     expect(merged.theme).toBe('dark');
     expect(merged.hooks.Stop).toHaveLength(2);
-    expect(merged.hooks.PostToolUse).toHaveLength(1);
+    expect(merged.hooks.PostToolUse).toHaveLength(2);
 
     removeHarnessHooksConfig(settingsPath, 'claude');
     const afterRemove = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
@@ -167,6 +168,142 @@ describe('Multi-Harness Lifecycle Hooks (Antigravity, Claude Code, Codex)', () =
     );
     expect(defaultSess).not.toBeNull();
     expect(defaultSess!.sessionId).toBe('default');
+  });
+
+  it('generates Claude Code PostToolUse groups for lux MCP tools and Bash-launched lux servers', () => {
+    const settingsPath = path.join(testDir, 'claude-settings.json');
+    mergeHarnessHooksConfig(settingsPath, 'claude-code');
+    // Re-running install must stay idempotent rather than stacking duplicate groups.
+    mergeHarnessHooksConfig(settingsPath, 'claude-code');
+    const { hooks } = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+
+    expect(hooks.PostToolUse).toEqual([
+      {
+        matcher: '.*lux.*',
+        hooks: [{ type: 'command', command: 'lux-edit hook event --harness claude-code --event PostToolUse', timeout: 10 }],
+      },
+      {
+        matcher: 'Bash',
+        hooks: [
+          {
+            type: 'command',
+            command: 'lux-edit hook event --harness claude-code --event PostToolUse',
+            timeout: 10,
+            if: 'Bash(*lux*)',
+          },
+        ],
+      },
+    ]);
+    expect(hooks.Stop).toHaveLength(1);
+    expect(hooks.Stop[0].matcher).toBeUndefined();
+    expect(hooks.Stop[0].hooks[0].if).toBeUndefined();
+  });
+
+  it('generates a single tool-name regex matcher for Codex, which has no input-based filter', () => {
+    const codexPath = path.join(testDir, 'codex-hooks.json');
+    mergeHarnessHooksConfig(codexPath, 'codex');
+    const { hooks } = JSON.parse(fs.readFileSync(codexPath, 'utf-8'));
+
+    expect(hooks.PostToolUse).toHaveLength(1);
+    expect(hooks.PostToolUse[0].matcher).toBe('^Bash$|lux');
+    expect(hooks.PostToolUse[0].hooks[0].if).toBeUndefined();
+    const re = new RegExp(hooks.PostToolUse[0].matcher);
+    expect(re.test('Bash')).toBe(true);
+    expect(re.test('mcp__lux__lux_get_pending_review')).toBe(true);
+    expect(re.test('apply_patch')).toBe(false);
+    expect(hooks.Interrupt).toHaveLength(1);
+  });
+
+  it('detects lux only in command position of a shell subcommand', () => {
+    const cases: Array<[string, { subcommand: string } | null]> = [
+      ['lux architecture.html --port 4321', { subcommand: '' }],
+      ['cd app && lux http://localhost:5173', { subcommand: '' }],
+      ['nohup lux ./index.html > /tmp/lux.log 2>&1 &', { subcommand: '' }],
+      ['PORT=1 npx -y lux-edit@latest ./dist', { subcommand: '' }],
+      ['pnpm exec lux .', { subcommand: '' }],
+      ['/opt/homebrew/bin/lux index.html', { subcommand: '' }],
+      ['npx lux-edit hook wait', { subcommand: 'hook' }],
+      ['lux init', { subcommand: 'init' }],
+      ['lux --version', { subcommand: '--version' }],
+      ['grep -rn lux packages/cli/src', null],
+      ['cat $TMPDIR/lux.log', null],
+      ['curl -s http://127.0.0.1:4321/lux', null],
+      ['luxury-tool run', null],
+      ['', null],
+    ];
+    for (const [command, expected] of cases) {
+      expect(findLuxShellInvocation(command), command).toEqual(expected);
+    }
+  });
+
+  it('attaches PostToolUse only for real lux shell commands and flags server launches', () => {
+    const post = (tool_name: string, command: string) =>
+      normalizeHookPayload(
+        { session_id: 's1', cwd: testDir, tool_name, tool_input: { command } },
+        'claude-code',
+        'PostToolUse'
+      );
+
+    expect(post('Bash', 'grep -rn lux src')).toBeNull();
+    expect(post('Bash', 'lux-edit hook event --harness claude-code --event Stop')).toBeNull();
+    expect(post('Bash', 'lux index.html --port 4321')?.isServerLaunch).toBe(true);
+    expect(post('Bash', 'npx lux-edit hook wait')?.isServerLaunch).toBe(false);
+    expect(post('mcp__lux__lux_get_pending_review', '')?.isServerLaunch).toBe(false);
+    expect(post('Edit', 'lux')).toBeNull();
+  });
+
+  it('binds the lease once a backgrounded lux server comes up, retrying until it accepts', async () => {
+    const posts: any[] = [];
+    let ready = false;
+    const server = http.createServer((req, res) => {
+      if (req.url === '/__visual_edit__/api/hooks' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          posts.push(JSON.parse(body));
+          if (!ready) {
+            res.writeHead(503);
+            res.end();
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ listening: true }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as any).port;
+    setTimeout(() => {
+      ready = true;
+    }, 150);
+    // Metadata discovery also falls back to process.cwd(); keep it away from any real lux server in the repo.
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(testDir);
+
+    try {
+      // No metadata yet: the hook must not fall back to the default port, then picks the server up once it is written.
+      setTimeout(() => {
+        fs.mkdirSync(path.join(testDir, '.visual-edit'), { recursive: true });
+        fs.writeFileSync(
+          path.join(testDir, '.visual-edit', 'server.json'),
+          JSON.stringify({ pid: process.pid, port, url: `http://127.0.0.1:${port}` })
+        );
+      }, 60);
+
+      const out = await handleHookEvent(
+        { session_id: 'claude_launch', cwd: testDir, tool_name: 'Bash', tool_input: { command: 'lux index.html --port 0' } },
+        { harness: 'claude-code', event: 'PostToolUse', serverLaunchWaitMs: 2000, serverLaunchRetryMs: 25 }
+      );
+
+      expect(out).toEqual({});
+      expect(ready).toBe(true);
+      expect(posts.at(-1)).toMatchObject({ event: 'PostToolUse', sessionId: 'claude_launch', harness: 'claude-code' });
+    } finally {
+      cwdSpy.mockRestore();
+      server.close();
+    }
   });
 
   it('enforces session affinity and non-blocking Stop in Antigravity while supporting long-poll in Claude/Codex and background Wait', async () => {

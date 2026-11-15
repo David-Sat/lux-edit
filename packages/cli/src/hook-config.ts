@@ -54,7 +54,40 @@ interface HookCommandEntry {
   type?: string;
   command?: unknown;
   timeout?: number;
+  /** Claude Code only: permission-rule filter evaluated before the hook process is spawned. */
+  if?: string;
   [key: string]: unknown;
+}
+
+/**
+ * PostToolUse must fire both for lux MCP tool calls and for shell commands that launch `lux`
+ * (e.g. `lux ./index.html --port 4320`), because either one binds this agent session to the
+ * review lease that the Stop hook later holds on. The precise "is this really a lux command"
+ * check lives in `normalizeHookPayload`; these filters only keep the hook from running needlessly.
+ *
+ * - Claude Code: `matcher` is an exact name or unanchored regex on `tool_name`, and the handler-level
+ *   `if` (permission-rule syntax) filters on the Bash command so unrelated shell calls never spawn
+ *   the hook. Versions without `if` support simply run it for every Bash call, which stays correct.
+ * - Codex: `matcher` is a regex on `tool_name` with no input filter, so Bash is matched by name.
+ */
+export const CLAUDE_MCP_TOOL_MATCHER = '.*lux.*';
+export const CLAUDE_BASH_TOOL_MATCHER = 'Bash';
+export const CLAUDE_BASH_LUX_IF = 'Bash(*lux*)';
+export const CODEX_POST_TOOL_USE_MATCHER = '^Bash$|lux';
+
+interface PostToolUseGroupSpec {
+  matcher: string;
+  if?: string;
+}
+
+function getPostToolUseGroups(harness: 'claude-code' | 'codex' | 'claude'): PostToolUseGroupSpec[] {
+  if (harness === 'codex') {
+    return [{ matcher: CODEX_POST_TOOL_USE_MATCHER }];
+  }
+  return [
+    { matcher: CLAUDE_MCP_TOOL_MATCHER },
+    { matcher: CLAUDE_BASH_TOOL_MATCHER, if: CLAUDE_BASH_LUX_IF },
+  ];
 }
 
 interface HookGroupEntry {
@@ -122,9 +155,8 @@ export function mergeHarnessHooksConfig(
 
     const pkg = autoUpdate ? 'lux-edit@latest' : 'lux-edit';
     const cmd = autoUpdate ? `npx -y ${pkg}` : 'lux-edit';
-    const normalizedHarness = harness === 'claude' ? 'claude' : harness;
-    const events: Array<{ event: HookEventName; timeout: number; matcher?: string }> = [
-      { event: 'PostToolUse', timeout: 10, matcher: '.*lux.*' },
+    const events: Array<{ event: HookEventName; timeout: number; groups?: PostToolUseGroupSpec[] }> = [
+      { event: 'PostToolUse', timeout: 10, groups: getPostToolUseGroups(harness) },
       { event: 'Stop', timeout: 600 },
       { event: 'SessionEnd', timeout: 3 },
     ];
@@ -132,23 +164,22 @@ export function mergeHarnessHooksConfig(
       events.push({ event: 'Interrupt', timeout: 3 });
     }
 
-    for (const { event, timeout, matcher } of events) {
+    for (const { event, timeout, groups } of events) {
       const existingList = Array.isArray(hooksMap[event]) ? (hooksMap[event] as unknown[]) : [];
       const { cleaned } = stripGeneratedHooksFromList(existingList);
+      const command = `${cmd} hook event --harness ${harness} --event ${event}`;
 
-      const newEntry: HookGroupEntry = {
-        hooks: [
-          {
-            type: 'command',
-            command: `${cmd} hook event --harness ${normalizedHarness} --event ${event}`,
-            timeout,
-          },
-        ],
-      };
-      if (matcher) {
-        newEntry.matcher = matcher;
+      for (const group of groups ?? [undefined]) {
+        const handler: HookCommandEntry = { type: 'command', command, timeout };
+        if (group?.if) {
+          handler.if = group.if;
+        }
+        const newEntry: HookGroupEntry = { hooks: [handler] };
+        if (group?.matcher) {
+          newEntry.matcher = group.matcher;
+        }
+        cleaned.push(newEntry);
       }
-      cleaned.push(newEntry);
       hooksMap[event] = cleaned;
     }
 
