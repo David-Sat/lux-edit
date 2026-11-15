@@ -222,6 +222,9 @@ describe('Multi-Harness Lifecycle Hooks (Antigravity, Claude Code, Codex)', () =
       ['PORT=1 npx -y lux-edit@latest ./dist', { subcommand: '' }],
       ['pnpm exec lux .', { subcommand: '' }],
       ['/opt/homebrew/bin/lux index.html', { subcommand: '' }],
+      ['env -u FOO lux ./index.html', { subcommand: '' }],
+      ['timeout 10 lux ./index.html', { subcommand: '' }],
+      ['lux --version && lux ./index.html', { subcommand: '' }],
       ['npx lux-edit hook wait', { subcommand: 'hook' }],
       ['lux init', { subcommand: 'init' }],
       ['lux --version', { subcommand: '--version' }],
@@ -229,6 +232,8 @@ describe('Multi-Harness Lifecycle Hooks (Antigravity, Claude Code, Codex)', () =
       ['cat $TMPDIR/lux.log', null],
       ['curl -s http://127.0.0.1:4321/lux', null],
       ['luxury-tool run', null],
+      ['git commit -m "fix(hooks); lux bar"', null],
+      ["python3 -c 'x = \"a; lux b\"'", null],
       ['', null],
     ];
     for (const [command, expected] of cases) {
@@ -236,7 +241,7 @@ describe('Multi-Harness Lifecycle Hooks (Antigravity, Claude Code, Codex)', () =
     }
   });
 
-  it('attaches PostToolUse only for real lux shell commands and flags server launches', () => {
+  it('attaches PostToolUse only for real lux review commands and flags server launches', () => {
     const post = (tool_name: string, command: string) =>
       normalizeHookPayload(
         { session_id: 's1', cwd: testDir, tool_name, tool_input: { command } },
@@ -245,11 +250,59 @@ describe('Multi-Harness Lifecycle Hooks (Antigravity, Claude Code, Codex)', () =
       );
 
     expect(post('Bash', 'grep -rn lux src')).toBeNull();
+    expect(post('Bash', 'git commit -m "docs; lux workflow"')).toBeNull();
     expect(post('Bash', 'lux-edit hook event --harness claude-code --event Stop')).toBeNull();
+    expect(post('Bash', 'lux init')).toBeNull();
+    expect(post('Bash', 'lux --version')).toBeNull();
     expect(post('Bash', 'lux index.html --port 4321')?.isServerLaunch).toBe(true);
+    expect(post('Bash', 'cd apps/web && lux index.html')?.extraMetadataDirs).toEqual([path.join(testDir, 'apps/web')]);
+    expect(post('Bash', 'lux . --root custom-root')?.extraMetadataDirs).toEqual([path.join(testDir, 'custom-root')]);
     expect(post('Bash', 'npx lux-edit hook wait')?.isServerLaunch).toBe(false);
     expect(post('mcp__lux__lux_get_pending_review', '')?.isServerLaunch).toBe(false);
     expect(post('Edit', 'lux')).toBeNull();
+  });
+
+  it('binds the lease after a cd-prefixed backgrounded lux server writes subdirectory metadata', async () => {
+    const posts: any[] = [];
+    const server = http.createServer((req, res) => {
+      if (req.url === '/__visual_edit__/api/hooks' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          posts.push(JSON.parse(body));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ listening: true }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as any).port;
+    const appDir = path.join(testDir, 'sub-app');
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(testDir);
+
+    try {
+      setTimeout(() => {
+        fs.mkdirSync(path.join(appDir, '.visual-edit'), { recursive: true });
+        fs.writeFileSync(
+          path.join(appDir, '.visual-edit', 'server.json'),
+          JSON.stringify({ pid: process.pid, port, url: `http://127.0.0.1:${port}` })
+        );
+      }, 40);
+
+      const out = await handleHookEvent(
+        { session_id: 'claude_cd_launch', cwd: testDir, tool_name: 'Bash', tool_input: { command: 'cd sub-app && lux index.html' } },
+        { harness: 'claude-code', event: 'PostToolUse', serverLaunchWaitMs: 1500, serverLaunchRetryMs: 20 }
+      );
+
+      expect(out).toEqual({});
+      expect(posts.at(-1)).toMatchObject({ event: 'PostToolUse', sessionId: 'claude_cd_launch', harness: 'claude-code' });
+    } finally {
+      cwdSpy.mockRestore();
+      server.close();
+    }
   });
 
   it('binds the lease once a backgrounded lux server comes up, retrying until it accepts', async () => {

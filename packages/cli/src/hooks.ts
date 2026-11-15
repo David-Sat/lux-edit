@@ -82,6 +82,8 @@ export interface NormalizedHookInput {
   stopReason?: string;
   /** True when a shell tool call started a lux review server (as opposed to an MCP call or a lux subcommand). */
   isServerLaunch?: boolean;
+  /** Additional metadata directories inferred from `cd <dir>` or `lux --root <dir>` in shell commands. */
+  extraMetadataDirs?: string[];
 }
 
 const SHELL_TOOL_NAMES = new Set(['bash', 'run_command', 'shell', 'exec_command']);
@@ -102,39 +104,237 @@ const LUX_NON_SERVER_SUBCOMMANDS = new Set([
   '--version',
 ]);
 /** Launchers and wrappers that may precede the lux binary within one shell subcommand. */
-const COMMAND_PREFIX_WORDS = new Set(['nohup', 'exec', 'env', 'command', 'time', 'sudo', 'npx', 'bunx', 'pnpx', 'dlx']);
+const COMMAND_PREFIX_WORDS = new Set(['nohup', 'exec', 'env', 'command', 'time', 'sudo', 'npx', 'bunx', 'pnpx', 'dlx', 'timeout']);
 const PACKAGE_RUNNER_WORDS = new Set(['pnpm', 'yarn', 'npm', 'bun']);
+const PREFIX_FLAGS_WITH_VALUE = new Set(['-u', '--unset', '-p', '--package', '-C', '--chdir']);
 
-/**
- * Finds a `lux` / `lux-edit` invocation in a shell command, scanning each subcommand separately and
- * looking only at command position, so `grep -rn lux src` or `cat lux.log` are not treated as lux.
- * Returns the lux subcommand (or `''` for a server launch), or `null` when lux is not invoked.
- */
-export function findLuxShellInvocation(command: string): { subcommand: string } | null {
+export interface LuxShellInspection {
+  subcommand: string;
+  action?: string;
+  metadataDirs: string[];
+}
+
+/** Splits a shell command into subcommand segments at control operators outside quotes/escapes. */
+function splitShellSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = '';
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+    if (quote === "'") {
+      current += ch;
+      if (ch === "'") quote = null;
+      continue;
+    }
+    if (ch === '\\') {
+      current += ch;
+      escaped = true;
+      continue;
+    }
+    if (quote === '"') {
+      current += ch;
+      if (ch === '"') quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    const next = command[i + 1];
+    if ((ch === '&' && next === '&') || (ch === '|' && next === '|')) {
+      segments.push(current);
+      current = '';
+      i++;
+      continue;
+    }
+    if (ch === ';' || ch === '|' || ch === '\n' || ch === '(' || ch === ')' || (ch === '&' && command[i - 1] !== '>')) {
+      segments.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  segments.push(current);
+  return segments;
+}
+
+/** Tokenizes a single shell segment into unquoted words while preserving quoted substrings as single arguments. */
+function tokenizeShellWords(segment: string): string[] {
+  const words: string[] = [];
+  let current = '';
+  let hasToken = false;
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i];
+    if (escaped) {
+      current += ch;
+      hasToken = true;
+      escaped = false;
+      continue;
+    }
+    if (quote === "'") {
+      if (ch === "'") quote = null;
+      else current += ch;
+      hasToken = true;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      hasToken = true;
+      continue;
+    }
+    if (quote === '"') {
+      if (ch === '"') quote = null;
+      else current += ch;
+      hasToken = true;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      hasToken = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (hasToken) {
+        words.push(current);
+        current = '';
+        hasToken = false;
+      }
+      continue;
+    }
+    current += ch;
+    hasToken = true;
+  }
+  if (hasToken) words.push(current);
+  return words;
+}
+
+function extractRootArg(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if ((arg === '--root' || arg === '-r') && args[i + 1]) {
+      return args[i + 1];
+    }
+    if (arg.startsWith('--root=')) {
+      return arg.slice('--root='.length);
+    }
+    if (arg.startsWith('-r=')) {
+      return arg.slice('-r='.length);
+    }
+  }
+  return undefined;
+}
+
+function inspectLuxShellCommand(command: string, baseDir?: string): LuxShellInspection | null {
   if (!command) return null;
-  const segments = command.split(/&&|\|\||[;|&\n()]/);
-  for (const segment of segments) {
-    const words = segment.trim().split(/\s+/).filter(Boolean);
+  let activeDir = baseDir ? path.resolve(baseDir) : undefined;
+  let cdMoved = false;
+  let fallback: LuxShellInspection | null = null;
+
+  for (const segment of splitShellSegments(command)) {
+    const words = tokenizeShellWords(segment);
+    if (words.length === 0) continue;
+
+    if (activeDir && words[0] === 'cd') {
+      let target: string | undefined;
+      let pastFlags = false;
+      for (let j = 1; j < words.length; j++) {
+        if (!pastFlags && words[j] === '--') {
+          pastFlags = true;
+          continue;
+        }
+        if (!pastFlags && words[j].startsWith('-')) continue;
+        target = words[j];
+        break;
+      }
+      if (target && target !== '-') {
+        activeDir = path.resolve(activeDir, target);
+        cdMoved = true;
+      }
+      continue;
+    }
+
     let i = 0;
+    let sawPrefix = false;
     while (i < words.length) {
       const word = words[i];
-      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || word.startsWith('-') || COMMAND_PREFIX_WORDS.has(word)) {
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) {
+        i++;
+        continue;
+      }
+      if (word === 'timeout' && /^\d+(?:\.\d+)?[smhd]?$/.test(words[i + 1] ?? '')) {
+        sawPrefix = true;
+        i += 2;
+        continue;
+      }
+      if (COMMAND_PREFIX_WORDS.has(word)) {
+        sawPrefix = true;
         i++;
         continue;
       }
       if (PACKAGE_RUNNER_WORDS.has(word) && ['exec', 'dlx', 'x', 'run'].includes(words[i + 1] ?? '')) {
+        sawPrefix = true;
         i += 2;
+        continue;
+      }
+      if (sawPrefix && PREFIX_FLAGS_WITH_VALUE.has(word) && i + 1 < words.length) {
+        i += 2;
+        continue;
+      }
+      if (word.startsWith('-')) {
+        i++;
         continue;
       }
       break;
     }
-    const binary = (words[i] ?? '').replace(/^['"]|['"]$/g, '');
+
+    const binary = words[i] ?? '';
     const baseName = (binary.split('/').pop() ?? '').replace(/@[^@]*$/, '');
-    if (LUX_BINARIES.has(baseName)) {
-      return { subcommand: words[i + 1] && LUX_NON_SERVER_SUBCOMMANDS.has(words[i + 1]) ? words[i + 1] : '' };
+    if (!LUX_BINARIES.has(baseName)) continue;
+
+    const nextWord = words[i + 1];
+    const subcommand = nextWord && LUX_NON_SERVER_SUBCOMMANDS.has(nextWord) ? nextWord : '';
+    const action = subcommand === 'hook' ? words[i + 2] : undefined;
+
+    const dirs: string[] = [];
+    const rootArg = extractRootArg(words.slice(i + 1));
+    if (rootArg) {
+      dirs.push(activeDir ? path.resolve(activeDir, rootArg) : path.resolve(rootArg));
+    }
+    if (cdMoved && activeDir) {
+      dirs.push(activeDir);
+    }
+
+    const inspection: LuxShellInspection = { subcommand, action, metadataDirs: dirs };
+    // Prefer an explicit server launch over an earlier utility call like `lux --version && lux .`.
+    if (subcommand === '') {
+      return inspection;
+    }
+    if (!fallback) {
+      fallback = inspection;
     }
   }
-  return null;
+  return fallback;
+}
+
+/**
+ * Finds a `lux` / `lux-edit` invocation in a shell command, scanning each subcommand separately outside
+ * quotes and looking only at command position, so `grep -rn lux src` or `git commit -m "a; lux"` are
+ * not treated as lux. Returns the lux subcommand (or `''` for a server launch), or `null` otherwise.
+ */
+export function findLuxShellInvocation(command: string): { subcommand: string } | null {
+  const inspection = inspectLuxShellCommand(command);
+  return inspection ? { subcommand: inspection.subcommand } : null;
 }
 
 const NON_CONTINUABLE_STOP_REASONS = new Set([
@@ -196,28 +396,37 @@ export function normalizeHookPayload(
       'default'
   ).trim();
 
-  const workspaceDir =
+  const rawWorkspaceDir =
     (Array.isArray(rawPayload.workspacePaths) && rawPayload.workspacePaths[0]) ||
     rawPayload.cwd ||
     rawPayload.workspaceDir ||
     process.cwd();
+  const effectiveWorkspaceDir = typeof rawWorkspaceDir === 'string' ? rawWorkspaceDir : process.cwd();
 
   const toolName = String(rawPayload.toolCall?.name || rawPayload.tool_name || rawPayload.toolName || '');
   const toolInput = rawPayload.toolCall?.args || rawPayload.tool_input || rawPayload.toolInput || {};
   const toolResponse = rawPayload.tool_response || rawPayload.toolResponse;
   const terminationReason = rawPayload.terminationReason || rawPayload.termination_reason;
 
-  // For PostToolUse, only attach if the tool call was a lux tool or a shell command invoking lux.
+  // For PostToolUse, only attach if the tool call was a lux tool or a session-binding lux shell command.
   // Harness matchers are only coarse prefilters (Claude Code's `Bash` matcher fires for every shell call).
   let isServerLaunch = false;
+  let extraMetadataDirs: string[] | undefined;
   if (eventName === 'PostToolUse') {
     const lowerTool = toolName.toLowerCase();
     if (SHELL_TOOL_NAMES.has(lowerTool)) {
       const command = String(toolInput?.CommandLine || toolInput?.command || '');
-      const invocation = findLuxShellInvocation(command);
-      // `lux hook event` is the hook itself (e.g. a user testing it by hand); never let it bind a lease.
-      if (!invocation || (invocation.subcommand === 'hook' && /\bhook\s+event\b/.test(command))) return null;
-      isServerLaunch = invocation.subcommand === '';
+      const inspection = inspectLuxShellCommand(command, effectiveWorkspaceDir);
+      if (!inspection) return null;
+      const isReviewAction =
+        inspection.subcommand === '' ||
+        inspection.subcommand === 'mcp' ||
+        (inspection.subcommand === 'hook' && inspection.action === 'wait');
+      if (!isReviewAction) return null;
+      isServerLaunch = inspection.subcommand === '';
+      if (inspection.metadataDirs.length > 0) {
+        extraMetadataDirs = inspection.metadataDirs;
+      }
     } else if (!lowerTool.includes('lux')) {
       return null;
     }
@@ -234,8 +443,8 @@ export function normalizeHookPayload(
     harness,
     event: eventName,
     sessionId,
-    workspaceDir: typeof workspaceDir === 'string' ? workspaceDir : process.cwd(),
-    cwd: typeof workspaceDir === 'string' ? workspaceDir : process.cwd(),
+    workspaceDir: effectiveWorkspaceDir,
+    cwd: effectiveWorkspaceDir,
     toolName,
     toolInput,
     toolResponse,
@@ -243,6 +452,7 @@ export function normalizeHookPayload(
     terminationReason,
     stopReason,
     isServerLaunch,
+    extraMetadataDirs,
   };
 }
 
@@ -254,11 +464,20 @@ function resolveRunningServerUrl(workspaceDir?: string, explicitUrl?: string): s
 }
 
 /** Reads `.visual-edit/server.json` written by a live lux server; never guesses a default port. */
-function resolveServerUrlFromMetadata(workspaceDir?: string): string | null {
-  const candidates = [workspaceDir, process.cwd()].filter(Boolean) as string[];
+function resolveServerUrlFromMetadata(workspaceDir?: string, extraDirs: string[] = []): string | null {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const dir of [...extraDirs, workspaceDir, process.cwd()]) {
+    if (!dir) continue;
+    const resolved = path.resolve(dir);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      candidates.push(resolved);
+    }
+  }
   for (const dir of candidates) {
     try {
-      const metaPath = path.join(path.resolve(dir), SERVER_METADATA_DIR, SERVER_METADATA_FILE);
+      const metaPath = path.join(dir, SERVER_METADATA_DIR, SERVER_METADATA_FILE);
       if (fs.existsSync(metaPath)) {
         const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as LuxServerMetadata;
         if (meta && meta.url) {
@@ -295,20 +514,21 @@ async function bindLeaseAfterServerLaunch(
   while (true) {
     const serverUrl = explicitUrl?.trim()
       ? stripTrailingSlashes(explicitUrl.trim())
-      : resolveServerUrlFromMetadata(normalized.workspaceDir);
+      : resolveServerUrlFromMetadata(normalized.workspaceDir, normalized.extraMetadataDirs);
     if (serverUrl) {
       try {
         const result = await postHookApi(
           serverUrl,
           { harness: normalized.harness, sessionId: normalized.sessionId, event: 'PostToolUse', waitMs: 0 },
-          1000
+          Math.min(1000, Math.max(200, deadline - Date.now()))
         );
         if (result?.listening === true) return;
       } catch {
         // Server not accepting connections yet; retry until the deadline.
       }
     }
-    if (Date.now() + retryDelayMs >= deadline) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= retryDelayMs) return;
     await new Promise((r) => setTimeout(r, retryDelayMs));
   }
 }
