@@ -14,6 +14,12 @@ lux runs an in-browser visual editing overlay on running web apps, dev servers, 
 
 When the user runs `/lux`, asks to review visual edits/comments, or when woken automatically by a lifecycle hook:
 
+### 0. Absolute Priority & Action Directives
+> [!IMPORTANT]
+> - **Visual Feedback Takes Absolute Precedence:** When woken by a `[LUX VISUAL REVIEW INTERRUPTION]` or when visual reviews exist, you must address the visual feedback immediately. Do NOT continue prior conversation topics or old test discussions until the visual review is fulfilled.
+> - **Never Fake-Resolve:** Never call `lux_resolve_review` or mark a review resolved as a no-op or dismissal. Every review must either result in applied code edits in the source files, or proposed component variants.
+> - **Variant Requests:** If any comment, transcript, or prompt mentions "options", "variants", "choices", "alternatives", or "different designs", you MUST call `lux_propose_variants` with 2–4 options so the user can preview them live in the browser. Do NOT make a single arbitrary code edit.
+
 ### 1. Check for pending review
 Call `lux_get_pending_review`. Always pass `workspaceDir` with the absolute path of your current workspace root:
 
@@ -37,7 +43,7 @@ Passing `workspaceDir` ensures lux finds `.visual-edit/sessions.jsonl` and conne
 6. **Seamless Live & Batch Wakeup:**
    - **In Claude Code / Codex:** Lifecycle hooks (`PostToolUse` + `Stop`) automatically hold and wake you when the user submits new Live or Batch feedback—simply finish your turn.
    - **In Antigravity:** To avoid locking the Antigravity chat in `"Working"` state while still waking immediately on browser edits, launch `npx lux-edit hook wait` via `run_command` with `WaitMsBeforeAsync: 500` and `IsDaemon: false`, then immediately finish your turn.
-   - **In Pure-MCP Clients (Cursor, Windsurf, VS Code, Zed, Claude Desktop) or Direct Loops:** Call `lux_wait_for_feedback` passing `afterCursor: <nextCursor>` (and `workspaceDir`) to block cleanly until the user makes another Live edit, Variant pick, or Batch submission.
+   - **In Pure-MCP Clients (Cursor, Windsurf, VS Code, Zed, Claude Desktop) or Direct Loops:** Call `lux_wait_for_feedback` passing `afterCursor: <nextCursor>` (and `workspaceDir`) to block efficiently until the user makes another Live edit, Variant pick, or Batch submission.
 
 ### 3. When no pending edits are found
 Do not restart or kill the lux server if it is already running. Restarting drops active browser sessions and clears pinned comments.
@@ -57,4 +63,4 @@ Check whether a review server is already running on port 4320:
      ```
   3. In Antigravity, also start the background review waiter (`npx lux-edit hook wait` with `WaitMsBeforeAsync: 500, IsDaemon: false`) so browser feedback wakes you automatically.
   4. Tell the user:
-     "Open `http://127.0.0.1:4320` in your browser. Press V to adjust styles, C to drop comment pins, S to capture visual screenshots, or R to record a sectioned voice walkthrough. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."
+     "Open `http://127.0.0.1:4320` in your browser. Press C to drop comment pins, R to record a sectioned voice walkthrough, or V to adjust styles. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."

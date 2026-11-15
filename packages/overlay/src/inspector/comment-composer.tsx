@@ -111,43 +111,42 @@ export function CommentComposer() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <div class="ve-comment-header" style={{ flexDirection: isMulti ? 'column' : 'row', alignItems: isMulti ? 'stretch' : 'center', gap: isMulti ? '6px' : '0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div class={`ve-comment-header ${isMulti ? 'is-multi' : ''}`}>
+        <div class="ve-comment-header-row">
+          <span class="ve-comment-header-label">
             {hasScreenshot ? (
-              <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+              <span class="ve-comment-screenshot-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                   <circle cx="12" cy="13" r="4" />
                 </svg>
-                Screenshot: <strong style={{ color: '#fbbf24' }}>{tagLabel}</strong>
+                Screenshot: <strong class="ve-comment-screenshot-tag">{tagLabel}</strong>
               </span>
             ) : isMulti ? (
-              <span style={{ fontWeight: 600, color: 'var(--ve-text-primary)' }}>
+              <span class="ve-comment-multi-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
-                Comment on <strong style={{ color: 'var(--ve-accent-text, #38bdf8)' }}>{targets.length} elements</strong>
+                Comment on <strong class="ve-comment-accent-strong">{targets.length} elements</strong>
               </span>
             ) : selectedText ? (
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span class="ve-comment-selected-title">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
-                Comment on <strong style={{ color: 'var(--ve-amber-text, #d97706)' }}>"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
+                Comment on <strong class="ve-comment-selected-strong">"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
               </span>
             ) : (
               <span>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
-                Comment on <strong style={{ color: 'var(--ve-accent-text, #0284c7)' }}>{tagLabel}</strong>
+                Comment on <strong class="ve-comment-accent-strong">{tagLabel}</strong>
               </span>
             )}
           </span>
           <button
-            class="ve-close-btn"
-            style={{ inlineSize: '20px', blockSize: '20px' }}
+            class="ve-close-btn ve-close-btn--compact"
             onClick={() => state.setCommentTarget(null)}
             title="Cancel (Esc)"
           >
@@ -165,7 +164,7 @@ export function CommentComposer() {
               const label = loc.componentName ? `<${loc.componentName}>` : loc.selector;
               return (
                 <span key={loc.selector} class="ve-comment-target-chip" title={label}>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+                  <span class="ve-comment-chip-label">{label}</span>
                   <button
                     class="ve-chip-remove"
                     title="Remove from linked elements"
@@ -181,37 +180,15 @@ export function CommentComposer() {
       </div>
 
       {hasScreenshot && (
-        <div style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.16)', background: 'rgba(0, 0, 0, 0.45)' }}>
+        <div class="ve-composer-screenshot-box">
           <img
             src={state.commentPendingScreenshot}
             alt="Screenshot capture"
-            style={{
-              display: 'block',
-              width: '100%',
-              maxHeight: '120px',
-              objectFit: 'contain',
-              background: '#090d16',
-            }}
+            class="ve-composer-screenshot-img"
           />
           <button
             type="button"
-            style={{
-              position: 'absolute',
-              top: '4px',
-              right: '4px',
-              background: 'rgba(0, 0, 0, 0.7)',
-              border: '1px solid rgba(255, 255, 255, 0.25)',
-              color: '#fff',
-              borderRadius: '50%',
-              width: '18px',
-              height: '18px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              fontSize: '11px',
-              lineHeight: 1,
-            }}
+            class="ve-composer-screenshot-detach"
             onClick={() => state.setPendingScreenshot(undefined)}
             title="Detach screenshot"
           >
@@ -238,24 +215,12 @@ export function CommentComposer() {
         onKeyDown={handleKeyDown}
       />
 
-      <div class="ve-comment-footer" style={{ gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, overflow: 'hidden' }}>
+      <div class="ve-comment-footer">
+        <div class="ve-comment-footer-left">
           {!hasScreenshot && target && (
             <button
               type="button"
-              style={{
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid rgba(255, 255, 255, 0.18)',
-                borderRadius: '6px',
-                color: 'var(--ve-text-secondary)',
-                fontSize: '11px',
-                padding: '3px 8px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                whiteSpace: 'nowrap',
-              }}
+              class="ve-composer-snap-btn"
               disabled={isSnapping}
               onClick={async () => {
                 if (isSnapping) return;
@@ -286,9 +251,9 @@ export function CommentComposer() {
               <span>{isSnapping ? 'Snapping...' : 'Snap Visual'}</span>
             </button>
           )}
-          <span class="ve-hint" style={{ fontSize: '10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <span class="ve-hint ve-composer-hint">
             {state.pendingPageReload ? (
-              <span style={{ color: '#38bdf8', fontWeight: 600 }}>● Update ready • will refresh on save</span>
+              <span class="ve-composer-reload-ready">● Update ready • will refresh on save</span>
             ) : hasScreenshot ? (
               <span><strong>Enter</strong> to attach</span>
             ) : isMulti ? (
@@ -299,8 +264,7 @@ export function CommentComposer() {
           </span>
         </div>
         <button
-          class="ve-btn primary"
-          style={{ padding: '5px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+          class="ve-btn primary ve-composer-submit-btn"
           onClick={handleSave}
           disabled={!commentText.trim() && !hasScreenshot}
         >

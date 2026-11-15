@@ -13,15 +13,14 @@ import {
   ElementVariantSet,
   VariantDecision,
   VerificationTarget,
-  computeBatchRevisionHash,
 } from '@visual-edit/core';
-import { resolveSourceLocation } from '../source-locator/index.js';
 import { VoiceRecorder } from './voice-recorder.js';
 import { getRouteFromLocation, normalizeRoute } from './route-utils.js';
 import { DomMutationManager, ElementSnapshot } from './dom-mutations.js';
 import { VariantManager } from './variant-manager.js';
 import { VoiceReviewManager } from './voice-review-manager.js';
 import { AnnotationManager } from './annotation-manager.js';
+import { buildBatchSnapshot } from './batch-builder.js';
 import {
   clearPersistedDraft,
   clearVerificationTargets,
@@ -896,36 +895,30 @@ export class OverlayStateManager {
     this.domMutations.captureInitialSnapshot(el);
   }
 
-  public updateElementStyle(property: string, value: string): void {
+  private applyActiveDomMutation(mutate: (el: HTMLElement) => void): void {
     if (!this.activeElement) return;
-    this.domMutations.updateElementStyle(this.activeElement, property, value);
+    mutate(this.activeElement);
     this.syncMutationsForElement(this.activeElement);
     this.scheduleLiveMutationSubmit();
     this.notify();
+  }
+
+  public updateElementStyle(property: string, value: string): void {
+    this.applyActiveDomMutation((el) => this.domMutations.updateElementStyle(el, property, value));
   }
 
   public updateElementText(newText: string): void {
-    if (!this.activeElement) return;
-    this.domMutations.updateElementText(this.activeElement, newText);
-    this.syncMutationsForElement(this.activeElement);
-    this.scheduleLiveMutationSubmit();
-    this.notify();
+    this.applyActiveDomMutation((el) => this.domMutations.updateElementText(el, newText));
   }
 
   public addClass(className: string): void {
-    if (!this.activeElement || !className.trim()) return;
-    this.domMutations.addClass(this.activeElement, className);
-    this.syncMutationsForElement(this.activeElement);
-    this.scheduleLiveMutationSubmit();
-    this.notify();
+    if (!className.trim()) return;
+    this.applyActiveDomMutation((el) => this.domMutations.addClass(el, className));
   }
 
   public removeClass(className: string): void {
-    if (!this.activeElement || !className.trim()) return;
-    this.domMutations.removeClass(this.activeElement, className);
-    this.syncMutationsForElement(this.activeElement);
-    this.scheduleLiveMutationSubmit();
-    this.notify();
+    if (!className.trim()) return;
+    this.applyActiveDomMutation((el) => this.domMutations.removeClass(el, className));
   }
 
   public deleteElement(): void {
@@ -1004,55 +997,22 @@ export class OverlayStateManager {
       this.syncMutationsForElement(this.activeElement);
     }
 
-    const currentRoute = this.getCurrentPathname();
-    const search = typeof window !== 'undefined' && window.location ? window.location.search : '';
-    const routeWithSearch = currentRoute.includes('?') ? currentRoute : `${currentRoute}${search}`;
-    const pageMeta = this.getPageMetadata();
-
-    const primarySource = this.activeElement ? resolveSourceLocation(this.activeElement) : this.mutations[0]?.sourceLocation;
-
-    const visitedByNorm = new Map<string, string>();
-    const addVisited = (p?: string) => {
-      if (!p) return;
-      const norm = normalizeRoute(p);
-      if (!visitedByNorm.has(norm)) {
-        visitedByNorm.set(norm, p);
-      }
-    };
-
-    addVisited(currentRoute);
-    this.mutations.forEach((m) => addVisited(m.pathname));
-    this.annotations.forEach((a) => {
-      addVisited(a.pathname);
-      a.targets?.forEach((t) => addVisited(t.pathname));
-    });
-    this.voiceReviews.forEach((v) => {
-      addVisited(v.pathname);
-      v.pins?.forEach((p) => addVisited(p.pathname));
-    });
-
-    const batch: VisualEditBatch = {
-      id: this.sessionId,
-      timestamp: Date.now(),
-      route: routeWithSearch,
-      url: pageMeta.url,
-      pageTitle: pageMeta.pageTitle,
-      pagesVisited: Array.from(visitedByNorm.values()),
+    return buildBatchSnapshot({
+      sessionId: this.sessionId,
+      currentRoute: this.getCurrentPathname(),
+      pageMeta: this.getPageMetadata(),
       appId: getLuxWindow()?.__LUX_APP_ID__,
       status: this.sessionStatus,
       reviewMode: this.reviewMode,
       userPrompt: this.userPrompt,
-      primarySource,
+      activeElement: this.activeElement,
       mutations: this.mutations,
       annotations: this.annotations,
       voiceReviews: this.voiceReviews,
       variantSets: this.variantSets,
       variantDecisions: this.variantDecisions,
       replies: this.agentReplies,
-    };
-
-    batch.revisionHash = computeBatchRevisionHash(batch);
-    return batch;
+    });
   }
 
   public async submitBatch(): Promise<void> {
