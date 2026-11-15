@@ -400,31 +400,16 @@ export function CommentPins() {
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: '8px' }}>
-                  <strong style={{ color: '#ffffff', fontSize: '11px', fontWeight: 600 }}>
+                <div class="ve-pin-tooltip-header">
+                  <strong class="ve-pin-tooltip-title">
                     {isMulti
                       ? `Pin #${subLabel} • Linked (${multiTotal} elements)`
                       : `Pin #${annIdx + 1} ${ann.selectedText ? '• Text' : ''}`}
                   </strong>
-                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+                  <div class="ve-pin-tooltip-actions">
                     {!isEditing && (
                       <button
-                        style={{
-                          background: 'rgba(255, 255, 255, 0.12)',
-                          border: '1px solid rgba(255, 255, 255, 0.25)',
-                          color: '#ffffff',
-                          borderRadius: '4px',
-                          padding: '0 6px',
-                          height: '20px',
-                          boxSizing: 'border-box',
-                          fontSize: '10px',
-                          cursor: 'pointer',
-                          fontWeight: '600',
-                          backdropFilter: 'blur(8px)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          whiteSpace: 'nowrap',
-                        }}
+                        class="ve-pin-tooltip-edit-btn"
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingPinId(ann.id);
@@ -436,22 +421,7 @@ export function CommentPins() {
                       </button>
                     )}
                     <button
-                      style={{
-                        background: 'rgba(34, 197, 94, 0.2)',
-                        border: '1px solid rgba(34, 197, 94, 0.4)',
-                        color: '#4ade80',
-                        borderRadius: '4px',
-                        padding: '0 6px',
-                        height: '20px',
-                        boxSizing: 'border-box',
-                        fontSize: '10px',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        whiteSpace: 'nowrap',
-                      }}
+                      class="ve-pin-tooltip-resolve-btn"
                       onClick={(e) => {
                         e.stopPropagation();
                         state.deleteAnnotation(ann.id);
@@ -468,25 +438,13 @@ export function CommentPins() {
                 </div>
 
                 {ann.selectedText && (
-                  <div
-                    style={{
-                      fontSize: '11px',
-                      color: '#fbbf24',
-                      background: 'rgba(251, 191, 36, 0.12)',
-                      borderLeft: '2px solid #fbbf24',
-                      padding: '3px 6px',
-                      borderRadius: '2px',
-                      marginBottom: '6px',
-                      fontStyle: 'italic',
-                      wordBreak: 'break-word',
-                    }}
-                  >
+                  <div class="ve-pin-tooltip-quote">
                     "{ann.selectedText}"
                   </div>
                 )}
 
                 {isEditing ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div class="ve-pin-edit-stack">
                     <EditCommentTextarea
                       value={editText}
                       onInput={(val) => setEditText(val)}
@@ -502,32 +460,15 @@ export function CommentPins() {
                         }
                       }}
                     />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
+                    <div class="ve-pin-edit-actions">
                       <button
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#94a3b8',
-                          fontSize: '10px',
-                          cursor: 'pointer',
-                          padding: '2px 6px',
-                        }}
+                        class="ve-pin-edit-cancel-btn"
                         onClick={() => setEditingPinId(null)}
                       >
                         Cancel
                       </button>
                       <button
-                        style={{
-                          background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.12) 100%)',
-                          border: '1px solid rgba(255, 255, 255, 0.4)',
-                          boxShadow: 'inset 0 1px 1px rgba(255, 255, 255, 0.7)',
-                          color: '#ffffff',
-                          borderRadius: '6px',
-                          fontSize: '10px',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          padding: '3px 10px',
-                        }}
+                        class="ve-pin-edit-save-btn"
                         onClick={() => {
                           state.updateAnnotation(ann.id, editText);
                           setEditingPinId(null);
@@ -539,7 +480,7 @@ export function CommentPins() {
                   </div>
                 ) : (
                   <div
-                    style={{ color: '#f8fafc', fontSize: '12px', cursor: 'pointer', lineHeight: '1.45', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
+                    class="ve-pin-tooltip-body"
                     onClick={() => {
                       setEditingPinId(ann.id);
                       setEditText(ann.comment);

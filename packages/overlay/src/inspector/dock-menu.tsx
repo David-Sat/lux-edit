@@ -157,24 +157,11 @@ export function DockMenu() {
 
     return (
       <div
-        class={`ve-dock-menu ve-voice-recording-dock ${isDragging ? 've-dragging' : ''}`}
+        class={`ve-dock-menu ve-voice-recording-dock ${voiceState.isReady ? 'is-ready' : ''} ${isDragging ? 've-dragging' : ''}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '6px 12px',
-          background: 'rgba(15, 23, 42, 0.94)',
-          backdropFilter: 'blur(16px)',
-          border: voiceState.isReady ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(245, 158, 11, 0.5)',
-          borderRadius: '24px',
-          boxShadow: voiceState.isReady
-            ? '0 8px 32px rgba(220, 38, 38, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)'
-            : '0 8px 32px rgba(245, 158, 11, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1)',
-          transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-          animation: 'veSlideUp 0.15s ease-out',
-          ...(isDragging && dragPos
+        style={
+          isDragging && dragPos
             ? {
                 position: 'fixed',
                 left: `${dragPos.x}px`,
@@ -184,8 +171,8 @@ export function DockMenu() {
                 transition: 'none',
                 zIndex: 2147483647,
               }
-            : {}),
-        }}
+            : undefined
+        }
       >
         <div
           class="ve-dock-drag-handle"
@@ -196,7 +183,7 @@ export function DockMenu() {
             if (dockEl) startDrag(e, dockEl);
           }}
         >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style={{ pointerEvents: 'none' }}>
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg">
             <circle cx="3" cy="3" r="1.5" />
             <circle cx="7" cy="3" r="1.5" />
             <circle cx="3" cy="7" r="1.5" />
@@ -205,31 +192,12 @@ export function DockMenu() {
             <circle cx="7" cy="11" r="1.5" />
           </svg>
         </div>
-        <span
-          style={{
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
-            backgroundColor: voiceState.isReady ? '#ef4444' : '#f59e0b',
-            animation: voiceState.isReady ? 'vePulse 1.2s infinite ease-in-out' : 'vePulse 0.6s infinite ease-in-out',
-            flexShrink: 0,
-            transition: 'background-color 0.2s ease',
-          }}
-        />
-        <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>
+        <span class={`ve-voice-status-dot ${voiceState.isReady ? 'is-ready' : ''}`} />
+        <span class="ve-voice-timer">
           {voiceState.isReady ? timeStr : '00:00'}
         </span>
         <span
-          style={{
-            fontSize: '11px',
-            color: voiceState.isReady ? '#cbd5e1' : '#fcd34d',
-            maxWidth: '200px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            fontStyle: voiceState.isReady && liveText ? 'normal' : 'italic',
-            fontWeight: voiceState.isReady ? 400 : 600,
-          }}
+          class={`ve-voice-transcript-preview ${voiceState.isReady ? 'is-ready' : ''} ${voiceState.isReady && liveText ? 'is-live-text' : ''}`}
         >
           {!voiceState.isReady
             ? 'Connecting mic...'
@@ -239,16 +207,7 @@ export function DockMenu() {
         </span>
         {voiceState.pins.length > 0 && (
           <span
-            style={{
-              fontSize: '10px',
-              fontWeight: 600,
-              background: 'rgba(239, 68, 68, 0.25)',
-              color: '#fca5a5',
-              padding: '2px 7px',
-              borderRadius: '10px',
-              border: '1px solid rgba(239, 68, 68, 0.4)',
-              flexShrink: 0,
-            }}
+            class="ve-voice-pin-badge"
             title={`${voiceState.sections?.length || 1} section(s), ${voiceState.pins.length} target(s)`}
           >
             {voiceState.sections && voiceState.sections.length > 0
@@ -360,7 +319,7 @@ export function DockMenu() {
           if (dockEl) startDrag(e, dockEl);
         }}
       >
-        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" style={{ pointerEvents: 'none' }}>
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg">
           <circle cx="3" cy="3" r="1.5" />
           <circle cx="7" cy="3" r="1.5" />
           <circle cx="3" cy="7" r="1.5" />
@@ -370,40 +329,15 @@ export function DockMenu() {
         </svg>
       </div>
       <button
-        class={`ve-dock-item ${isLive ? 've-active' : ''}`}
+        class={`ve-dock-item ve-mode-pill ${isLive ? 've-active' : ''}`}
         onClick={() => state.setReviewMode(isLive ? 'batch' : 'live')}
         title={
           isLive
             ? 'Live Mode Active: Feedback streams immediately to agent (Click to switch to Batch Mode)'
             : 'Batch Mode Active: Hold changes until Submit Review (Click to switch to Live Mode)'
         }
-        style={{
-          fontSize: '10px',
-          fontWeight: 700,
-          padding: '0 8px',
-          borderRadius: '12px',
-          width: 'auto',
-          height: '28px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          background: isLive ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255, 255, 255, 0.08)',
-          border: isLive ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(255, 255, 255, 0.14)',
-          color: isLive ? '#34d399' : '#cbd5e1',
-        }}
       >
-        {isLive && (
-          <span
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: '#10b981',
-              boxShadow: '0 0 6px #10b981',
-              flexShrink: 0,
-            }}
-          />
-        )}
+        {isLive && <span class="ve-mode-live-dot" />}
         <span>{isLive ? 'Live' : 'Batch'}</span>
       </button>
       <button
@@ -447,8 +381,7 @@ export function DockMenu() {
         </svg>
       </button>
       <button
-        class={`ve-dock-item ${state.isDrawerOpen ? 've-active' : ''}`}
-        style={{ position: 'relative' }}
+        class={`ve-dock-item ve-dock-item--relative ${state.isDrawerOpen ? 've-active' : ''}`}
         onClick={() => state.setDrawerOpen(!state.isDrawerOpen)}
         title={`Review Changes (${totalCount})`}
       >

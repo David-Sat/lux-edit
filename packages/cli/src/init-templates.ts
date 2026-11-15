@@ -7,67 +7,32 @@ name: lux
 description: In-browser visual review, live/batch UI editing, visual screenshot verification, and component variant exploration with lux for local projects, dev servers (localhost/127.0.0.1), and static HTML files where code changes will be applied directly to the user's codebase. Use when the user wants to visually edit or review their own app, or runs /lux. Do NOT use for external third-party websites or online articles (use /lux-web instead).
 ---
 
-# lux visual review and UI editing
+# lux — Local Visual Review & UI Editing
 
-> [!NOTE]
-> **User-Hosted Apps Only:** \`lux\` is for reviewing and visually modifying the user's own codebase (running local dev servers like \`http://localhost:3000\` or local files). For exploring or tearing down external, third-party websites and online articles, use \`/lux-web\`.
+> **User-Hosted Apps Only:** For external websites/articles with no local codebase, use \`/lux-web\`.
 
-lux runs an in-browser visual editing overlay on running web apps, dev servers, and static HTML files with **Live Streaming Mode**, **Batch Review Mode**, **Multi-Target Voice Walkthroughs**, **Visual Capture (\`lux_capture_visual\`)**, and **Component Variants (\`lux_propose_variants\`)**.
+## Core Rules
+- **Absolute Priority:** When woken by \`[LUX VISUAL REVIEW INTERRUPTION]\` or pending feedback, handle the visual review first—before any unrelated conversation.
+- **Never Fake-Resolve:** Every review must end in real source edits or proposed variants (never a no-op resolve).
+- **Variant Requests:** If feedback mentions "options", "variants", "choices", "alternatives", or "different designs", call \`lux_propose_variants\` (2–4 options) instead of making a single guess.
+- **Keep Running Server Alive:** Never kill or restart an active \`lux\` server (it drops live WebSocket tabs and pinned comments).
 
-## Workflow for \`/lux\`
+## Workflow
 
-When the user runs \`/lux\`, asks to review visual edits/comments, or when woken automatically by a lifecycle hook:
+### 1. Read Pending Feedback
+Call \`lux_get_pending_review({ workspaceDir: "<abs-workspace-root>" })\`—it auto-discovers the active server, claims items \`in_progress\`, and returns \`sessionId\`, \`revisionHash\`, and \`nextCursor\`.
 
-### 0. Absolute Priority & Action Directives
-> [!IMPORTANT]
-> - **Visual Feedback Takes Absolute Precedence:** When woken by a \`[LUX VISUAL REVIEW INTERRUPTION]\` or when visual reviews exist, you must address the visual feedback immediately. Do NOT continue prior conversation topics or old test discussions until the visual review is fulfilled.
-> - **Never Fake-Resolve:** Never call \`lux_resolve_review\` or mark a review resolved as a no-op or dismissal. Every review must either result in applied code edits in the source files, or proposed component variants.
-> - **Variant Requests:** If any comment, transcript, or prompt mentions "options", "variants", "choices", "alternatives", or "different designs", you MUST call \`lux_propose_variants\` with 2–4 options so the user can preview them live in the browser. Do NOT make a single arbitrary code edit.
+### 2. Apply & Resolve
+- **When variants are requested:** Call \`lux_propose_variants\` with 2–4 named options and \`resolveSessionId: "<sessionId>"\` (proposes and resolves atomically).
+- **For direct code edits:** Update the relevant component/style files, optionally verify pixels with \`lux_capture_visual\`, then call \`lux_resolve_review({ sessionId, expectedHash: "<revisionHash>", modifiedSelectors, reply, workspaceDir })\` to trigger the Green Verification Halo.
+  - On a stale-hash conflict, re-read \`lux_get_pending_review\` to pick up newer feedback before resolving.
 
-### 1. Check for pending review
-Call \`lux_get_pending_review\`. Always pass \`workspaceDir\` with the absolute path of your current workspace root:
-
-\`\`\`json
-{
-  "name": "lux_get_pending_review",
-  "arguments": {
-    "workspaceDir": "<absolute-path-to-current-workspace>"
-  }
-}
-\`\`\`
-
-Passing \`workspaceDir\` ensures lux finds \`.visual-edit/sessions.jsonl\` and connects to the active server even when started from a global plugin folder.
-
-### 2. When comments, voice sections, variant decisions, or edits exist
-1. Read the returned mutations, pinned comments, sectioned voice walkthroughs, and approved component variants. Note the \`sessionId\`, \`revisionHash\`, and \`nextCursor\`.
-2. If the user asks you to explore multiple visual designs for an element, call \`lux_propose_variants\` with 2–4 named options so the user can toggle and pick one live in the browser. Pass \`resolveSessionId: "<sessionId>"\` (and an optional \`reply\`) when proposing variants in response to an active review so proposing and resolving happen atomically in one call.
-3. Otherwise, find the relevant component files in the project (React/JSX/TSX, Vue, Svelte, HTML, Tailwind classes, or CSS) and apply the requested code edits directly.
-4. Optionally call \`lux_capture_visual\` to visually inspect the rendered pixels and verify there are no layout overflow issues.
-5. Call \`lux_resolve_review\` (passing \`expectedHash\` and \`modifiedSelectors\`) so the browser highlights the updated elements with a Green Verification Halo (skip if already resolved via \`lux_propose_variants({ resolveSessionId })\`).
-6. **Seamless Live & Batch Wakeup:**
-   - **In Claude Code / Codex:** Lifecycle hooks (\`PostToolUse\` + \`Stop\`) automatically hold and wake you when the user submits new Live or Batch feedback—simply finish your turn.
-   - **In Antigravity:** To avoid locking the Antigravity chat in \`"Working"\` state while still waking immediately on browser edits, launch \`npx lux-edit hook wait\` via \`run_command\` with \`WaitMsBeforeAsync: 500\` and \`IsDaemon: false\`, then immediately finish your turn.
-   - **In Pure-MCP Clients (Cursor, Windsurf, VS Code, Zed, Claude Desktop) or Direct Loops:** Call \`lux_wait_for_feedback\` passing \`afterCursor: <nextCursor>\` (and \`workspaceDir\`) to block efficiently until the user makes another Live edit, Variant pick, or Batch submission.
-
-### 3. When no pending edits are found
-Do not restart or kill the lux server if it is already running. Restarting drops active browser sessions and clears pinned comments.
-
-Check whether a review server is already running on port 4320:
-
-- **If the server is running:**
-  1. In Antigravity, if no background waiter is active yet, start \`npx lux-edit hook wait\` (\`WaitMsBeforeAsync: 500, IsDaemon: false\`) so browser submissions wake you automatically while leaving the chat input free; in pure-MCP clients without hooks, call \`lux_wait_for_feedback\` once the user asks you to wait for edits.
-  2. Tell the user:
-     "The lux review server is running at \`http://127.0.0.1:4320\`. Switch between **Live** and **Batch** mode in the dock, press **V** to edit styles, **C** to drop comment pins, **S** to capture element screenshots, or **R** for multi-target voice dictation."
-
-- **If the server is not running:**
-  1. Find the running dev server URL (e.g. \`http://localhost:3000\`, \`http://localhost:5173\`) or static HTML file (e.g. \`./index.html\`).
-  2. Start lux in the background:
-     \`\`\`bash
-     lux <url-or-file> --port 4320
-     \`\`\`
-  3. In Antigravity, also start the background review waiter (\`npx lux-edit hook wait\` with \`WaitMsBeforeAsync: 500, IsDaemon: false\`) so browser feedback wakes you automatically.
-  4. Tell the user:
-     "Open \`http://127.0.0.1:4320\` in your browser. Press C to drop comment pins, R to record a sectioned voice walkthrough, or V to adjust styles. In Live mode, your feedback streams to me automatically; in Batch mode, click Submit Review when ready."
+### 3. Start / Wait Loop (Live & Batch)
+- **If no server is running:** Start \`lux <dev-url-or-file> --port 4320\` in the background (use another free port if \`4320\` is busy) and tell the user to open \`http://127.0.0.1:<port>\` (**C** comments, **R** voice walkthrough, **V** styles, **S** screenshot; **Live** streams automatically, **Batch** waits for Submit Review).
+- **Waiting for follow-up feedback:**
+  - **Claude Code / Codex:** Lifecycle hooks (\`PostToolUse\` + \`Stop\`) wake automatically—end your turn.
+  - **Antigravity:** If no waiter is running, launch \`npx lux-edit hook wait\` (\`WaitMsBeforeAsync: 500\`, \`IsDaemon: false\`) and end your turn so chat stays interactive.
+  - **Pure-MCP clients:** Call \`lux_wait_for_feedback({ afterCursor: <nextCursor>, workspaceDir })\`.
 `;
 
 export const SKILL_WEB_CONTENT = `---
@@ -75,45 +40,30 @@ name: lux-web
 description: In-browser visual inspection, teardown, discussion, and explanation of external, third-party websites, online articles, and competitor designs using lux. Use EXCLUSIVELY for external sources and remote internet pages that are NOT hosted by the user and where there is no local codebase to modify. Do NOT use for user-hosted apps, local dev servers, or local HTML files (use /lux instead).
 ---
 
-# lux-web: Web Research, UI Teardown & Article Discussion
+# lux-web — External Web Teardown & Discussion
 
-> [!IMPORTANT]
-> **External Sources Only:** \`lux-web\` is strictly for inspecting, discussing, and tearing down **external, third-party websites, online articles, and design references** on the internet where there is no local codebase to modify. If the user wants to visually edit, review, or modify an application or website hosted by themselves (e.g., \`localhost\`, dev servers, or local files), use \`/lux\` instead.
+> **External Sites Only:** Never search or edit local codebase files for \`/lux-web\`. Use \`/lux\` for local apps and dev servers.
 
-\`lux-web\` proxies live external websites, online articles, and public web apps through lux's in-browser overlay, allowing users to drop comment pins, highlight phrases, record multi-target voice walkthroughs, and discuss the design, architecture, or content directly with an AI coding agent.
+## Workflow
 
-## Workflow for \`/lux-web\`
+### 1. Proxy the Target URL
+If no \`lux\` server is running for the target URL (never kill an active server on another task—pick a free port like \`4330\` if \`4320\` is busy):
+\`\`\`bash
+lux <external-url> --port <port>
+\`\`\`
+Tell the user to open \`http://127.0.0.1:<port>\` (**C** comment or highlight text, **R** voice walkthrough, **V** inspect styles, **S** screenshot; **Live** or **Batch** mode).
 
-When the user runs \`/lux-web\` or asks to inspect/discuss an external URL:
+### 2. Read, Analyze & Resolve
+1. Call \`lux_get_pending_review({ workspaceDir: "<abs-workspace-root>" })\` (and optionally \`lux_capture_visual\` to inspect rendered pixels). Note \`sessionId\`, \`revisionHash\`, and \`nextCursor\`.
+2. **Respond without local edits:**
+   - **UI teardowns:** Explain layout/CSS/interactions with reusable snippets, or call \`lux_propose_variants\` (2–4 live variations + \`resolveSessionId\`) to preview alternatives in-browser.
+   - **Articles/docs:** Answer questions and summarize highlighted passages, referencing each element's selector and text snippet.
+3. Unless already resolved via \`lux_propose_variants({ resolveSessionId })\`, call \`lux_resolve_review({ sessionId, expectedHash: "<revisionHash>", reply, workspaceDir })\` to record your answer in the drawer.
 
-### 1. Starting or Pointing \`lux\` at an External Web Target
-
-1. Identify the external target URL (e.g. \`https://example.com\`, \`https://news.ycombinator.com\`, \`https://overreacted.io\`).
-   - If the user has not specified a URL, ask them for the target URL.
-2. Check for an available port (default \`4320\`, fallback to \`4330\` or next free port if \`4320\` is already in use by another session).
-3. Start the \`lux\` review server in the background:
-   \`\`\`bash
-   lux <url> --port <port>
-   \`\`\`
-4. Tell the user:
-   "The lux web review server is running at \`http://127.0.0.1:<port>\` targeting \`<url>\`.
-   - Press **C** to drop comment pins on specific elements (headers, cards, buttons) or highlight text to comment on exact passages.
-   - Press **R** to record a sectioned voice walkthrough while clicking across elements.
-   - Press **V** to inspect computed styles, layout rules, and DOM elements.
-   - Use **Live Mode** for instant streaming or **Batch Mode** and click **Submit Review** when ready!"
-
-### 2. Reviewing Comments & In-Browser Discussion
-
-When the user asks to review, runs \`/lux-web\`, or when woken by a lifecycle hook:
-
-1. Call \`lux_get_pending_review\` (and optionally \`lux_capture_visual\` to see the exact visual rendering of the pinned component).
-2. **Crucial distinction from local \`/lux\`:**
-   - **DO NOT attempt to find or edit local files** for external websites.
-   - Treat the user's pins, selectors, voice sections, and style edits as grounds for **technical analysis, design explanation, or content discussion**:
-     - **For UI / Design Teardowns:** Explain the layout technique (Flexbox/Grid), CSS properties (transforms, shadows, backdrop-filters, custom properties), or interactive patterns. Provide clean, modular code snippets (e.g., React + Tailwind or CSS) showing how the user can replicate the effect in their own project, or use \`lux_propose_variants\` (passing \`resolveSessionId\` to resolve in the same call) to preview live variations in the browser.
-     - **For Articles & Documentation:** Address the user's questions, break down complex concepts, summarize highlighted text, or clarify difficult equations/theorems based on the pinned DOM context.
-3. Call \`lux_resolve_review\` with your summary reply so it is recorded in the review drawer (unless already resolved via \`lux_propose_variants({ resolveSessionId })\`), and respond in structured markdown referencing each pinned element's selector and text snippet.
-4. For follow-up browser questions in pure-MCP clients without lifecycle hooks, call \`lux_wait_for_feedback\` passing \`nextCursor\`.
+### 3. Wait for Follow-ups
+- **Claude Code / Codex:** Lifecycle hooks wake on new feedback—end your turn.
+- **Antigravity:** Launch \`npx lux-edit hook wait\` (\`WaitMsBeforeAsync: 500\`, \`IsDaemon: false\`) and end your turn.
+- **Pure-MCP clients:** Call \`lux_wait_for_feedback({ afterCursor: <nextCursor>, workspaceDir })\`.
 `;
 
 declare const __PACKAGE_VERSION__: string | undefined;

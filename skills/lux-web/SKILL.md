@@ -3,42 +3,27 @@ name: lux-web
 description: In-browser visual inspection, teardown, discussion, and explanation of external, third-party websites, online articles, and competitor designs using lux. Use EXCLUSIVELY for external sources and remote internet pages that are NOT hosted by the user and where there is no local codebase to modify. Do NOT use for user-hosted apps, local dev servers, or local HTML files (use /lux instead).
 ---
 
-# lux-web: Web Research, UI Teardown & Article Discussion
+# lux-web — External Web Teardown & Discussion
 
-> [!IMPORTANT]
-> **External Sources Only:** `lux-web` is strictly for inspecting, discussing, and tearing down **external, third-party websites, online articles, and design references** on the internet where there is no local codebase to modify. If the user wants to visually edit, review, or modify an application or website hosted by themselves (e.g., `localhost`, dev servers, or local files), use `/lux` instead.
+> **External Sites Only:** Never search or edit local codebase files for `/lux-web`. Use `/lux` for local apps and dev servers.
 
-`lux-web` proxies live external websites, online articles, and public web apps through lux's in-browser overlay, allowing users to drop comment pins, highlight phrases, record multi-target voice walkthroughs, and discuss the design, architecture, or content directly with an AI coding agent.
+## Workflow
 
-## Workflow for `/lux-web`
+### 1. Proxy the Target URL
+If no `lux` server is running for the target URL (never kill an active server on another task—pick a free port like `4330` if `4320` is busy):
+```bash
+lux <external-url> --port <port>
+```
+Tell the user to open `http://127.0.0.1:<port>` (**C** comment or highlight text, **R** voice walkthrough, **V** inspect styles, **S** screenshot; **Live** or **Batch** mode).
 
-When the user runs `/lux-web` or asks to inspect/discuss an external URL:
+### 2. Read, Analyze & Resolve
+1. Call `lux_get_pending_review({ workspaceDir: "<abs-workspace-root>" })` (and optionally `lux_capture_visual` to inspect rendered pixels). Note `sessionId`, `revisionHash`, and `nextCursor`.
+2. **Respond without local edits:**
+   - **UI teardowns:** Explain layout/CSS/interactions with reusable snippets, or call `lux_propose_variants` (2–4 live variations + `resolveSessionId`) to preview alternatives in-browser.
+   - **Articles/docs:** Answer questions and summarize highlighted passages, referencing each element's selector and text snippet.
+3. Unless already resolved via `lux_propose_variants({ resolveSessionId })`, call `lux_resolve_review({ sessionId, expectedHash: "<revisionHash>", reply, workspaceDir })` to record your answer in the drawer.
 
-### 1. Starting or Pointing `lux` at an External Web Target
-
-1. Identify the external target URL (e.g. `https://example.com`, `https://news.ycombinator.com`, `https://overreacted.io`).
-   - If the user has not specified a URL, ask them for the target URL.
-2. Check for an available port (default `4320`, fallback to `4330` or next free port if `4320` is already in use by another session).
-3. Start the `lux` review server in the background:
-   ```bash
-   lux <url> --port <port>
-   ```
-4. Tell the user:
-   "The lux web review server is running at `http://127.0.0.1:<port>` targeting `<url>`.
-   - Press **C** to drop comment pins on specific elements (headers, cards, buttons) or highlight text to comment on exact passages.
-   - Press **R** to record a sectioned voice walkthrough while clicking across elements.
-   - Press **V** to inspect computed styles, layout rules, and DOM elements.
-   - Use **Live Mode** for instant streaming or **Batch Mode** and click **Submit Review** when ready!"
-
-### 2. Reviewing Comments & In-Browser Discussion
-
-When the user asks to review, runs `/lux-web`, or when woken by a lifecycle hook:
-
-1. Call `lux_get_pending_review` (and optionally `lux_capture_visual` to see the exact visual rendering of the pinned component).
-2. **Crucial distinction from local `/lux`:**
-   - **DO NOT attempt to find or edit local files** for external websites.
-   - Treat the user's pins, selectors, voice sections, and style edits as grounds for **technical analysis, design explanation, or content discussion**:
-     - **For UI / Design Teardowns:** Explain the layout technique (Flexbox/Grid), CSS properties (transforms, shadows, backdrop-filters, custom properties), or interactive patterns. Provide clean, modular code snippets (e.g., React + Tailwind or CSS) showing how the user can replicate the effect in their own project, or use `lux_propose_variants` (passing `resolveSessionId` to resolve in the same call) to preview live variations in the browser.
-     - **For Articles & Documentation:** Address the user's questions, break down complex concepts, summarize highlighted text, or clarify difficult equations/theorems based on the pinned DOM context.
-3. Call `lux_resolve_review` with your summary reply so it is recorded in the review drawer (unless already resolved via `lux_propose_variants({ resolveSessionId })`), and respond in structured markdown referencing each pinned element's selector and text snippet.
-4. For follow-up browser questions in pure-MCP clients without lifecycle hooks, call `lux_wait_for_feedback` passing `nextCursor`.
+### 3. Wait for Follow-ups
+- **Claude Code / Codex:** Lifecycle hooks wake on new feedback—end your turn.
+- **Antigravity:** Launch `npx lux-edit hook wait` (`WaitMsBeforeAsync: 500`, `IsDaemon: false`) and end your turn.
+- **Pure-MCP clients:** Call `lux_wait_for_feedback({ afterCursor: <nextCursor>, workspaceDir })`.
