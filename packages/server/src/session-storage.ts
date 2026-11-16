@@ -5,22 +5,57 @@ import {
   ReviewMode,
   VerificationTarget,
   computeBatchRevisionHash,
+  stripTrailingSlashes,
 } from '@visual-edit/core';
 
 export interface GetPendingReviewOptions {
   port?: number;
   serverUrl?: string;
+  basePath?: string;
   appId?: string;
   activeSessionIds?: string[];
   maxAgeMs?: number;
   afterCursor?: number;
 }
 
-export function sessionMatchesTarget(sessionUrl: string | undefined, port?: number, serverUrl?: string): boolean {
-  if (!port && !serverUrl) return true;
+function normalizeBasePath(raw?: string): string {
+  if (!raw) return '';
+  let bp = raw.trim();
+  if (!bp || bp === '/') return '';
+  if (!bp.startsWith('/')) bp = '/' + bp;
+  bp = stripTrailingSlashes(bp);
+  return bp === '/' ? '' : bp;
+}
+
+function pathnameMatchesBasePath(pathname: string, normalizedBasePath: string): boolean {
+  if (!normalizedBasePath) return false;
+  return pathname === normalizedBasePath || pathname.startsWith(`${normalizedBasePath}/`);
+}
+
+export function sessionMatchesTarget(
+  sessionUrl: string | undefined,
+  port?: number,
+  serverUrl?: string,
+  basePath?: string
+): boolean {
+  const normalizedBasePath = normalizeBasePath(basePath);
+  if (!port && !serverUrl && !normalizedBasePath) return true;
   if (!sessionUrl) return true;
   try {
     const parsed = new URL(sessionUrl);
+    if (normalizedBasePath && pathnameMatchesBasePath(parsed.pathname, normalizedBasePath)) {
+      return true;
+    }
+    if (serverUrl) {
+      const targetParsed = new URL(serverUrl);
+      const serverBasePath = normalizeBasePath(targetParsed.pathname);
+      if (serverBasePath && pathnameMatchesBasePath(parsed.pathname, serverBasePath)) {
+        return true;
+      }
+      if (!port) {
+        return parsed.host === targetParsed.host;
+      }
+    }
     if (port) {
       if (parsed.port === String(port)) return true;
       if (!parsed.port && ((parsed.protocol === 'http:' && port === 80) || (parsed.protocol === 'https:' && port === 443))) {
@@ -28,11 +63,15 @@ export function sessionMatchesTarget(sessionUrl: string | undefined, port?: numb
       }
       return false;
     }
-    if (serverUrl) {
-      const targetParsed = new URL(serverUrl);
-      return parsed.host === targetParsed.host;
-    }
   } catch {
+    if (
+      normalizedBasePath &&
+      (sessionUrl === normalizedBasePath ||
+        sessionUrl.startsWith(`${normalizedBasePath}/`) ||
+        sessionUrl.includes(`${normalizedBasePath}/`))
+    ) {
+      return true;
+    }
     if (port && sessionUrl.includes(`:${port}`)) return true;
     if (serverUrl && sessionUrl.startsWith(serverUrl)) return true;
   }

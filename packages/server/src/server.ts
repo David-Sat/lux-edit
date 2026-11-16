@@ -146,6 +146,7 @@ export class VisualEditServer {
           const verificationTargets = this.eventStore.markPendingSessionsImplemented({
             port: this.options.port,
             appId: this.appId,
+            basePath: this.basePath,
             onlyIfOlderThanReviewTurn: true,
           });
           this.wsHub.broadcast({
@@ -286,6 +287,7 @@ export class VisualEditServer {
       appId: this.appId,
       version: this.version,
       port: this.options.port,
+      basePath: this.basePath,
       overlayScriptPath: this.overlayScriptPath,
     });
     if (handled) return;
@@ -442,6 +444,7 @@ export class VisualEditServer {
         appId: this.appId,
         startTime: Date.now(),
         rootDir: this.rootDir,
+        ...(this.basePath ? { basePath: this.basePath } : {}),
       };
       fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2) + '\n', 'utf-8');
     } catch (err: unknown) {

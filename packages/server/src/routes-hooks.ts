@@ -100,6 +100,9 @@ export async function handleHooksRoute(
       }
 
       const pending = ctx.eventStore.getSubmittedPendingReview({
+        port: ctx.port,
+        appId: ctx.appId,
+        basePath: ctx.basePath,
         afterCursor: lease.seenCursor,
       });
       if (!pending) {

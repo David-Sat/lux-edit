@@ -225,9 +225,10 @@ export function createLuxServerBridge(resolvedRoot: string): LuxServerBridge {
 
   const resolvePendingBatch = async (args?: PendingBatchQuery): Promise<VisualEditBatch | null> => {
     const targetRootDir = args?.workspaceDir ? path.resolve(args.workspaceDir.trim()) : resolvedRoot;
+    const shouldClaim = args?.claim ?? true;
     const fetchOpts = {
       autoResolve: false,
-      claim: args?.claim ?? true,
+      claim: shouldClaim,
       afterCursor: args?.afterCursor,
       waitMs: args?.waitForFeedbackMs,
     };
@@ -238,32 +239,53 @@ export function createLuxServerBridge(resolvedRoot: string): LuxServerBridge {
       candidateUrls.push(stripTrailingSlashes(args.serverUrl.trim()));
     }
 
+    const targetMeta = readServerMetadata(targetRootDir);
     const serverMeta =
-      readServerMetadata(targetRootDir) || (targetRootDir !== resolvedRoot ? readServerMetadata(resolvedRoot) : null);
+      targetMeta || (targetRootDir !== resolvedRoot ? readServerMetadata(resolvedRoot) : null);
     if (serverMeta && serverMeta.url) {
       candidateUrls.push(stripTrailingSlashes(serverMeta.url));
     }
 
+    let anyServerReachable = false;
     for (const url of candidateUrls) {
       if (triedUrls.has(url)) continue;
       triedUrls.add(url);
       const probed = await probeRunningServer(url, fetchOpts);
       if (probed.reachable) {
-        return probed.batch;
+        anyServerReachable = true;
+        if (probed.batch) {
+          return probed.batch;
+        }
+        if (!args?.workspaceDir || !args.workspaceDir.trim()) {
+          return null;
+        }
+        break;
       }
     }
 
     if (args?.workspaceDir && args.workspaceDir.trim()) {
       const store = resolveEventStore(args.workspaceDir);
-      const batch = store.getPendingReview({
+      let batch = store.getPendingReview({
         serverUrl: args?.serverUrl,
+        basePath: targetMeta?.basePath,
+        appId: targetMeta?.appId,
         afterCursor: args?.afterCursor,
       });
+      if (!hasPendingContent(batch) && args?.serverUrl) {
+        batch = store.getPendingReview({
+          basePath: targetMeta?.basePath,
+          appId: targetMeta?.appId,
+          afterCursor: args?.afterCursor,
+        });
+      }
       if (hasPendingContent(batch)) {
-        if (args?.claim) {
+        if (shouldClaim) {
           store.updateStatus(batch.id, 'in_progress');
         }
         return batch;
+      }
+      if (anyServerReachable) {
+        return null;
       }
     }
 
@@ -272,7 +294,7 @@ export function createLuxServerBridge(resolvedRoot: string): LuxServerBridge {
       afterCursor: args?.afterCursor,
     });
     if (hasPendingContent(localBatch)) {
-      if (args?.claim) {
+      if (shouldClaim) {
         defaultEventStore.updateStatus(localBatch.id, 'in_progress');
       }
       return localBatch;
