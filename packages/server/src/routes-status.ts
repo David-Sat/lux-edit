@@ -23,6 +23,7 @@ export async function handleStatusRoute(
     const pendingReview = ctx.eventStore.getPendingReview({
       port: ctx.port,
       appId: ctx.appId,
+      basePath: ctx.basePath,
     });
     const hasPendingReview = Boolean(
       pendingReview &&
@@ -61,7 +62,13 @@ export async function handleStatusRoute(
     }
 
     if (body.action === 'resolve') {
-      const targetId = body.sessionId || ctx.eventStore.getPendingReview({ appId: ctx.appId })?.id;
+      const targetId =
+        body.sessionId ||
+        ctx.eventStore.getPendingReview({
+          port: ctx.port,
+          appId: ctx.appId,
+          basePath: ctx.basePath,
+        })?.id;
       if (!targetId) {
         sendJson(res, { updated: false, error: 'No active session found' }, 404);
         return true;

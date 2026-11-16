@@ -332,4 +332,5 @@ export interface LuxServerMetadata {
   appId: string;
   startTime: number;
   rootDir: string;
+  basePath?: string;
 }

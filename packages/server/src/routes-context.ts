@@ -8,6 +8,7 @@ export interface ApiRouteContext {
   appId: string;
   version: string;
   port: number;
+  basePath?: string;
   overlayScriptPath: string;
 }
 

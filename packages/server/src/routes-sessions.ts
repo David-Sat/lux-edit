@@ -62,6 +62,7 @@ export async function handlePendingRoute(
       const verificationTargets = ctx.eventStore.markPendingSessionsImplemented({
         port: ctx.port,
         appId: ctx.appId,
+        basePath: ctx.basePath,
         sessionId: pending.id,
       });
       ctx.wsHub.broadcast({
@@ -79,6 +80,7 @@ export async function handlePendingRoute(
   const currentPending = ctx.eventStore.getPendingReview({
     port: ctx.port,
     appId: ctx.appId,
+    basePath: ctx.basePath,
     activeSessionIds,
     afterCursor: !isNaN(afterCursor as number) ? afterCursor : undefined,
   });

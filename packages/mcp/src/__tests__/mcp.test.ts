@@ -5,6 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import path from 'node:path';
 import fs from 'node:fs';
+import http from 'node:http';
 
 describe('MCP Server Tools & Prompts', () => {
   const testDir = path.resolve(process.cwd(), '.test-mcp-store');
@@ -633,6 +634,152 @@ describe('MCP Server Tools & Prompts', () => {
     } finally {
       await liveServer.close();
       fs.rmSync(liveDir, { recursive: true, force: true });
+    }
+  });
+
+  it('retrieves proxied HTTPS sessions under --base-path via lux_get_pending_review', async () => {
+    const proxyDir = path.resolve(process.cwd(), '.test-mcp-basepath-proxy');
+    if (fs.existsSync(proxyDir)) {
+      fs.rmSync(proxyDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(proxyDir, { recursive: true });
+    fs.writeFileSync(path.join(proxyDir, 'index.html'), '<html><body><h1>Validation</h1></body></html>');
+
+    const basePath = '/codeeditor/default/ports/4492';
+    const proxyServer = new VisualEditServer({
+      target: proxyDir,
+      port: 0,
+      host: '127.0.0.1',
+      rootDir: proxyDir,
+      basePath,
+    });
+    const serverUrl = await proxyServer.listen();
+
+    try {
+      const submitRes = await fetch(`${serverUrl}/__visual_edit__/api/edits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'session_sagemaker_proxy',
+          timestamp: Date.now(),
+          route: '/#/validation?doc=1',
+          url: `https://studio.sagemaker.aws${basePath}/#/validation?doc=1`,
+          status: 'submitted',
+          reviewMode: 'live',
+          mutations: [],
+          annotations: [
+            {
+              id: 'ann_sm_1',
+              timestamp: Date.now(),
+              type: 'element',
+              targetSelector: 'h1',
+              comment: 'First proxied comment',
+            },
+            {
+              id: 'ann_sm_2',
+              timestamp: Date.now(),
+              type: 'element',
+              targetSelector: 'body',
+              comment: 'Second proxied comment',
+            },
+          ],
+        }),
+      });
+      expect(submitRes.status).toBe(200);
+
+      const pendingRes = await client.callTool({
+        name: 'lux_get_pending_review',
+        arguments: {
+          workspaceDir: proxyDir,
+        },
+      });
+      expect(pendingRes.isError).toBeFalsy();
+      const pendingText = (pendingRes.content as any)[0].text;
+      expect(pendingText).toContain('session_sagemaker_proxy');
+      expect(pendingText).toContain('First proxied comment');
+      expect(pendingText).toContain('Second proxied comment');
+    } finally {
+      await proxyServer.close();
+      fs.rmSync(proxyDir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to workspaceDir EventStore when a reachable server returns null', async () => {
+    const fallbackDir = path.resolve(process.cwd(), '.test-mcp-reachable-fallback');
+    if (fs.existsSync(fallbackDir)) {
+      fs.rmSync(fallbackDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.join(fallbackDir, '.visual-edit'), { recursive: true });
+
+    const mockServer = http.createServer((req, res) => {
+      if (req.url?.includes('/__visual_edit__/api/pending')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('null');
+        return;
+      }
+      if (req.url?.includes('/__visual_edit__/api/status')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ reviewMode: 'live', latestCursor: 1, connectedClients: 1 }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise<void>((resolve) => mockServer.listen(0, '127.0.0.1', () => resolve()));
+    const port = (mockServer.address() as any).port;
+    const mockUrl = `http://127.0.0.1:${port}/codeeditor/default/ports/${port}`;
+
+    try {
+      fs.writeFileSync(
+        path.join(fallbackDir, '.visual-edit', 'server.json'),
+        JSON.stringify({
+          pid: process.pid,
+          port,
+          url: mockUrl,
+          target: 'http://localhost:5173',
+          appId: 'fallback_app_id',
+          startTime: Date.now(),
+          rootDir: fallbackDir,
+          basePath: `/codeeditor/default/ports/${port}`,
+        })
+      );
+
+      const store = EventStore.getInstance(fallbackDir);
+      store.saveBatch({
+        id: 'fallback_disk_session_1',
+        timestamp: Date.now(),
+        route: '/#/validation',
+        url: `https://studio.sagemaker.aws/codeeditor/default/ports/${port}/#/validation`,
+        appId: 'fallback_app_id',
+        status: 'submitted',
+        mutations: [],
+        annotations: [
+          {
+            id: 'ann_fb_1',
+            timestamp: Date.now(),
+            type: 'element',
+            targetSelector: 'h1',
+            comment: 'Recovered from workspaceDir EventStore',
+          },
+        ],
+      });
+
+      const res = await client.callTool({
+        name: 'lux_get_pending_review',
+        arguments: {
+          workspaceDir: fallbackDir,
+          serverUrl: mockUrl,
+        },
+      });
+
+      expect(res.isError).toBeFalsy();
+      const text = (res.content as any)[0].text;
+      expect(text).toContain('fallback_disk_session_1');
+      expect(text).toContain('Recovered from workspaceDir EventStore');
+    } finally {
+      await new Promise<void>((resolve) => mockServer.close(() => resolve()));
+      fs.rmSync(fallbackDir, { recursive: true, force: true });
     }
   });
 });

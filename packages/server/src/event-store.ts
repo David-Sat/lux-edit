@@ -435,7 +435,10 @@ export class EventStore {
       if (s.status === 'implemented' || s.status === 'resolved') return false;
       if (now - s.timestamp > maxAge) return false;
       if (options?.appId && s.appId && s.appId !== options.appId) return false;
-      if (!sessionMatchesTarget(s.url, options?.port, options?.serverUrl)) return false;
+      const appIdMatched = Boolean(options?.appId && s.appId && s.appId === options.appId);
+      if (!appIdMatched && !sessionMatchesTarget(s.url, options?.port, options?.serverUrl, options?.basePath)) {
+        return false;
+      }
       if (typeof options?.afterCursor === 'number' && (s.latestCursor || 0) <= options.afterCursor) {
         return false;
       }
@@ -467,6 +470,7 @@ export class EventStore {
   public markPendingSessionsImplemented(options?: {
     port?: number;
     serverUrl?: string;
+    basePath?: string;
     sessionId?: string;
     appId?: string;
     onlyIfOlderThanReviewTurn?: boolean;
@@ -478,7 +482,10 @@ export class EventStore {
     for (const session of this.sessions.values()) {
       if (options?.sessionId && session.id !== options.sessionId) continue;
       if (options?.appId && session.appId && session.appId !== options.appId) continue;
-      if (!sessionMatchesTarget(session.url, options?.port, options?.serverUrl)) continue;
+      const appIdMatched = Boolean(options?.appId && session.appId && session.appId === options.appId);
+      if (!appIdMatched && !sessionMatchesTarget(session.url, options?.port, options?.serverUrl, options?.basePath)) {
+        continue;
+      }
       if (session.status !== 'implemented' && session.status !== 'resolved' && this.hasSessionContent(session)) {
         if (options?.onlyIfOlderThanReviewTurn) {
           if (session.status === 'draft' && !session.lastFetchedAt) continue;

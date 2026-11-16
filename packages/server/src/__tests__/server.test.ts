@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { VisualEditServer } from '../server.js';
-import { EventStore } from '../event-store.js';
+import { EventStore, sessionMatchesTarget } from '../event-store.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -367,6 +367,111 @@ describe('Reverse Proxy & Base-Path Support (SageMaker / Codespaces)', () => {
     // Verify session was marked implemented
     const resolved = store.getSession('session_to_resolve_on_watch');
     expect(resolved?.status).toBe('implemented');
+  });
+
+  it('returns and resolves submitted sessions with proxied HTTPS URLs under --base-path', async () => {
+    const proxiedUrl = `https://studio-domain.sagemaker.aws${basePath}/#/validation?doc=1`;
+    const batch = {
+      id: 'sagemaker_proxied_session_1',
+      timestamp: Date.now() + 1000,
+      route: '/#/validation?doc=1',
+      url: proxiedUrl,
+      status: 'submitted',
+      reviewMode: 'live',
+      mutations: [],
+      annotations: [
+        {
+          id: 'sm_ann_1',
+          timestamp: Date.now(),
+          type: 'element',
+          targetSelector: 'h1',
+          comment: 'Pin 1 behind SageMaker proxy',
+        },
+        {
+          id: 'sm_ann_2',
+          timestamp: Date.now(),
+          type: 'element',
+          targetSelector: 'button',
+          comment: 'Pin 2 behind SageMaker proxy',
+        },
+      ],
+    };
+
+    const submitRes = await fetch(`${originUrl}${basePath}/__visual_edit__/api/edits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(batch),
+    });
+    expect(submitRes.status).toBe(200);
+
+    const statusRes = await fetch(`${originUrl}${basePath}/__visual_edit__/api/status`);
+    expect(statusRes.status).toBe(200);
+    const statusData = (await statusRes.json()) as any;
+    expect(statusData.hasPendingReview).toBe(true);
+    expect(statusData.pendingSessionId).toBe('sagemaker_proxied_session_1');
+
+    const pendingRes = await fetch(`${originUrl}${basePath}/__visual_edit__/api/pending`);
+    expect(pendingRes.status).toBe(200);
+    const pendingData = (await pendingRes.json()) as any;
+    expect(pendingData?.id).toBe('sagemaker_proxied_session_1');
+    expect(pendingData?.annotations).toHaveLength(2);
+
+    const resolveRes = await fetch(`${originUrl}${basePath}/__visual_edit__/api/pending?resolve=true`);
+    expect(resolveRes.status).toBe(200);
+    const resolvedData = (await resolveRes.json()) as any;
+    expect(resolvedData?.id).toBe('sagemaker_proxied_session_1');
+
+    expect(luxServer.getEventStore().getSession('sagemaker_proxied_session_1')?.status).toBe('implemented');
+  });
+
+  it('matches proxied URLs by basePath in sessionMatchesTarget and by appId in EventStore.getPendingReview', () => {
+    expect(
+      sessionMatchesTarget(
+        'https://studio-domain.sagemaker.aws/codeeditor/default/ports/4320/#/validation?doc=1',
+        4320,
+        undefined,
+        '/codeeditor/default/ports/4320'
+      )
+    ).toBe(true);
+
+    expect(
+      sessionMatchesTarget(
+        'https://studio-domain.sagemaker.aws/codeeditor/default/ports/4330/#/validation',
+        4320,
+        undefined,
+        '/codeeditor/default/ports/4320'
+      )
+    ).toBe(false);
+
+    expect(
+      sessionMatchesTarget(
+        'https://studio-domain.sagemaker.aws/codeeditor/default/ports/4320/#/validation',
+        4320,
+        'http://127.0.0.1:4320/codeeditor/default/ports/4320'
+      )
+    ).toBe(true);
+
+    const isoStoreDir = path.join(os.tmpdir(), `lux-appid-proxy-test-${Date.now()}`);
+    fs.mkdirSync(isoStoreDir, { recursive: true });
+    const isoStore = EventStore.getInstance(isoStoreDir);
+    isoStore.saveBatch({
+      id: 'proxied_appid_session',
+      timestamp: Date.now(),
+      route: '/#/validation',
+      url: 'https://studio-domain.sagemaker.aws/custom-proxy/#/validation',
+      appId: 'localhost_5173_validation_app',
+      status: 'submitted',
+      mutations: [],
+      annotations: [{ id: 'a_appid', timestamp: Date.now(), type: 'element', comment: 'Matched by appId' }],
+    });
+
+    const found = isoStore.getPendingReview({
+      port: 4320,
+      appId: 'localhost_5173_validation_app',
+    });
+    expect(found?.id).toBe('proxied_appid_session');
+
+    fs.rmSync(isoStoreDir, { recursive: true, force: true });
   });
 });
 
