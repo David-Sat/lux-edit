@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.1...lux-edit-v0.16.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **server,mcp:** return pending reviews behind path-based proxy (--base-path) ([#74](https://github.com/David-Sat/lux-edit/issues/74)) ([0864da1](https://github.com/David-Sat/lux-edit/commit/0864da110bfd548bc519282f8d4382ddac38b1d6))
+
 ## [0.16.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.0...lux-edit-v0.16.1) (2026-11-15)
 
 
