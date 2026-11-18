@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { h, render } from 'preact';
+import { STORAGE_KEYS } from '@visual-edit/core';
 import { OverlayStateManager } from '../inspector/state.js';
+import { VerificationHalo } from '../inspector/verification-halo.js';
+import { CommentComposer } from '../inspector/comment-composer.js';
 
 describe('OverlayStateManager', () => {
   let state: OverlayStateManager;
@@ -708,6 +712,120 @@ describe('OverlayStateManager', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('fetch highlight & top-of-page comment composer positioning', () => {
+    it('renders white fetch halo without badge on in_progress and skips sessionStorage persistence', () => {
+      window.sessionStorage.clear();
+      const target = document.createElement('button');
+      target.id = 'fetched-btn';
+      target.textContent = 'Fetch Target';
+      target.getBoundingClientRect = () =>
+        ({
+          x: 24,
+          y: 48,
+          top: 48,
+          left: 24,
+          right: 144,
+          bottom: 84,
+          width: 120,
+          height: 36,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      document.body.appendChild(target);
+
+      (state as any).handleServerStatusChange({
+        status: 'in_progress',
+        verificationTargets: [{ selector: '#fetched-btn', label: 'Comment Applied', timestamp: Date.now() }],
+      });
+
+      expect(state.verificationTargets).toHaveLength(1);
+      expect(state.verificationTargets[0].variant).toBe('fetched');
+      expect(state.verificationTargets[0].label).toBeUndefined();
+      expect(window.sessionStorage.getItem(STORAGE_KEYS.VERIFY_TARGETS)).toBeNull();
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      render(h(VerificationHalo, {}), container);
+
+      expect(container.querySelector('.ve-verification-halo-box--fetched')).not.toBeNull();
+      expect(container.querySelector('.ve-verification-halo-badge')).toBeNull();
+
+      // Implemented status persists targets and shows badge
+      (state as any).handleServerStatusChange({
+        status: 'implemented',
+        verificationTargets: [{ selector: '#fetched-btn', label: 'Comment Applied', variant: 'applied', timestamp: Date.now() }],
+      });
+      render(h(VerificationHalo, {}), container);
+      expect(window.sessionStorage.getItem(STORAGE_KEYS.VERIFY_TARGETS)).not.toBeNull();
+      expect(container.querySelector('.ve-verification-halo-box--fetched')).toBeNull();
+      expect(container.querySelector('.ve-verification-halo-badge')?.textContent).toContain('Comment Applied');
+
+      render(null, container);
+    });
+
+    it('keeps CommentComposer within the viewport when targeting elements at the top of the page', async () => {
+      Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true });
+      Object.defineProperty(window, 'innerHeight', { value: 768, configurable: true });
+
+      const tallTopEl = document.createElement('div');
+      tallTopEl.id = 'top-tall';
+      tallTopEl.textContent = 'Top Tall Container';
+      tallTopEl.getBoundingClientRect = () =>
+        ({
+          x: 16,
+          y: 0,
+          top: 0,
+          left: 16,
+          right: 900,
+          bottom: 900,
+          width: 884,
+          height: 900,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      document.body.appendChild(tallTopEl);
+
+      state.setTool('comment');
+      state.setCommentTarget(tallTopEl);
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      render(h(CommentComposer, {}), container);
+
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      const popover = container.querySelector('.ve-comment-popover') as HTMLElement | null;
+      expect(popover).not.toBeNull();
+      const topPx = parseFloat(popover!.style.top);
+      const leftPx = parseFloat(popover!.style.left);
+      expect(Number.isFinite(topPx)).toBe(true);
+      expect(Number.isFinite(leftPx)).toBe(true);
+      expect(topPx).toBeGreaterThanOrEqual(10);
+      expect(topPx).toBeLessThanOrEqual(768 - 10);
+      expect(leftPx).toBeGreaterThanOrEqual(10);
+
+      // Element partially scrolled off the top edge also stays >= 10px
+      tallTopEl.getBoundingClientRect = () =>
+        ({
+          x: 16,
+          y: -120,
+          top: -120,
+          left: 16,
+          right: 900,
+          bottom: 880,
+          width: 884,
+          height: 1000,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      const scrolledTopPx = parseFloat(popover!.style.top);
+      expect(scrolledTopPx).toBeGreaterThanOrEqual(10);
+      expect(scrolledTopPx).toBeLessThanOrEqual(768 - 10);
+
+      render(null, container);
     });
   });
 });

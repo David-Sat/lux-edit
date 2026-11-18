@@ -67,13 +67,21 @@ function locateElementOrBounds(
   const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
   const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
 
+  const pinPosFromRect = (r: DOMRect) => {
+    const x = r.left + 12;
+    const y =
+      r.top < 4 && r.bottom > 28
+        ? Math.max(16, Math.min(r.top + 12, r.bottom - 12))
+        : r.top + 12;
+    return { x, y, rect: r };
+  };
+
   // 1. Try exact targetSelector
   if (targetSelector) {
     try {
       const el = document.querySelector(targetSelector) as HTMLElement | null;
       if (el) {
-        const r = el.getBoundingClientRect();
-        return { x: r.left + 12, y: r.top + 12, rect: r };
+        return pinPosFromRect(el.getBoundingClientRect());
       }
     } catch {
       // Ignore invalid selector syntax; fall back to id/xpath/bounds below.
@@ -85,8 +93,7 @@ function locateElementOrBounds(
     try {
       const el = document.getElementById(sourceLoc.id);
       if (el) {
-        const r = el.getBoundingClientRect();
-        return { x: r.left + 12, y: r.top + 12, rect: r };
+        return pinPosFromRect(el.getBoundingClientRect());
       }
     } catch {
       // Ignore DOM lookup errors when resolving pin fallback ID.
@@ -98,8 +105,7 @@ function locateElementOrBounds(
     try {
       const result = document.evaluate(sourceLoc.xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
       if (result.singleNodeValue instanceof HTMLElement) {
-        const r = result.singleNodeValue.getBoundingClientRect();
-        return { x: r.left + 12, y: r.top + 12, rect: r };
+        return pinPosFromRect(result.singleNodeValue.getBoundingClientRect());
       }
     } catch {
       // Ignore invalid XPath expressions; fall back to stored bounds below.
@@ -336,7 +342,7 @@ export function CommentPins() {
         const isEditing = editingPinId === ann.id;
         const showTooltip = isHovered && (hoveredPinKey === pinKey || (!hoveredPinKey && isEditing));
 
-        const isNearTop = y < 220;
+        const isNearTop = y < (isEditing ? 300 : 240);
         const isNearLeft = x < 190;
         const isNearRight = x > (window.innerWidth || 1000) - 200;
 

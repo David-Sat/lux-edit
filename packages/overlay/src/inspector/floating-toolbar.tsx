@@ -146,11 +146,21 @@ export function FloatingToolbar() {
       computePosition(el, toolbarRef.current, {
         strategy: 'fixed',
         placement: 'top-start',
-        middleware: [offset(10), flip(), shift({ padding: 10 })],
+        middleware: [offset(10), flip({ crossAxis: false }), shift({ padding: 10, crossAxis: true })],
       }).then(({ x, y }) => {
-        if (toolbarRef.current) {
-          toolbarRef.current.style.left = `${x}px`;
-          toolbarRef.current.style.top = `${y}px`;
+        const currentToolbar = toolbarRef.current;
+        if (currentToolbar) {
+          const vw = window.innerWidth || document.documentElement.clientWidth || 1000;
+          const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+          const rect = currentToolbar.getBoundingClientRect();
+          const width = rect.width || currentToolbar.offsetWidth || 340;
+          const height = rect.height || currentToolbar.offsetHeight || 200;
+          const maxX = Math.max(10, vw - width - 10);
+          const maxY = Math.max(10, vh - height - 10);
+          const clampedX = Math.min(Math.max(10, x), maxX);
+          const clampedY = Math.min(Math.max(10, y), maxY);
+          currentToolbar.style.left = `${clampedX}px`;
+          currentToolbar.style.top = `${clampedY}px`;
         }
       });
     };

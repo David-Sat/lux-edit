@@ -992,6 +992,12 @@ export const DRAWER_CSS = `
   transition: all 0.25s ease;
 }
 
+.ve-verification-halo-box--fetched {
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.22), 0 0 24px rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .ve-verification-halo-badge {
   position: absolute;
   top: -24px;
@@ -1007,5 +1013,10 @@ export const DRAWER_CSS = `
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.ve-verification-halo-badge--inside {
+  top: 4px;
+  left: 4px;
 }
 `;
