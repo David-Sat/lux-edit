@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
 import { OverlayRoot } from '../overlay-root.js';
 import { OverlayStateManager } from '../inspector/state.js';
 import {
@@ -23,8 +24,6 @@ function mockRect(el: Element, rect: { left: number; top: number; width: number;
   } as DOMRect;
   el.getBoundingClientRect = () => full;
 }
-
-const flushRender = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
 
 describe('inspect-target & deactivated element inspection', () => {
   let state: OverlayStateManager;
@@ -70,9 +69,12 @@ describe('inspect-target & deactivated element inspection', () => {
     state = OverlayStateManager.getInstance();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (shadowRoot) {
-      render(null, shadowRoot);
+      const currentShadowRoot = shadowRoot;
+      await act(() => {
+        render(null, currentShadowRoot);
+      });
       shadowRoot = null;
     }
     if (hostEl) {
@@ -90,43 +92,50 @@ describe('inspect-target & deactivated element inspection', () => {
     vi.restoreAllMocks();
   });
 
-  const mountOverlay = () => {
+  const mountOverlay = async () => {
     hostEl = document.createElement('visual-edit-overlay');
-    shadowRoot = hostEl.attachShadow({ mode: 'open' });
+    const sr = hostEl.attachShadow({ mode: 'open' });
+    shadowRoot = sr;
     document.body.appendChild(hostEl);
-    render(h(OverlayRoot, { shadowRoot }), shadowRoot);
-    return shadowRoot;
+    await act(() => {
+      render(h(OverlayRoot, { shadowRoot: sr }), sr);
+    });
+    return sr;
   };
 
   it('injects inspect stylesheet only while an inspect tool is active and cleans up on exit or unmount', async () => {
-    mountOverlay();
-    await flushRender();
+    const sr = await mountOverlay();
     expect(document.querySelector(`style[${INSPECT_DISABLED_STYLE_ATTR}]`)).toBeNull();
 
     for (const tool of ['comment', 'edit', 'voice', 'screenshot'] as const) {
-      state.setTool(tool);
-      await flushRender();
+      await act(() => {
+        state.setTool(tool);
+      });
       const styleEl = document.querySelector(`style[${INSPECT_DISABLED_STYLE_ATTR}]`);
       expect(styleEl).not.toBeNull();
       expect(styleEl?.textContent).toContain('button:disabled');
       expect(styleEl?.textContent).toContain('[aria-disabled="true"]');
 
-      state.setTool('none');
-      await flushRender();
+      await act(() => {
+        state.setTool('none');
+      });
       expect(document.querySelector(`style[${INSPECT_DISABLED_STYLE_ATTR}]`)).toBeNull();
     }
 
-    state.setTool('comment');
-    await flushRender();
+    await act(() => {
+      state.setTool('comment');
+    });
     expect(document.querySelector(`style[${INSPECT_DISABLED_STYLE_ATTR}]`)).not.toBeNull();
 
-    render(null, shadowRoot!);
+    await act(() => {
+      render(null, sr);
+    });
     shadowRoot = null;
     expect(document.querySelector(`style[${INSPECT_DISABLED_STYLE_ATTR}]`)).toBeNull();
   });
 
   it('selects native disabled buttons inside containers and directly under body in comment and edit modes without firing click handlers', async () => {
-    mountOverlay();
+    await mountOverlay();
 
     const container = document.createElement('div');
     container.id = 'form-actions';
@@ -149,8 +158,9 @@ describe('inspect-target & deactivated element inspection', () => {
     mockRect(directDisabledBtn, { left: 20, top: 240, width: 140, height: 40 });
     document.body.appendChild(directDisabledBtn);
 
-    state.setTool('comment');
-    await flushRender();
+    await act(() => {
+      state.setTool('comment');
+    });
 
     // Hover over container at nested disabled button's coordinates
     container.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 50, clientY: 35 }));
@@ -163,8 +173,9 @@ describe('inspect-target & deactivated element inspection', () => {
     expect(nativeClickSpy).not.toHaveBeenCalled();
 
     // Direct child of body: click lands on document.body at directDisabledBtn's coordinates
-    state.setTool('edit');
-    await flushRender();
+    await act(() => {
+      state.setTool('edit');
+    });
 
     document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 50, clientY: 255 }));
     expect(state.hoveredElement).toBe(directDisabledBtn);
@@ -175,7 +186,7 @@ describe('inspect-target & deactivated element inspection', () => {
   });
 
   it('targets controls inside disabled fieldsets, aria-disabled controls, and CSS-only pointer-events: none buttons', async () => {
-    mountOverlay();
+    await mountOverlay();
 
     const fieldset = document.createElement('fieldset');
     fieldset.disabled = true;
@@ -211,8 +222,9 @@ describe('inspect-target & deactivated element inspection', () => {
     expect(isDisabledElement(ariaBtn)).toBe(true);
     expect(isDisabledElement(cssBtn)).toBe(false);
 
-    state.setTool('comment');
-    await flushRender();
+    await act(() => {
+      state.setTool('comment');
+    });
 
     fieldset.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 40, clientY: 25 }));
     expect(state.commentTargetElement).toBe(fsBtn);
@@ -259,7 +271,7 @@ describe('inspect-target & deactivated element inspection', () => {
   });
 
   it('selects disabled buttons on double-click in edit mode without enabling contentEditable', async () => {
-    mountOverlay();
+    await mountOverlay();
 
     const container = document.createElement('div');
     mockRect(container, { left: 0, top: 0, width: 300, height: 100 });
@@ -271,8 +283,9 @@ describe('inspect-target & deactivated element inspection', () => {
     container.appendChild(disabledBtn);
     document.body.appendChild(container);
 
-    state.setTool('edit');
-    await flushRender();
+    await act(() => {
+      state.setTool('edit');
+    });
 
     container.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, clientX: 40, clientY: 30 }));
     expect(state.activeElement).toBe(disabledBtn);
@@ -281,7 +294,7 @@ describe('inspect-target & deactivated element inspection', () => {
   });
 
   it('does not select decorative pointer-events: none div elements over underlying content', async () => {
-    mountOverlay();
+    await mountOverlay();
 
     const card = document.createElement('div');
     card.id = 'content-card';
@@ -301,8 +314,9 @@ describe('inspect-target & deactivated element inspection', () => {
     card.appendChild(title);
     document.body.appendChild(card);
 
-    state.setTool('comment');
-    await flushRender();
+    await act(() => {
+      state.setTool('comment');
+    });
 
     title.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 40, clientY: 30 }));
     expect(state.commentTargetElement).toBe(title);
