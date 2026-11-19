@@ -379,7 +379,12 @@ export class EventStore {
       };
     }
 
-    const verificationTargets = this.extractVerificationTargets(session, options?.modifiedSelectors);
+    const verificationTargets =
+      status === 'in_progress'
+        ? this.extractVerificationTargets(session, undefined, 'fetched')
+        : status === 'implemented' || status === 'resolved'
+          ? this.extractVerificationTargets(session, options?.modifiedSelectors, 'applied')
+          : [];
 
     session.status = status;
     session.stale = false;
@@ -421,8 +426,12 @@ export class EventStore {
     return { updated: true, currentHash: session.revisionHash, verificationTargets };
   }
 
-  public extractVerificationTargets(session: VisualEditBatch, extraSelectors?: string[]): VerificationTarget[] {
-    return extractVerificationTargetsFromSession(session, extraSelectors);
+  public extractVerificationTargets(
+    session: VisualEditBatch,
+    extraSelectors?: string[],
+    variant: 'applied' | 'fetched' = 'applied'
+  ): VerificationTarget[] {
+    return extractVerificationTargetsFromSession(session, extraSelectors, variant);
   }
 
   public getPendingReview(options?: GetPendingReviewOptions): VisualEditBatch | null {

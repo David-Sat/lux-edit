@@ -70,7 +70,7 @@ export async function handlePendingRoute(
         sessionId: pending.id,
         payload: { status: 'implemented', replies: [], verificationTargets },
       });
-    } else if (pending && shouldClaim && pending.status !== 'in_progress') {
+    } else if (pending && shouldClaim) {
       ctx.eventStore.updateStatus(pending.id, 'in_progress');
     }
 

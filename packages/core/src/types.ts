@@ -249,6 +249,7 @@ export interface VerificationTarget {
   selector: string;
   bounds?: { x: number; y: number; width: number; height: number };
   label?: string;
+  variant?: 'applied' | 'fetched';
   beforeHash?: string;
   timestamp: number;
 }

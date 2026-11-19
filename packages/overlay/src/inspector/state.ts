@@ -328,8 +328,14 @@ export class OverlayStateManager {
     const hasReplies = Boolean(payload.replies && payload.replies.length > 0);
     this.sessionStatus = payload.status;
     if (hasTargets) {
-      persistVerificationTargets(payload.verificationTargets!);
-      this.triggerVerificationHalo(payload.verificationTargets!);
+      const isFetched = payload.status === 'in_progress';
+      const targets = isFetched
+        ? payload.verificationTargets!.map((t) => ({ ...t, variant: 'fetched' as const, label: undefined }))
+        : payload.verificationTargets!;
+      if (!isFetched) {
+        persistVerificationTargets(targets);
+      }
+      this.triggerVerificationHalo(targets, isFetched ? 2200 : 6000);
     }
     if (payload.status === 'implemented' || payload.status === 'resolved') {
       this.mutations = [];
@@ -428,7 +434,7 @@ export class OverlayStateManager {
     this.variantManager.dismissVariantSet(setId);
   }
 
-  public triggerVerificationHalo(targets: VerificationTarget[]): void {
+  public triggerVerificationHalo(targets: VerificationTarget[], durationMs: number = 6000): void {
     if (!targets || targets.length === 0) return;
     this.verificationTargets = targets;
     if (this.verificationTimer) clearTimeout(this.verificationTimer);
@@ -436,7 +442,7 @@ export class OverlayStateManager {
       this.verificationTargets = [];
       clearVerificationTargets();
       this.notify();
-    }, 6000);
+    }, durationMs);
     this.notify();
   }
 

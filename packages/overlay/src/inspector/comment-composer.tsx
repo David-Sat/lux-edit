@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
@@ -12,13 +12,21 @@ export function CommentComposer() {
   const [isSnapping, setIsSnapping] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const latestDraftRef = useRef(state.commentDraftText);
+  latestDraftRef.current = state.commentDraftText;
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
   }, [state]);
 
   const target = state.commentTargetElement;
+  const commentTargetBounds = state.commentTargetBounds;
   const hasScreenshot = Boolean(state.commentPendingScreenshot);
+  const targets =
+    typeof document !== 'undefined' && document.body
+      ? state.commentTargetElements.filter((el) => document.body.contains(el))
+      : [];
+  const isMulti = targets.length > 1;
 
   const adjustHeight = () => {
     const el = textareaRef.current;
@@ -32,51 +40,74 @@ export function CommentComposer() {
     adjustHeight();
   }, [commentText]);
 
+  const updatePos = useCallback(() => {
+    if (!target || !popoverRef.current) return;
+
+    const anchorRect = commentTargetBounds
+      ? ({
+          x: commentTargetBounds.x,
+          y: commentTargetBounds.y,
+          top: commentTargetBounds.y,
+          left: commentTargetBounds.x,
+          right: commentTargetBounds.x + commentTargetBounds.width,
+          bottom: commentTargetBounds.y + commentTargetBounds.height,
+          width: commentTargetBounds.width,
+          height: commentTargetBounds.height,
+        } as DOMRect)
+      : target.getBoundingClientRect();
+
+    const anchor = commentTargetBounds
+      ? { getBoundingClientRect: () => anchorRect }
+      : target;
+
+    computePosition(anchor, popoverRef.current, {
+      strategy: 'fixed',
+      placement: 'bottom-start',
+      middleware: [offset(8), flip({ crossAxis: false }), shift({ padding: 10, crossAxis: true })],
+    }).then(({ x, y }) => {
+      const currentPopover = popoverRef.current;
+      if (!currentPopover) return;
+      const vw = window.innerWidth || document.documentElement.clientWidth || 1000;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+      const popRect = currentPopover.getBoundingClientRect();
+      const popWidth = popRect.width || currentPopover.offsetWidth || 360;
+      const popHeight = popRect.height || currentPopover.offsetHeight || 180;
+
+      let nextX = x;
+      let nextY = y;
+
+      if (anchorRect.top < popHeight + 18 && anchorRect.bottom + 8 + popHeight > vh - 10) {
+        nextY = Math.max(10, anchorRect.top + 12);
+      }
+
+      const maxX = Math.max(10, vw - popWidth - 10);
+      const maxY = Math.max(10, vh - popHeight - 10);
+      nextX = Math.min(Math.max(10, nextX), maxX);
+      nextY = Math.min(Math.max(10, nextY), maxY);
+
+      currentPopover.style.left = `${nextX}px`;
+      currentPopover.style.top = `${nextY}px`;
+    });
+  }, [target, commentTargetBounds]);
+
+  useEffect(() => {
+    if (!target) return;
+    setCommentText(latestDraftRef.current || '');
+    const focusTimer = setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 50);
+    return () => clearTimeout(focusTimer);
+  }, [target, commentTargetBounds]);
+
   useEffect(() => {
     if (!target || !popoverRef.current) return;
 
-    const updatePos = () => {
-      if (!target || !popoverRef.current) return;
-
-      const anchor = state.commentTargetBounds
-        ? {
-            getBoundingClientRect: () =>
-              ({
-                x: state.commentTargetBounds!.x,
-                y: state.commentTargetBounds!.y,
-                top: state.commentTargetBounds!.y,
-                left: state.commentTargetBounds!.x,
-                right: state.commentTargetBounds!.x + state.commentTargetBounds!.width,
-                bottom: state.commentTargetBounds!.y + state.commentTargetBounds!.height,
-                width: state.commentTargetBounds!.width,
-                height: state.commentTargetBounds!.height,
-              } as DOMRect),
-          }
-        : target;
-
-      computePosition(anchor, popoverRef.current, {
-        strategy: 'fixed',
-        placement: 'bottom-start',
-        middleware: [offset(8), flip(), shift({ padding: 10 })],
-      }).then(({ x, y }) => {
-        if (popoverRef.current) {
-          popoverRef.current.style.left = `${x}px`;
-          popoverRef.current.style.top = `${y}px`;
-        }
-      });
-    };
-
     updatePos();
-    setCommentText(state.commentDraftText || '');
-    setTimeout(() => textareaRef.current?.focus(), 50);
-
     window.addEventListener('scroll', updatePos, { passive: true });
     window.addEventListener('resize', updatePos);
     return () => {
       window.removeEventListener('scroll', updatePos);
       window.removeEventListener('resize', updatePos);
     };
-  }, [target, state.commentTargetBounds, state.commentDraftText]);
+  }, [target, commentTargetBounds, hasScreenshot, isMulti, commentText, updatePos]);
 
   if (!target || !document.body.contains(target)) return null;
 
@@ -100,9 +131,6 @@ export function CommentComposer() {
       state.setCommentTarget(null);
     }
   };
-
-  const targets = state.commentTargetElements.filter((el) => document.body.contains(el));
-  const isMulti = targets.length > 1;
 
   return (
     <div
@@ -185,6 +213,7 @@ export function CommentComposer() {
             src={state.commentPendingScreenshot}
             alt="Screenshot capture"
             class="ve-composer-screenshot-img"
+            onLoad={updatePos}
           />
           <button
             type="button"

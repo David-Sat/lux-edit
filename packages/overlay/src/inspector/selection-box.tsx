@@ -25,6 +25,7 @@ export function SelectionBox() {
     const dim = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
     const isCommentMode = state.activeTool === 'comment';
     const isScreenshotMode = state.activeTool === 'screenshot';
+    const badgeInside = rect.top < 28;
 
     return (
       <div
@@ -36,7 +37,7 @@ export function SelectionBox() {
           height: `${rect.height}px`,
         }}
       >
-        <div class="ve-badge">
+        <div class={`ve-badge ${badgeInside ? 've-badge--inside' : ''}`}>
           {isScreenshotMode ? <span>[Snap Screenshot] {label}</span> : <span>{label}</span>}
           <span class="ve-badge-dim">{dim}</span>
         </div>

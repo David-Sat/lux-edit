@@ -25,6 +25,7 @@ export function VerificationHalo() {
   return (
     <div class="ve-verification-halo-layer">
       {state.verificationTargets.map((target, idx) => {
+        const isFetched = target.variant === 'fetched';
         let rect: { left: number; top: number; width: number; height: number } | null = null;
         try {
           const el = document.querySelector(target.selector) as HTMLElement | null;
@@ -49,10 +50,12 @@ export function VerificationHalo() {
 
         if (!rect) return null;
 
+        const badgeInside = rect.top < 28;
+
         return (
           <div
             key={`${target.selector}_${idx}`}
-            class="ve-verification-halo-box"
+            class={`ve-verification-halo-box ${isFetched ? 've-verification-halo-box--fetched' : ''}`}
             style={{
               left: `${rect.left - 4}px`,
               top: `${rect.top - 4}px`,
@@ -60,12 +63,14 @@ export function VerificationHalo() {
               height: `${rect.height + 8}px`,
             }}
           >
-            <div class="ve-verification-halo-badge">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              <span>{target.label || 'Updated by Agent'}</span>
-            </div>
+            {!isFetched && (
+              <div class={`ve-verification-halo-badge ${badgeInside ? 've-verification-halo-badge--inside' : ''}`}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>{target.label || 'Updated by Agent'}</span>
+              </div>
+            )}
           </div>
         );
       })}
