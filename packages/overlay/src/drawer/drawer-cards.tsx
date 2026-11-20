@@ -186,6 +186,7 @@ export function AnnotationCard({
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 onSaveEdit();
               } else if (e.key === 'Escape') {
+                e.preventDefault();
                 onCancelEdit();
               }
             }}
