@@ -1,12 +1,59 @@
 import { h } from 'preact';
-import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
+
+const REDUNDANT_OPTION_PREFIX_RE =
+  /^(?:option\s+[a-z0-9]+\s*[:.\-–—]\s*|\d+(?:\s*[.):]\s+|\s+[-–—]\s+))/i;
+
+/** Formats a variant option pill label as `N. Name`, stripping redundant numbering or "Option A:" prefixes. */
+export function formatVariantOptionLabel(name: string, index: number): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return `${index + 1}. Option ${index + 1}`;
+  }
+  const stripped = trimmed.replace(REDUNDANT_OPTION_PREFIX_RE, '').trim();
+  return `${index + 1}. ${stripped || trimmed}`;
+}
+
+/** Computes viewport-clamped `left` and `top` coordinates for the Variant Switcher card. */
+export function computeVariantSwitcherPosition(params: {
+  rect: { left: number; top: number; bottom: number; width: number; height: number };
+  barWidth: number;
+  barHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  margin?: number;
+  gap?: number;
+}): { left: number; top: number; placement: 'above' | 'below' | 'clamped' } {
+  const { rect, barWidth, barHeight, viewportWidth, viewportHeight, margin = 16, gap = 12 } = params;
+  const maxLeft = Math.max(margin, viewportWidth - barWidth - margin);
+  const left = Math.max(margin, Math.min(maxLeft, rect.left));
+  const maxTop = Math.max(margin, viewportHeight - barHeight - margin);
+
+  if (rect.top - gap - barHeight >= margin) {
+    return { left, top: rect.top - gap - barHeight, placement: 'above' };
+  }
+  if (rect.bottom + gap + barHeight <= viewportHeight - margin) {
+    return { left, top: rect.bottom + gap, placement: 'below' };
+  }
+  return { left, top: Math.max(margin, Math.min(maxTop, rect.top + gap)), placement: 'clamped' };
+}
 
 export function VariantSwitcher() {
   const state = OverlayStateManager.getInstance();
   const [tick, setTick] = useState(0);
   const [dragPositions, setDragPositions] = useState<Record<string, { left: number; top: number }>>({});
-  const dragRef = useRef<{ setId: string; startX: number; startY: number; initLeft: number; initTop: number } | null>(null);
+  const [measuredSizes, setMeasuredSizes] = useState<Record<string, { width: number; height: number }>>({});
+  const barRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const dragRef = useRef<{
+    setId: string;
+    startX: number;
+    startY: number;
+    initLeft: number;
+    initTop: number;
+    barWidth: number;
+    barHeight: number;
+  } | null>(null);
 
   useEffect(() => {
     const handleUpdate = () => setTick((t) => t + 1);
@@ -23,14 +70,16 @@ export function VariantSwitcher() {
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragRef.current) return;
-      const { setId, startX, startY, initLeft, initTop } = dragRef.current;
+      const { setId, startX, startY, initLeft, initTop, barWidth, barHeight } = dragRef.current;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
+      const maxLeft = Math.max(10, window.innerWidth - barWidth - 10);
+      const maxTop = Math.max(10, window.innerHeight - barHeight - 10);
       setDragPositions((prev) => ({
         ...prev,
         [setId]: {
-          left: Math.max(10, Math.min(window.innerWidth - 480, initLeft + dx)),
-          top: Math.max(10, Math.min(window.innerHeight - 100, initTop + dy)),
+          left: Math.max(10, Math.min(maxLeft, initLeft + dx)),
+          top: Math.max(10, Math.min(maxTop, initTop + dy)),
         },
       }));
     };
@@ -58,6 +107,47 @@ export function VariantSwitcher() {
       }
     });
   }, [state, tick]);
+
+  // Deduplicate by targetSelector so there is only one active variant switcher per element
+  const setsToRender = useMemo(() => {
+    const uniqueBySelector = new Map<string, (typeof visibleSets)[0]>();
+    for (const s of visibleSets) {
+      uniqueBySelector.set(s.targetSelector, s);
+    }
+    return Array.from(uniqueBySelector.values());
+  }, [visibleSets]);
+
+  const setsLayoutKey = setsToRender
+    .map((s) => `${s.id}:${s.status}:${s.variants.map((v) => v.name).join('|')}`)
+    .join(';');
+
+  useLayoutEffect(() => {
+    setMeasuredSizes((prev) => {
+      let changed = false;
+      const next: Record<string, { width: number; height: number }> = { ...prev };
+      const activeIds = new Set(setsToRender.map((s) => s.id));
+      for (const existingId of Object.keys(next)) {
+        if (!activeIds.has(existingId)) {
+          delete next[existingId];
+          changed = true;
+        }
+      }
+      for (const s of setsToRender) {
+        const el = barRefs.current[s.id];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        const w = r.width || el.offsetWidth;
+        const h = r.height || el.offsetHeight;
+        if (w <= 0 || h <= 0) continue;
+        const old = prev[s.id];
+        if (!old || Math.abs(old.width - w) > 1 || Math.abs(old.height - h) > 1) {
+          next[s.id] = { width: w, height: h };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [setsLayoutKey, tick, setsToRender]);
 
   // Keyboard navigation: use Alt + Left/Right arrows or focus switcher to switch options, Enter to Pick & Apply
   useEffect(() => {
@@ -101,14 +191,10 @@ export function VariantSwitcher() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [state, visibleSets]);
 
-  if (visibleSets.length === 0) return null;
+  if (setsToRender.length === 0) return null;
 
-  // Deduplicate by targetSelector so there is only one active variant switcher per element
-  const uniqueBySelector = new Map<string, (typeof visibleSets)[0]>();
-  for (const s of visibleSets) {
-    uniqueBySelector.set(s.targetSelector, s);
-  }
-  const setsToRender = Array.from(uniqueBySelector.values());
+  const vw = window.innerWidth || document.documentElement.clientWidth || 1000;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 800;
 
   return (
     <div class="ve-variant-switcher-layer">
@@ -128,17 +214,25 @@ export function VariantSwitcher() {
         const activeVariant = set.variants.find((v) => v.id === activeVarId);
         const selectedVariant = set.variants.find((v) => v.id === set.selectedVariantId) || activeVariant;
 
-        // Position above element if space allows (>130px from viewport top), otherwise below
-        const placeBelow = rect.top < 130;
-        const defaultLeft = Math.max(16, Math.min(window.innerWidth - 490, rect.left));
-        const customPos = dragPositions[set.id];
+        const fallbackWidth = Math.min(470, Math.max(200, vw - 32));
+        const hasManyOrLongOptions =
+          set.variants.length > 2 || set.variants.some((v) => v.name.length > 16);
+        const fallbackHeight = set.status === 'decided' ? 88 : hasManyOrLongOptions ? 156 : 120;
+        const measured = measuredSizes[set.id];
+        const barWidth = measured?.width || fallbackWidth;
+        const barHeight = measured?.height || fallbackHeight;
 
-        const barLeft = customPos ? customPos.left : defaultLeft;
-        const barTop = customPos
-          ? customPos.top
-          : placeBelow
-          ? rect.bottom + 12
-          : rect.top - 12;
+        const customPos = dragPositions[set.id];
+        const computed = computeVariantSwitcherPosition({
+          rect,
+          barWidth,
+          barHeight,
+          viewportWidth: vw,
+          viewportHeight: vh,
+        });
+
+        const barLeft = customPos ? customPos.left : computed.left;
+        const barTop = customPos ? customPos.top : computed.top;
 
         return (
           <div key={set.id}>
@@ -160,6 +254,9 @@ export function VariantSwitcher() {
 
             {/* Floating Glass Switcher Card */}
             <div
+              ref={(el) => {
+                barRefs.current[set.id] = el;
+              }}
               class="ve-variant-switcher-bar"
               tabIndex={0}
               onMouseDown={(e) => e.stopPropagation()}
@@ -167,7 +264,6 @@ export function VariantSwitcher() {
               style={{
                 left: `${barLeft}px`,
                 top: `${barTop}px`,
-                transform: customPos || placeBelow ? 'none' : 'translateY(-100%)',
               }}
             >
               {/* Row 1: Header (Title, Drag Grip, Shortcut Hint, Close Button) */}
@@ -184,6 +280,8 @@ export function VariantSwitcher() {
                       startY: e.clientY,
                       initLeft: bRect.left,
                       initTop: bRect.top,
+                      barWidth: bRect.width || barEl.offsetWidth || barWidth,
+                      barHeight: bRect.height || barEl.offsetHeight || barHeight,
                     };
                   }}
                   title="Drag to reposition variant switcher"
@@ -196,7 +294,7 @@ export function VariantSwitcher() {
                     <circle cx="3" cy="11" r="1.5" />
                     <circle cx="7" cy="11" r="1.5" />
                   </svg>
-                  <span class="ve-variant-title">{set.label}</span>
+                  <span class="ve-variant-title" title={set.label}>{set.label}</span>
                 </div>
 
                 <div class="ve-variant-header-actions">
@@ -217,7 +315,10 @@ export function VariantSwitcher() {
                 <div class="ve-variant-decided-row">
                   <div class="ve-variant-decided-info">
                     <span class="ve-variant-applied-badge">Applied</span>
-                    <span class="ve-variant-decided-name">
+                    <span
+                      class="ve-variant-decided-name"
+                      title={selectedVariant?.name || 'Chosen Option'}
+                    >
                       {selectedVariant?.name || 'Chosen Option'}
                     </span>
                   </div>
@@ -241,25 +342,29 @@ export function VariantSwitcher() {
                 </div>
               ) : (
                 <>
-                  {/* Row 2: Options to pick from (Clean horizontal pill track with ample breathing room, no cut-offs) */}
+                  {/* Row 2: Options to pick from (multi-line flex-wrap pills with clamped labels) */}
                   <div class="ve-variant-options-row">
                     <button
                       class={`ve-variant-option-btn${activeVarId === null ? ' is-selected' : ''}`}
                       onClick={() => state.previewVariant(set.id, null)}
                       title="Original component styles"
                     >
-                      Original
+                      <span class="ve-variant-option-label">Original</span>
                     </button>
-                    {set.variants.map((v, idx) => (
-                      <button
-                        key={v.id}
-                        class={`ve-variant-option-btn${activeVarId === v.id ? ' is-selected' : ''}`}
-                        onClick={() => state.previewVariant(set.id, v.id)}
-                        title={v.rationale}
-                      >
-                        {idx + 1}. {v.name}
-                      </button>
-                    ))}
+                    {set.variants.map((v, idx) => {
+                      const optionLabel = formatVariantOptionLabel(v.name, idx);
+                      const optionTooltip = v.rationale ? `${optionLabel} — ${v.rationale}` : optionLabel;
+                      return (
+                        <button
+                          key={v.id}
+                          class={`ve-variant-option-btn${activeVarId === v.id ? ' is-selected' : ''}`}
+                          onClick={() => state.previewVariant(set.id, v.id)}
+                          title={optionTooltip}
+                        >
+                          <span class="ve-variant-option-label">{optionLabel}</span>
+                        </button>
+                      );
+                    })}
                   </div>
 
                   {/* Row 3: Detail description and Action button (constant height prevents vertical jumping) */}

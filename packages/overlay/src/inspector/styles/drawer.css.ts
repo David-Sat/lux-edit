@@ -771,6 +771,8 @@ export const DRAWER_CSS = `
   gap: 8px;
   width: 470px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 24px);
+  overflow: hidden;
   box-sizing: border-box;
   color: #f8fafc;
   font-family: system-ui, -apple-system, sans-serif;
@@ -782,6 +784,8 @@ export const DRAWER_CSS = `
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .ve-variant-drag-handle {
@@ -789,7 +793,8 @@ export const DRAWER_CSS = `
   align-items: center;
   gap: 6px;
   cursor: grab;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .ve-variant-drag-icon {
@@ -801,12 +806,17 @@ export const DRAWER_CSS = `
   font-weight: 600;
   color: #f1f5f9;
   letter-spacing: 0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ve-variant-header-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .ve-variant-close-btn {
@@ -833,6 +843,7 @@ export const DRAWER_CSS = `
   align-items: center;
   gap: 6px;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -891,9 +902,13 @@ export const DRAWER_CSS = `
 
 .ve-variant-options-row {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 6px;
   width: 100%;
+  min-width: 0;
+  max-height: 156px;
+  overflow-y: auto;
 }
 
 .ve-variant-option-btn {
@@ -901,15 +916,32 @@ export const DRAWER_CSS = `
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #94a3b8;
   border-radius: 6px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.25;
   cursor: pointer;
-  white-space: nowrap;
   box-shadow: none;
   transition: all 0.1s ease;
-  flex: 1 1 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ve-variant-option-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ve-variant-option-btn.is-selected {
@@ -929,6 +961,7 @@ export const DRAWER_CSS = `
   min-height: 26px;
   height: 26px;
   box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .ve-variant-rationale {
@@ -936,6 +969,7 @@ export const DRAWER_CSS = `
   color: #64748b;
   font-style: italic;
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
