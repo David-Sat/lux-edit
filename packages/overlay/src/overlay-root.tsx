@@ -218,6 +218,10 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         }
       };
 
+      const stopInlineKeyPropagation = (ke: KeyboardEvent) => {
+        ke.stopPropagation();
+      };
+
       const handleBlur = () => {
         target.contentEditable = 'inherit';
         target.style.outline = prevOutline;
@@ -226,6 +230,8 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         state.notify();
         target.removeEventListener('input', handleInput);
         target.removeEventListener('keydown', handleInlineKeyDown);
+        target.removeEventListener('keyup', stopInlineKeyPropagation);
+        target.removeEventListener('keypress', stopInlineKeyPropagation);
         target.removeEventListener('blur', handleBlur);
         if (currentInlineEl === target) {
           currentInlineEl = null;
@@ -234,6 +240,8 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
 
       target.addEventListener('input', handleInput);
       target.addEventListener('keydown', handleInlineKeyDown);
+      target.addEventListener('keyup', stopInlineKeyPropagation);
+      target.addEventListener('keypress', stopInlineKeyPropagation);
       target.addEventListener('blur', handleBlur);
     };
 
@@ -298,6 +306,49 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       }
     };
 
+    const isEditableShadowTarget = (e: Event): boolean => {
+      try {
+        const path = e.composedPath ? e.composedPath() : [];
+        for (const node of path) {
+          if (node === shadowRoot) break;
+          const el = node as HTMLElement;
+          if (!el || !el.tagName) continue;
+          const tag = el.tagName.toUpperCase();
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore cross-origin / detached composedPath errors
+      }
+      return false;
+    };
+
+    const handleShadowKeyboardEvent = (e: Event) => {
+      if (!isEditableShadowTarget(e)) return;
+
+      // Prevent keystrokes inside overlay inputs/textareas (e.g. comment composer,
+      // pin editor, drawer inputs) from bubbling out of the Shadow DOM to the host
+      // page, where Shadow DOM retargeting would hide the INPUT/TEXTAREA target and
+      // accidentally trigger page-level keyboard shortcuts (e.g. 'N' for next page).
+      e.stopPropagation();
+
+      const ke = e as KeyboardEvent;
+      if (e.type === 'keydown' && ke.key === 'Escape' && !ke.defaultPrevented) {
+        if (state.commentTargetElement) {
+          state.setCommentTarget(null);
+        } else if (state.isDrawerOpen) {
+          state.setDrawerOpen(false);
+        } else if (state.activeElement) {
+          state.setActiveElement(null);
+        }
+      }
+    };
+
+    shadowRoot.addEventListener('keydown', handleShadowKeyboardEvent);
+    shadowRoot.addEventListener('keyup', handleShadowKeyboardEvent);
+    shadowRoot.addEventListener('keypress', handleShadowKeyboardEvent);
+
     document.addEventListener('mousemove', handleMouseMove, { capture: true, passive: true });
     document.addEventListener('mouseup', handleMouseUp, { capture: true });
     document.addEventListener('click', handleClick, { capture: true });
@@ -308,6 +359,9 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       if (currentInlineEl) {
         currentInlineEl.blur();
       }
+      shadowRoot.removeEventListener('keydown', handleShadowKeyboardEvent);
+      shadowRoot.removeEventListener('keyup', handleShadowKeyboardEvent);
+      shadowRoot.removeEventListener('keypress', handleShadowKeyboardEvent);
       document.removeEventListener('mousemove', handleMouseMove, { capture: true });
       document.removeEventListener('mouseup', handleMouseUp, { capture: true });
       document.removeEventListener('click', handleClick, { capture: true });
