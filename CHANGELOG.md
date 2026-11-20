@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.2...lux-edit-v0.17.0) (2026-11-20)
+
+
+### Features
+
+* **overlay:** allow inspecting and editing disabled buttons ([#78](https://github.com/David-Sat/lux-edit/issues/78)) ([3488867](https://github.com/David-Sat/lux-edit/commit/3488867759ce73f53aa554c22f6a11e058afe190))
+
+
+### Bug Fixes
+
+* **overlay,server:** show white fetch highlight and clamp top comment composer ([#76](https://github.com/David-Sat/lux-edit/issues/76)) ([67a8611](https://github.com/David-Sat/lux-edit/commit/67a86118cc61c3a094f4c8738638e3b024e72b47))
+
 ## [0.16.2](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.1...lux-edit-v0.16.2) (2026-11-16)
 
 
