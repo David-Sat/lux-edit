@@ -142,7 +142,7 @@ export function registerVisualTools(server: McpServer, bridge: LuxServerBridge):
         .array(
           z.object({
             id: z.string().optional().describe('Optional short identifier (e.g. "var_glass")'),
-            name: z.string().describe('Concise display name shown on the switcher pill (e.g. "Option A: Glassmorphic")'),
+            name: z.string().describe('Short 2-4 word display name shown on the switcher pill without numbering or "Option A:" prefix (e.g. "Glassmorphic", "Minimal Outline")'),
             rationale: z.string().describe('One-sentence design rationale shown when the user previews this variant'),
             styles: z
               .record(z.string(), z.string())

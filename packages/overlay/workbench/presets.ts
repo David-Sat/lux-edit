@@ -583,6 +583,67 @@ export const WORKBENCH_PRESETS: WorkbenchPreset[] = [
     },
   },
   {
+    id: 'variant-switcher-long-options',
+    group: 'Variants & Verification',
+    title: 'Variant Switcher (Long Option Names)',
+    description:
+      '4 long/prefixed option titles and a long header label anchored to #wb-pricing-card to verify multi-line wrapping and clamping without overflow.',
+    apply: (state) => {
+      state.resetForWorkbench();
+      state.isDockMenuOpen = true;
+      state.variantSets = [
+        {
+          id: 'vset_wb_long_options',
+          targetSelector: '#wb-pricing-card',
+          label: 'Pro Plan Card — Extended Surface, Border Glow & Typography Exploration',
+          createdAt: Date.now() - 20_000,
+          status: 'pending',
+          variants: [
+            {
+              id: 'var_long_glass',
+              name: 'Option A: Elevated Glassmorphic Surface with Soft Cyan Halo',
+              rationale: 'Adds frosted glass depth and subtle sky highlight around the card.',
+              styles: {
+                background: 'linear-gradient(155deg, rgba(15, 23, 42, 0.78), rgba(30, 41, 59, 0.68))',
+                border: '1px solid rgba(56, 189, 248, 0.55)',
+                boxShadow: '0 20px 44px -12px rgba(56, 189, 248, 0.28)',
+              },
+            },
+            {
+              id: 'var_long_indigo',
+              name: 'Option B - High-Contrast Indigo Gradient Card Treatment',
+              rationale: 'Increases visual hierarchy with an indigo accent tint and crisp edge.',
+              styles: {
+                background: 'linear-gradient(145deg, rgba(79, 70, 229, 0.28), rgba(14, 165, 233, 0.16))',
+                border: '1px solid rgba(129, 140, 248, 0.55)',
+              },
+            },
+            {
+              id: 'var_long_editorial',
+              name: '3. Minimal Editorial Hairline Border with Compact Rhythm',
+              rationale: 'Tightens internal padding and pairs a clean monochrome hairline stroke.',
+              styles: {
+                padding: '16px 20px',
+                border: '1px solid rgba(248, 250, 252, 0.28)',
+                borderRadius: '10px',
+              },
+            },
+            {
+              id: 'var_long_ultra',
+              name: '4) 3-Column Feature Callout Card with Accent Top Strip and Subtle Shadow',
+              rationale: 'Emphasizes the top edge with an emerald strip and grounded elevation.',
+              styles: {
+                borderTop: '3px solid #10b981',
+                boxShadow: '0 22px 48px rgba(0, 0, 0, 0.35)',
+              },
+            },
+          ],
+        },
+      ];
+      state.notify();
+    },
+  },
+  {
     id: 'variant-switcher-decided',
     group: 'Variants & Verification',
     title: 'Variant Switcher (Option Decided)',
