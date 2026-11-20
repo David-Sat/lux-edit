@@ -11,6 +11,12 @@ import { DockMenu } from './inspector/dock-menu.js';
 import { EditReviewDrawer } from './drawer/edit-review-drawer.js';
 import { VariantSwitcher } from './inspector/variant-switcher.js';
 import { VerificationHalo } from './inspector/verification-halo.js';
+import {
+  INSPECT_DISABLED_STYLE_ATTR,
+  INSPECT_DISABLED_STYLE_CSS,
+  isDisabledElement,
+  resolveInspectTarget,
+} from './inspector/inspect-target.js';
 
 export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const state = OverlayStateManager.getInstance();
@@ -20,7 +26,25 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
     return state.subscribe(() => setTick((t) => t + 1));
   }, [state]);
 
+  const isInspecting = state.activeTool !== 'none';
+
   useEffect(() => {
+    if (!isInspecting || typeof document === 'undefined') return;
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute(INSPECT_DISABLED_STYLE_ATTR, 'true');
+    styleEl.textContent = INSPECT_DISABLED_STYLE_CSS;
+    const host = document.head || document.documentElement;
+    host?.appendChild(styleEl);
+    return () => {
+      styleEl.remove();
+    };
+  }, [isInspecting]);
+
+  useEffect(() => {
+    const isOverlayElement = (el: Element): boolean =>
+      el.tagName.toLowerCase() === 'visual-edit-overlay' ||
+      Boolean(el.closest('[data-lux-workbench-ui]'));
+
     const isInsideShadow = (e: Event): boolean => {
       try {
         const path = e.composedPath ? e.composedPath() : [];
@@ -45,7 +69,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         return;
       }
 
-      const target = e.target as HTMLElement | null;
+      const target = resolveInspectTarget(e, isOverlayElement);
       if (!target || target === document.body || target === document.documentElement) {
         state.setHoveredElement(null);
         return;
@@ -93,7 +117,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         return;
       }
 
-      const target = e.target as HTMLElement | null;
+      const target = resolveInspectTarget(e, isOverlayElement);
       if (!target || target === document.body || target === document.documentElement) return;
 
       // If user is clicking inside the element currently being edited inline,
@@ -138,13 +162,17 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       if (state.activeTool !== 'edit') return;
       if (isInsideShadow(e)) return;
 
-      const target = e.target as HTMLElement | null;
+      const target = resolveInspectTarget(e, isOverlayElement);
       if (!target || target === document.body || target === document.documentElement) return;
 
       e.preventDefault();
       e.stopPropagation();
 
       state.setActiveElement(target);
+      if (isDisabledElement(target)) {
+        return;
+      }
+
       currentInlineEl = target;
 
       try {
