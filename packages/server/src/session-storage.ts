@@ -90,16 +90,19 @@ export function hasSessionContent(batch: VisualEditBatch): boolean {
 
 export function extractVerificationTargetsFromSession(
   session: VisualEditBatch,
-  extraSelectors?: string[]
+  extraSelectors?: string[],
+  variant: 'applied' | 'fetched' = 'applied'
 ): VerificationTarget[] {
   const targetsMap = new Map<string, VerificationTarget>();
   const now = Date.now();
+  const isFetched = variant === 'fetched';
 
   for (const m of session.mutations || []) {
     if (m.targetSelector && m.targetSelector !== ':root') {
       targetsMap.set(m.targetSelector, {
         selector: m.targetSelector,
-        label: m.type === 'STYLE_CHANGE' ? `Style (${m.property})` : m.type,
+        ...(isFetched ? {} : { label: m.type === 'STYLE_CHANGE' ? `Style (${m.property})` : m.type }),
+        variant,
         beforeHash: m.targetHash,
         timestamp: now,
       });
@@ -111,7 +114,8 @@ export function extractVerificationTargetsFromSession(
       targetsMap.set(a.targetSelector, {
         selector: a.targetSelector,
         bounds: a.bounds,
-        label: 'Comment Applied',
+        ...(isFetched ? {} : { label: 'Comment Applied' }),
+        variant,
         beforeHash: a.targetHash,
         timestamp: now,
       });
@@ -121,7 +125,8 @@ export function extractVerificationTargetsFromSession(
         targetsMap.set(t.targetSelector, {
           selector: t.targetSelector,
           bounds: t.bounds,
-          label: 'Updated',
+          ...(isFetched ? {} : { label: 'Updated' }),
+          variant,
           beforeHash: t.targetHash,
           timestamp: now,
         });
@@ -133,7 +138,8 @@ export function extractVerificationTargetsFromSession(
     if (d.targetSelector) {
       targetsMap.set(d.targetSelector, {
         selector: d.targetSelector,
-        label: `Variant: ${d.variantName}`,
+        ...(isFetched ? {} : { label: `Variant: ${d.variantName}` }),
+        variant,
         beforeHash: d.targetHash,
         timestamp: now,
       });
@@ -144,7 +150,8 @@ export function extractVerificationTargetsFromSession(
     if (sel && !targetsMap.has(sel)) {
       targetsMap.set(sel, {
         selector: sel,
-        label: 'Updated by Agent',
+        ...(isFetched ? {} : { label: 'Updated by Agent' }),
+        variant,
         timestamp: now,
       });
     }

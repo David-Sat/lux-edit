@@ -303,4 +303,36 @@ describe('EventStore: Cursors, Live/Batch Mode, Variants, Hooks, and Stale Guard
     expect(store.getSession('b_live_idempotent')?.status).toBe('submitted');
     expect(store.getSession('b_live_idempotent')?.stale).toBe(true);
   });
+
+  it('marks verificationTargets as fetched without labels on in_progress and applied with labels on implemented', () => {
+    store.saveBatch({
+      id: 'b_fetch_vs_applied',
+      timestamp: Date.now(),
+      route: '/',
+      status: 'submitted',
+      mutations: [{ id: 'm_1', type: 'TEXT_EDIT', targetSelector: '.hero-title', before: 'A', after: 'B' }],
+      annotations: [{ id: 'a_1', timestamp: Date.now(), type: 'element', targetSelector: '#cta-btn', comment: 'Resize' }],
+    });
+
+    const fetchedRes = store.updateStatus('b_fetch_vs_applied', 'in_progress');
+    expect(fetchedRes.updated).toBe(true);
+    expect(fetchedRes.verificationTargets).toHaveLength(2);
+    for (const target of fetchedRes.verificationTargets || []) {
+      expect(target.variant).toBe('fetched');
+      expect(target.label).toBeUndefined();
+    }
+
+    const appliedRes = store.updateStatus('b_fetch_vs_applied', 'implemented', undefined, {
+      modifiedSelectors: ['.extra-node'],
+    });
+    expect(appliedRes.updated).toBe(true);
+    const appliedTargets = appliedRes.verificationTargets || [];
+    expect(appliedTargets.map((t) => t.selector)).toEqual(
+      expect.arrayContaining(['.hero-title', '#cta-btn', '.extra-node'])
+    );
+    for (const target of appliedTargets) {
+      expect(target.variant).toBe('applied');
+      expect(target.label).toBeTruthy();
+    }
+  });
 });
