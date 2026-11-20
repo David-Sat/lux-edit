@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.17.0...lux-edit-v0.17.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **overlay,mcp:** wrap long variant switcher options and prevent overflow ([#79](https://github.com/David-Sat/lux-edit/issues/79)) ([5405645](https://github.com/David-Sat/lux-edit/commit/5405645719b9a811233ac2fecd71fa2f951bcb19))
+* **overlay:** block host page keyboard shortcuts while typing in overlay inputs ([#80](https://github.com/David-Sat/lux-edit/issues/80)) ([a2c0d1c](https://github.com/David-Sat/lux-edit/commit/a2c0d1cd19005ea6f02394b1c57c5a6dc334f873))
+
 ## [0.17.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.2...lux-edit-v0.17.0) (2026-11-20)
 
 
