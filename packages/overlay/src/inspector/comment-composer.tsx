@@ -139,6 +139,8 @@ export function CommentComposer() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      <span class="ve-glass-surface" aria-hidden="true" />
+      <span class="ve-glass-bevel" aria-hidden="true" />
       <div class={`ve-comment-header ${isMulti ? 'is-multi' : ''}`}>
         <div class="ve-comment-header-row">
           <span class="ve-comment-header-label">

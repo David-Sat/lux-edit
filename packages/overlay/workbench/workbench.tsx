@@ -1,6 +1,13 @@
 import './setup.js';
 import { h, render } from 'preact';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import {
+  GlassMaterialMode,
+  LIQUID_GLASS_RECIPES,
+  LiquidGlassRecipeId,
+  LiquidGlassTuning,
+  supportsSvgBackdropFilter,
+} from '../src/inspector/liquid-glass.js';
 import { OverlayStateManager } from '../src/inspector/state.js';
 import '../src/index.js';
 import { MockHostPage, WorkbenchBackdrop } from './mock-host.js';
@@ -14,14 +21,60 @@ const PRESET_GROUPS: PresetGroup[] = [
   'Review Drawer',
 ];
 
+const GLASS_MODE_OPTIONS: Array<{ id: GlassMaterialMode; label: string }> = [
+  { id: 'svg-refract', label: 'SVG Refract' },
+  { id: 'css-liquid', label: 'CSS Fallback' },
+];
+
+const RECIPE_IDS: LiquidGlassRecipeId[] = ['apple-clear', 'crystal-drop', 'dark-obsidian'];
+
+interface TuningSliderDef {
+  key: keyof Omit<LiquidGlassTuning, 'pointerGlint' | 'surfaceTone' | 'refractPanels'>;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+}
+
+const TUNING_SLIDERS: TuningSliderDef[] = [
+  { key: 'refractionStrength', label: 'Refraction', min: 0, max: 3.0, step: 0.05 },
+  { key: 'thickness', label: 'Thickness', min: 10, max: 80, step: 1, unit: 'px' },
+  { key: 'bezelWidth', label: 'Bezel', min: 6, max: 32, step: 1, unit: 'px' },
+  { key: 'heroBlurPx', label: 'Lens Blur', min: 0, max: 12, step: 0.5, unit: 'px' },
+  { key: 'panelBlurPx', label: 'Panel Blur', min: 0, max: 28, step: 1, unit: 'px' },
+  { key: 'specularOpacity', label: 'Specular', min: 0, max: 1, step: 0.05 },
+  { key: 'rimSaturation', label: 'Rim Chroma', min: 1, max: 8, step: 0.25 },
+  { key: 'dispersion', label: 'Dispersion', min: 0, max: 1, step: 0.05 },
+  { key: 'tintOpacity', label: 'Tint', min: 0.05, max: 0.85, step: 0.02 },
+];
+
+function isRecipeActive(current: LiquidGlassTuning, target: LiquidGlassTuning): boolean {
+  return (
+    current.surfaceTone === target.surfaceTone &&
+    current.refractPanels === target.refractPanels &&
+    Math.abs(current.refractionStrength - target.refractionStrength) < 0.005 &&
+    Math.abs(current.thickness - target.thickness) < 0.05 &&
+    Math.abs(current.bezelWidth - target.bezelWidth) < 0.05 &&
+    Math.abs(current.heroBlurPx - target.heroBlurPx) < 0.05 &&
+    Math.abs(current.panelBlurPx - target.panelBlurPx) < 0.05 &&
+    Math.abs(current.specularOpacity - target.specularOpacity) < 0.005 &&
+    Math.abs(current.rimSaturation - target.rimSaturation) < 0.05 &&
+    Math.abs(current.dispersion - target.dispersion) < 0.005 &&
+    Math.abs(current.tintOpacity - target.tintOpacity) < 0.005
+  );
+}
+
 function getInitialQueryParams(): {
   presetId: string;
   backdrop: WorkbenchBackdrop;
+  glassMode: GlassMaterialMode;
   showSidebar: boolean;
 } {
   const params = new URLSearchParams(window.location.search);
   const presetParam = params.get('preset');
   const backdropParam = params.get('backdrop');
+  const glassParam = params.get('glass');
   const chromeParam = params.get('chrome');
 
   const validPreset = WORKBENCH_PRESETS.some((p) => p.id === presetParam)
@@ -29,13 +82,22 @@ function getInitialQueryParams(): {
     : WORKBENCH_PRESETS[2].id; // Default to Dock Expanded (Batch Mode)
 
   const validBackdrop: WorkbenchBackdrop =
-    backdropParam === 'light' || backdropParam === 'dark' || backdropParam === 'gradient'
+    backdropParam === 'light' ||
+    backdropParam === 'dark' ||
+    backdropParam === 'gradient' ||
+    backdropParam === 'editorial'
       ? backdropParam
       : 'dark';
+
+  const validGlassMode: GlassMaterialMode =
+    glassParam === 'css-liquid' || glassParam === 'svg-refract'
+      ? glassParam
+      : 'svg-refract';
 
   return {
     presetId: validPreset,
     backdrop: validBackdrop,
+    glassMode: validGlassMode,
     showSidebar: chromeParam !== '0',
   };
 }
@@ -44,16 +106,45 @@ function WorkbenchApp() {
   const initial = useMemo(() => getInitialQueryParams(), []);
   const [selectedPresetId, setSelectedPresetId] = useState<string>(initial.presetId);
   const [backdrop, setBackdrop] = useState<WorkbenchBackdrop>(initial.backdrop);
+  const [glassMode, setGlassMode] = useState<GlassMaterialMode>(initial.glassMode);
+  const [showTuning, setShowTuning] = useState<boolean>(false);
+  const [fps, setFps] = useState<number>(60);
   const [showSidebar, setShowSidebar] = useState<boolean>(initial.showSidebar);
   const [searchQuery, setSearchQuery] = useState('');
   const [hostEpoch, setHostEpoch] = useState(0);
   const [, setStateTick] = useState(0);
 
   const state = OverlayStateManager.getInstance();
+  const svgSupported = useMemo(() => supportsSvgBackdropFilter(), []);
 
   useEffect(() => {
     return state.subscribe(() => setStateTick((t) => t + 1));
   }, [state]);
+
+  useEffect(() => {
+    state.setGlassMode(glassMode);
+  }, [state, glassMode]);
+
+  // Lightweight rAF FPS sampler for testing drag/refraction performance
+  useEffect(() => {
+    let rafId = 0;
+    let frameCount = 0;
+    let lastSample = performance.now();
+
+    const tick = (now: number) => {
+      frameCount += 1;
+      const elapsed = now - lastSample;
+      if (elapsed >= 400) {
+        setFps(Math.round((frameCount * 1000) / elapsed));
+        frameCount = 0;
+        lastSample = now;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   const activePreset: WorkbenchPreset = useMemo(
     () => WORKBENCH_PRESETS.find((p) => p.id === selectedPresetId) || WORKBENCH_PRESETS[0],
@@ -66,12 +157,13 @@ function WorkbenchApp() {
       const url = new URL(window.location.href);
       url.searchParams.set('preset', selectedPresetId);
       url.searchParams.set('backdrop', backdrop);
+      url.searchParams.set('glass', glassMode);
       url.searchParams.set('chrome', showSidebar ? '1' : '0');
       window.history.replaceState(null, '', url.toString());
     } catch (err) {
       console.debug('[lux-workbench] Failed to sync preset query params:', err);
     }
-  }, [selectedPresetId, backdrop, showSidebar]);
+  }, [selectedPresetId, backdrop, glassMode, showSidebar]);
 
   // Apply selected preset after MockHostPage renders fresh DOM
   useEffect(() => {
@@ -102,7 +194,14 @@ function WorkbenchApp() {
     [selectedPresetId, selectPreset]
   );
 
-  // Keyboard shortcuts for fast preset stepping (`[` / `]`) & hiding workbench chrome (`Cmd/Ctrl+\`)
+  const cycleGlassMode = useCallback(() => {
+    setGlassMode((prev) => {
+      const idx = GLASS_MODE_OPTIONS.findIndex((m) => m.id === prev);
+      return GLASS_MODE_OPTIONS[(idx + 1) % GLASS_MODE_OPTIONS.length].id;
+    });
+  }, []);
+
+  // Keyboard shortcuts for preset stepping (`[` / `]`), glass cycling (`G`), and hiding chrome (`Cmd/Ctrl+\`)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
@@ -110,6 +209,8 @@ function WorkbenchApp() {
         setShowSidebar((v) => !v);
         return;
       }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
       const target = e.target as HTMLElement | null;
       const isTyping =
         target &&
@@ -122,11 +223,14 @@ function WorkbenchApp() {
       } else if (e.key === ']') {
         e.preventDefault();
         stepPreset(1);
+      } else if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        cycleGlassMode();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [stepPreset]);
+  }, [stepPreset, cycleGlassMode]);
 
   const filteredPresets = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -234,13 +338,13 @@ function WorkbenchApp() {
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
               <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600 }}>Backdrop</span>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {(['light', 'dark', 'gradient'] as WorkbenchBackdrop[]).map((b) => (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {(['light', 'dark', 'gradient', 'editorial'] as WorkbenchBackdrop[]).map((b) => (
                   <button
                     key={b}
                     onClick={() => setBackdrop(b)}
                     style={{
-                      padding: '3px 8px',
+                      padding: '3px 7px',
                       borderRadius: '6px',
                       border:
                         backdrop === b
@@ -301,6 +405,276 @@ function WorkbenchApp() {
                 >
                   Anchor: {state.dockPosition.verticalAnchor}
                 </button>
+              </div>
+            </div>
+
+            {/* Liquid Glass Lab (A/B Switcher + Live Tuning) */}
+            <div
+              style={{
+                padding: '8px',
+                borderRadius: '8px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '7px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                <span style={{ color: '#e2e8f0', fontSize: '11px', fontWeight: 700 }}>
+                  Liquid Glass Lab <span style={{ color: '#64748b', fontWeight: 500 }}>(G)</span>
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontFamily: 'ui-monospace, monospace',
+                      color: fps >= 50 ? '#6ee7b7' : '#fcd34d',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    {fps} fps
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      background:
+                        glassMode === 'svg-refract'
+                          ? svgSupported
+                            ? 'rgba(16, 185, 129, 0.16)'
+                            : 'rgba(245, 158, 11, 0.18)'
+                          : 'rgba(255, 255, 255, 0.06)',
+                      color:
+                        glassMode === 'svg-refract'
+                          ? svgSupported
+                            ? '#6ee7b7'
+                            : '#fcd34d'
+                          : '#94a3b8',
+                      border:
+                        glassMode === 'svg-refract'
+                          ? svgSupported
+                            ? '1px solid rgba(52, 211, 153, 0.35)'
+                            : '1px solid rgba(251, 191, 36, 0.35)'
+                          : '1px solid rgba(255, 255, 255, 0.1)',
+                    }}
+                  >
+                    {glassMode === 'svg-refract' && svgSupported ? 'SVG Active' : 'CSS Fallback'}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: '3px',
+                  padding: '2px',
+                  borderRadius: '7px',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                {GLASS_MODE_OPTIONS.map((opt) => {
+                  const active = glassMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setGlassMode(opt.id)}
+                      style={{
+                        padding: '4px 4px',
+                        borderRadius: '5px',
+                        border: active ? '1px solid rgba(56, 189, 248, 0.55)' : '1px solid transparent',
+                        background: active ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                        color: active ? '#f8fafc' : '#94a3b8',
+                        fontSize: '10.5px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {RECIPE_IDS.map((recipeId) => {
+                    const recipe = LIQUID_GLASS_RECIPES[recipeId];
+                    const active = isRecipeActive(state.glassTuning, recipe.tuning);
+                    return (
+                      <button
+                        key={recipeId}
+                        onClick={() => state.setGlassTuning(recipe.tuning)}
+                        style={{
+                          flex: 1,
+                          padding: '3px 4px',
+                          borderRadius: '5px',
+                          border: active
+                            ? '1px solid rgba(56, 189, 248, 0.55)'
+                            : '1px solid rgba(255, 255, 255, 0.1)',
+                          background: active ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                          color: active ? '#38bdf8' : '#cbd5e1',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {recipe.label}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setShowTuning((v) => !v)}
+                    style={{
+                      padding: '3px 6px',
+                      borderRadius: '5px',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      background: showTuning ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+                      color: '#e2e8f0',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {showTuning ? 'Tune ▴' : 'Tune ▾'}
+                  </button>
+                </div>
+
+                {showTuning && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '5px',
+                      paddingTop: '4px',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                    }}
+                  >
+                    {TUNING_SLIDERS.map((slider) => {
+                      const val = state.glassTuning[slider.key];
+                      return (
+                        <label
+                          key={slider.key}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '64px 1fr 38px',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '10.5px',
+                            color: '#cbd5e1',
+                          }}
+                        >
+                          <span>{slider.label}</span>
+                          <input
+                            type="range"
+                            min={slider.min}
+                            max={slider.max}
+                            step={slider.step}
+                            value={val}
+                            onInput={(e) => {
+                              const next = parseFloat((e.target as HTMLInputElement).value);
+                              if (!Number.isNaN(next)) {
+                                state.setGlassTuning({ [slider.key]: next });
+                              }
+                            }}
+                            style={{ width: '100%', accentColor: '#38bdf8', cursor: 'pointer' }}
+                          />
+                          <span
+                            style={{
+                              textAlign: 'right',
+                              fontFamily: 'ui-monospace, monospace',
+                              color: '#38bdf8',
+                              fontSize: '10px',
+                            }}
+                          >
+                            {Number.isInteger(slider.step) ? val : val.toFixed(2)}
+                            {slider.unit || ''}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '8px',
+                        marginTop: '2px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <label
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '10px',
+                            color: '#cbd5e1',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={state.glassTuning.refractPanels}
+                            onChange={(e) =>
+                              state.setGlassTuning({
+                                refractPanels: (e.target as HTMLInputElement).checked,
+                              })
+                            }
+                            style={{ accentColor: '#38bdf8' }}
+                          />
+                          <span>Refract Panels</span>
+                        </label>
+                        <label
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '10px',
+                            color: '#cbd5e1',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={state.glassTuning.pointerGlint}
+                            onChange={(e) =>
+                              state.setGlassTuning({
+                                pointerGlint: (e.target as HTMLInputElement).checked,
+                              })
+                            }
+                            style={{ accentColor: '#38bdf8' }}
+                          />
+                          <span>Glint</span>
+                        </label>
+                      </div>
+                      <button
+                        onClick={() => state.resetGlassTuning()}
+                        style={{
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255, 255, 255, 0.14)',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          color: '#cbd5e1',
+                          fontSize: '10px',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

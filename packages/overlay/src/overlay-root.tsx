@@ -1,7 +1,9 @@
 import { h } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { OVERLAY_STYLES } from './inspector/styles.css.js';
 import { OverlayStateManager } from './inspector/state.js';
+import { supportsSvgBackdropFilter, useLiquidGlassMotion } from './inspector/liquid-glass.js';
+import { LiquidGlassDefs } from './inspector/liquid-glass-defs.js';
 import { SelectionBox } from './inspector/selection-box.js';
 import { FloatingToolbar } from './inspector/floating-toolbar.js';
 import { CommentComposer } from './inspector/comment-composer.js';
@@ -374,16 +376,45 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const isLeft = dockPos.side === 'left';
   const isTop = dockPos.verticalAnchor === 'top';
   const panelOffsetY = Math.max(78, dockPos.offsetY + 54);
+  const svgSupported = useMemo(() => supportsSvgBackdropFilter(), []);
+  const isSvgRefract = state.glassMode === 'svg-refract' && svgSupported;
+  const tuning = state.glassTuning;
+  const [glassPulse, setGlassPulse] = useState(0);
+
+  const handleGlassPulse = useCallback(() => {
+    if (isSvgRefract) {
+      setGlassPulse((p) => p + 1);
+    }
+  }, [isSvgRefract]);
+
+  useLiquidGlassMotion(shadowRoot, tuning.pointerGlint, handleGlassPulse);
+
+  const toneClass = tuning.surfaceTone === 'dark' ? 've-glass-obsidian' : 've-glass-clear';
+  const panelRefractClass = isSvgRefract && tuning.refractPanels ? 've-glass-refract-panels' : '';
+  const hasActiveDockOption =
+    state.activeTool !== 'none' || state.isDrawerOpen || state.reviewMode === 'live';
 
   return (
     <div
-      class={`ve-root ${isLeft ? 've-dock-left' : 've-dock-right'} ${isTop ? 've-dock-top' : 've-dock-bottom'}`}
+      class={`ve-root ${isLeft ? 've-dock-left' : 've-dock-right'} ${isTop ? 've-dock-top' : 've-dock-bottom'} ve-glass-liquid ${isSvgRefract ? 've-glass-svg' : ''} ${toneClass} ${panelRefractClass}`}
       style={{
         '--ve-dock-offset-y': `${dockPos.offsetY}px`,
         '--ve-panel-offset-y': `${panelOffsetY}px`,
+        '--ve-lg-tint': String(tuning.tintOpacity),
+        '--ve-lg-spec': String(tuning.specularOpacity),
+        '--ve-lg-panel-blur': `${tuning.panelBlurPx}px`,
+        '--ve-lg-hero-blur': `${tuning.heroBlurPx}px`,
+        '--ve-lg-sat': `${tuning.saturatePct}%`,
       }}
     >
       <style>{OVERLAY_STYLES}</style>
+      <LiquidGlassDefs
+        shadowRoot={shadowRoot}
+        tuning={tuning}
+        enabled={isSvgRefract}
+        activeBoost={hasActiveDockOption}
+        interactionPulse={glassPulse}
+      />
       <SelectionBox />
       <FloatingToolbar />
       <CommentComposer />

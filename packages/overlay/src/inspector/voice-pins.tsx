@@ -1,23 +1,61 @@
 import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { VoiceTargetPin } from '@visual-edit/core';
 import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
+import {
+  PinAnchorOrigin,
+  getPinAnchorOrigin,
+  isDocumentScrollTarget,
+  locatePinTarget,
+} from './pin-position.js';
+import { usePinPeekDrag } from './pin-drag.js';
 
 export function VoicePins() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
 
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
+  const needsDocScrollSyncRef = useRef(false);
+
+  const { activeDragKey, snappingKey, startPinDrag } = usePinPeekDrag({
+    onDragStart: () => setHoveredPinId(null),
+  });
+
   useEffect(() => {
+    let rafId = 0;
     const handleUpdate = () => setTick((t) => t + 1);
-    window.addEventListener('scroll', handleUpdate, { passive: true });
-    window.addEventListener('resize', handleUpdate);
+    const scheduleSync = () => {
+      if (typeof window.requestAnimationFrame !== 'function') {
+        handleUpdate();
+        return;
+      }
+      if (rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        handleUpdate();
+      });
+    };
+
+    const handleScroll = (e: Event) => {
+      if (isDocumentScrollTarget(e.target) && !needsDocScrollSyncRef.current) {
+        return;
+      }
+      scheduleSync();
+    };
+
+    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    window.addEventListener('resize', scheduleSync);
     const unsub = state.subscribe(handleUpdate);
 
     return () => {
-      window.removeEventListener('scroll', handleUpdate);
-      window.removeEventListener('resize', handleUpdate);
+      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', scheduleSync);
       unsub();
     };
   }, [state]);
@@ -31,6 +69,17 @@ export function VoicePins() {
     if (!hasVoicePins) return;
     return observeNextDomCommit(() => setTick((t) => t + 1));
   }, [currentPath, hasVoicePins]);
+
+  useLayoutEffect(() => {
+    if (!anchorRef.current) return;
+    const measured = getPinAnchorOrigin(anchorRef.current);
+    if (
+      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
+      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
+    ) {
+      setTick((t) => t + 1);
+    }
+  }, [hasVoicePins, state.activeTool, state.voiceReviews.length, state.activeVoicePins.length, currentPath]);
 
   const allPins: VoiceTargetPin[] = [];
   if (state.activeTool === 'voice' && state.activeVoicePins.length > 0) {
@@ -53,44 +102,52 @@ export function VoicePins() {
     });
   }
 
-  if (allPins.length === 0) return null;
+  if (allPins.length === 0) {
+    needsDocScrollSyncRef.current = false;
+    return null;
+  }
 
+  const anchor = getPinAnchorOrigin(anchorRef.current);
+  anchorOriginRef.current = anchor;
+
+  let hasDynamicScrollPin = false;
   const pinPositions = allPins.map((pin) => {
-    let x = pin.bounds?.x || 0;
-    let y = pin.bounds?.y || 0;
-
-    try {
-      const el = document.querySelector(pin.targetSelector) as HTMLElement | null;
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        x = rect.left + window.scrollX;
-        y = rect.top + window.scrollY;
-      }
-    } catch {
-      // Fall back to stored pin coordinates when selector is invalid or not mounted.
-    }
+    const pos = locatePinTarget({
+      targetSelector: pin.targetSelector,
+      sourceLoc: pin.sourceLocation,
+      bounds: pin.bounds,
+      anchor,
+      offsetX: 0,
+      offsetY: -14,
+    });
+    if (pos.dynamicScroll) hasDynamicScrollPin = true;
 
     return {
       pin,
-      x: x - window.scrollX,
-      y: y - window.scrollY,
+      pos,
     };
   });
 
+  needsDocScrollSyncRef.current = hasDynamicScrollPin || activeDragKey !== null;
+
   return (
     <div
+      ref={anchorRef}
       class="ve-voice-pins-container"
       style={{
-        position: 'fixed',
+        position: 'absolute',
         top: 0,
         left: 0,
-        width: '100%',
-        height: '100%',
+        width: 0,
+        height: 0,
+        overflow: 'visible',
         pointerEvents: 'none',
         zIndex: 'var(--ve-z-overlay, 999998)',
       }}
     >
-      {pinPositions.map(({ pin, x, y }) => {
+      {pinPositions.map(({ pin, pos }) => {
+        const isDragging = activeDragKey === pin.id;
+        const isSnapping = snappingKey === pin.id;
         const isHovered = hoveredPinId === pin.id;
         const targetLabel = pin.sourceLocation?.componentName
           ? `<${pin.sourceLocation.componentName}>`
@@ -101,31 +158,35 @@ export function VoicePins() {
         return (
           <div
             key={pin.id}
-            class={`ve-voice-pin ${isHovered ? 've-hovered' : ''}`}
+            class={[
+              've-voice-pin',
+              isHovered && !isDragging ? 've-hovered' : '',
+              isDragging ? 've-dragging' : '',
+              isSnapping ? 've-snapping' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             style={{
-              position: 'absolute',
-              left: `${Math.max(8, x)}px`,
-              top: `${Math.max(8, y - 14)}px`,
-              pointerEvents: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px 2px 6px',
-              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              color: '#ffffff',
-              fontSize: '11px',
-              fontWeight: 600,
-              borderRadius: '12px',
-              boxShadow: '0 2px 8px rgba(220, 38, 38, 0.4), 0 0 0 1.5px rgba(255, 255, 255, 0.2)',
-              cursor: 'pointer',
-              userSelect: 'none',
-              transform: isHovered ? 'scale(1.08)' : 'scale(1)',
-              transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              position: pos.fixed ? 'fixed' : undefined,
+              left: `${pos.x}px`,
+              top: `${pos.y}px`,
             }}
-            onMouseEnter={() => setHoveredPinId(pin.id)}
-            onMouseLeave={() => setHoveredPinId(null)}
+            onPointerDown={(e) => {
+              startPinDrag(e, {
+                pinKey: pin.id,
+                pinEl: e.currentTarget as HTMLElement,
+              });
+            }}
+            onMouseEnter={() => {
+              if (!activeDragKey) setHoveredPinId(pin.id);
+            }}
+            onMouseLeave={() => {
+              if (!activeDragKey) setHoveredPinId(null);
+            }}
             title={`Target ${pin.order}: ${targetLabel}`}
           >
+            <span class="ve-glass-surface" aria-hidden="true" />
+            <span class="ve-glass-bevel" aria-hidden="true" />
             <svg
               width="12"
               height="12"
@@ -141,28 +202,11 @@ export function VoicePins() {
             </svg>
             <span>Target {pin.order}</span>
 
-            {isHovered && (
-              <div
-                class="ve-voice-pin-tooltip"
-                style={{
-                  position: 'absolute',
-                  bottom: '100%',
-                  left: '50%',
-                  transform: 'translateX(-50%) translateY(-6px)',
-                  background: 'rgba(15, 23, 42, 0.95)',
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255, 255, 255, 0.15)',
-                  borderRadius: '6px',
-                  padding: '4px 8px',
-                  color: '#f8fafc',
-                  fontSize: '11px',
-                  whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                  zIndex: 10,
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-                }}
-              >
-                {targetLabel}
+            {isHovered && !isDragging && (
+              <div class="ve-voice-pin-tooltip">
+                <span class="ve-glass-surface" aria-hidden="true" />
+                <span class="ve-glass-bevel" aria-hidden="true" />
+                <span>{targetLabel}</span>
               </div>
             )}
           </div>

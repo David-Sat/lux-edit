@@ -31,8 +31,10 @@ By default Vite serves at `http://localhost:4173/`.
 
 | Control / Key | Action |
 | --- | --- |
-| **Backdrop** (`Light` / `Dark` / `Gradient`) | Switch the host page theme behind the Shadow DOM overlay |
+| **Backdrop** (`Light` / `Dark` / `Gradient` / `Editorial`) | Switch the host page theme behind the Shadow DOM overlay (`Editorial` includes a grid & optical refraction calibration strip) |
+| **Liquid Glass Lab** (`SVG Refract` / `CSS Fallback`) | Live A/B switcher with `Apple Glass` / `Crystal Drop` / `Dark Glass` recipes, tuning sliders, and live FPS counter |
 | **Dock** (`Side` / `Anchor`) | Toggle dock corner (`left`/`right`, `top`/`bottom`) |
+| `G` | Toggle Liquid Glass mode (`SVG Refract` ↔ `CSS Fallback`) |
 | `[` / `]` | Step to the previous / next preset |
 | `Cmd/Ctrl + \` | Hide or show the workbench sidebar for unobstructed visual review |
 | `↻` | Re-mount the mock host DOM and re-apply the current preset |
@@ -42,11 +44,12 @@ By default Vite serves at `http://localhost:4173/`.
 The workbench syncs the active view to the URL so specific states can be bookmarked or opened directly:
 
 ```text
-http://localhost:4173/?preset=drawer-rich-draft&backdrop=light&chrome=0
+http://localhost:4173/?preset=drawer-rich-draft&backdrop=editorial&glass=svg-refract&chrome=0
 ```
 
 - `preset`: Preset ID from [`presets.ts`](./presets.ts)
-- `backdrop`: `light` | `dark` | `gradient`
+- `backdrop`: `light` | `dark` | `gradient` | `editorial`
+- `glass`: `svg-refract` | `css-liquid`
 - `chrome`: `1` (sidebar visible) | `0` (sidebar collapsed)
 
 ## Architecture

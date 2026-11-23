@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
+import { prefersReducedMotion } from './liquid-glass.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import {
   AdaptiveTextEditor,
@@ -51,8 +52,19 @@ export function FloatingToolbar() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [activeTab, setActiveTab] = useState<ToolbarTabId>('quick');
+  const [isTabGliding, setIsTabGliding] = useState(false);
   const [newClassInput, setNewClassInput] = useState('');
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const prevTabRef = useRef<ToolbarTabId>(activeTab);
+
+  useEffect(() => {
+    if (prevTabRef.current === activeTab) return;
+    prevTabRef.current = activeTab;
+    if (prefersReducedMotion()) return;
+    setIsTabGliding(true);
+    const timer = window.setTimeout(() => setIsTabGliding(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [activeTab]);
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
@@ -214,6 +226,8 @@ export function FloatingToolbar() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
+      <span class="ve-glass-surface" aria-hidden="true" />
+      <span class="ve-glass-bevel" aria-hidden="true" />
       {/* Toolbar Header */}
       <div class="ve-toolbar-header">
         <div class="ve-toolbar-title-wrap">
@@ -237,7 +251,14 @@ export function FloatingToolbar() {
       </div>
 
       {/* Tabs Bar */}
-      <div class="ve-toolbar-tabs">
+      <div
+        class="ve-toolbar-tabs"
+        style={{
+          '--ve-tab-index': String(Math.max(0, TOOLBAR_TABS.findIndex((t) => t.id === activeTab))),
+          '--ve-tab-count': String(TOOLBAR_TABS.length),
+        }}
+      >
+        <span class={`ve-tab-indicator ${isTabGliding ? 'is-gliding' : ''}`} aria-hidden="true" />
         {TOOLBAR_TABS.map((tab) => (
           <button
             key={tab.id}
