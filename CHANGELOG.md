@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.18.0...lux-edit-v0.19.0) (2026-11-23)
+
+
+### Features
+
+* **overlay:** scroll-lock overlays, add keyboard navigation, and optimize liquid glass ([#83](https://github.com/David-Sat/lux-edit/issues/83)) ([3bfd704](https://github.com/David-Sat/lux-edit/commit/3bfd704abfa0a9a8081784c799a02edf32a77044))
+
 ## [0.18.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.17.0...lux-edit-v0.18.0) (2026-11-23)
 
 
