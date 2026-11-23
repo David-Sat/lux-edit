@@ -1,6 +1,6 @@
 import { h } from 'preact';
 
-export type WorkbenchBackdrop = 'light' | 'dark' | 'gradient';
+export type WorkbenchBackdrop = 'light' | 'dark' | 'gradient' | 'editorial';
 
 interface ThemeTokens {
   pageBg: string;
@@ -61,6 +61,21 @@ const BACKDROP_THEMES: Record<WorkbenchBackdrop, ThemeTokens> = {
     btnSecondaryText: '#ffffff',
     btnSecondaryBorder: 'rgba(255, 255, 255, 0.3)',
   },
+  editorial: {
+    pageBg:
+      'linear-gradient(to right, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(15, 23, 42, 0.06) 1px, transparent 1px), linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%)',
+    textPrimary: '#0f172a',
+    textMuted: '#475569',
+    cardBg: 'rgba(255, 255, 255, 0.94)',
+    cardBorder: 'rgba(15, 23, 42, 0.14)',
+    badgeBg: '#dbeafe',
+    badgeText: '#1d4ed8',
+    btnPrimaryBg: '#0f172a',
+    btnPrimaryText: '#ffffff',
+    btnSecondaryBg: '#ffffff',
+    btnSecondaryText: '#0f172a',
+    btnSecondaryBorder: 'rgba(15, 23, 42, 0.2)',
+  },
 };
 
 export function MockHostPage({
@@ -78,6 +93,7 @@ export function MockHostPage({
       style={{
         minHeight: '100vh',
         background: t.pageBg,
+        backgroundSize: backdrop === 'editorial' ? '24px 24px, 24px 24px, auto' : undefined,
         color: t.textPrimary,
         paddingLeft: `${sidebarOffsetPx + 40}px`,
         paddingRight: '48px',
@@ -300,6 +316,99 @@ export function MockHostPage({
           </article>
         ))}
       </section>
+
+      {backdrop === 'editorial' && (
+        <section
+          aria-label="Optical Refraction Calibration Strip"
+          style={{
+            maxWidth: '920px',
+            marginTop: '32px',
+            borderRadius: '16px',
+            border: '1px solid rgba(15, 23, 42, 0.16)',
+            overflow: 'hidden',
+            background: '#ffffff',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1.2fr 1fr 1.2fr',
+              minHeight: '128px',
+            }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                background:
+                  'repeating-linear-gradient(45deg, #0f172a 0px, #0f172a 2px, #ffffff 2px, #ffffff 12px)',
+                display: 'flex',
+                alignItems: 'flex-end',
+              }}
+            >
+              <span
+                style={{
+                  background: 'rgba(255, 255, 255, 0.94)',
+                  color: '#0f172a',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(15, 23, 42, 0.15)',
+                }}
+              >
+                45° BEVEL REFRACTION TEST • 12PX PITCH
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(5, 1fr)',
+              }}
+            >
+              {['#ef4444', '#f59e0b', '#10b981', '#0ea5e9', '#6366f1'].map((hex) => (
+                <div
+                  key={hex}
+                  style={{
+                    background: hex,
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center',
+                    paddingBottom: '10px',
+                    color: '#ffffff',
+                    fontSize: '10px',
+                    fontFamily: 'ui-monospace, monospace',
+                    fontWeight: 700,
+                  }}
+                >
+                  {hex.slice(1).toUpperCase()}
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                padding: '16px 20px',
+                background: '#090d16',
+                color: '#f8fafc',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              }}
+            >
+              <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700 }}>
+                DARK INK CONTRAST & CHROMA EDGE
+              </div>
+              <div style={{ fontSize: '12px', lineHeight: 1.5, color: '#e2e8f0' }}>
+                Drag the launcher orb or dock pill over white grids, stripes, color bars, and dark ink.
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

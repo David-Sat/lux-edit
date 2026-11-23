@@ -1,8 +1,15 @@
-import { h, Fragment } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
-import { SourceLocation } from '@visual-edit/core';
+import { h } from 'preact';
+import { useState, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
+import {
+  PinAnchorOrigin,
+  PinRect,
+  getPinAnchorOrigin,
+  isDocumentScrollTarget,
+  locatePinTarget,
+} from './pin-position.js';
+import { usePinPeekDrag } from './pin-drag.js';
 
 function EditCommentTextarea({
   value,
@@ -59,75 +66,6 @@ function EditCommentTextarea({
   );
 }
 
-function locateElementOrBounds(
-  targetSelector?: string,
-  sourceLoc?: SourceLocation,
-  bounds?: { x: number; y: number; width?: number; height?: number }
-): { x: number; y: number; rect: DOMRect | { top: number; left: number; width: number; height: number } | null } {
-  const scrollX = typeof window !== 'undefined' ? window.scrollX || window.pageXOffset || 0 : 0;
-  const scrollY = typeof window !== 'undefined' ? window.scrollY || window.pageYOffset || 0 : 0;
-
-  const pinPosFromRect = (r: DOMRect) => {
-    const x = r.left + 12;
-    const y =
-      r.top < 4 && r.bottom > 28
-        ? Math.max(16, Math.min(r.top + 12, r.bottom - 12))
-        : r.top + 12;
-    return { x, y, rect: r };
-  };
-
-  // 1. Try exact targetSelector
-  if (targetSelector) {
-    try {
-      const el = document.querySelector(targetSelector) as HTMLElement | null;
-      if (el) {
-        return pinPosFromRect(el.getBoundingClientRect());
-      }
-    } catch {
-      // Ignore invalid selector syntax; fall back to id/xpath/bounds below.
-    }
-  }
-
-  // 2. Try ID if known
-  if (sourceLoc?.id) {
-    try {
-      const el = document.getElementById(sourceLoc.id);
-      if (el) {
-        return pinPosFromRect(el.getBoundingClientRect());
-      }
-    } catch {
-      // Ignore DOM lookup errors when resolving pin fallback ID.
-    }
-  }
-
-  // 3. Try XPath if known
-  if (sourceLoc?.xpath) {
-    try {
-      const result = document.evaluate(sourceLoc.xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-      if (result.singleNodeValue instanceof HTMLElement) {
-        return pinPosFromRect(result.singleNodeValue.getBoundingClientRect());
-      }
-    } catch {
-      // Ignore invalid XPath expressions; fall back to stored bounds below.
-    }
-  }
-
-  // 4. Fallback to stored document bounds
-  if (bounds) {
-    const vpLeft = bounds.x - scrollX;
-    const vpTop = bounds.y - scrollY;
-    const width = bounds.width || 0;
-    const height = bounds.height || 0;
-    return {
-      x: vpLeft + 12,
-      y: vpTop + 12,
-      rect: { top: vpTop, left: vpLeft, width, height },
-    };
-  }
-
-  return { x: 0, y: 0, rect: null };
-}
-
 export function CommentPins() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
@@ -136,11 +74,42 @@ export function CommentPins() {
   const [editingPinId, setEditingPinId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
 
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
+  const needsDocScrollSyncRef = useRef(false);
+
+  const { activeDragKey, snappingKey, startPinDrag, consumeSuppressedClick } = usePinPeekDrag({
+    onDragStart: () => {
+      setHoveredPinId(null);
+      setHoveredPinKey(null);
+    },
+  });
+
   const editingRef = useRef({ editingPinId, editText });
   editingRef.current = { editingPinId, editText };
 
   useEffect(() => {
+    let rafId = 0;
     const handleUpdate = () => setTick((t) => t + 1);
+    const scheduleSync = () => {
+      if (typeof window.requestAnimationFrame !== 'function') {
+        handleUpdate();
+        return;
+      }
+      if (rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        handleUpdate();
+      });
+    };
+
+    const handleScroll = (e: Event) => {
+      if (isDocumentScrollTarget(e.target) && !needsDocScrollSyncRef.current) {
+        return;
+      }
+      scheduleSync();
+    };
+
     const handleOutsideClick = () => {
       const { editingPinId: currentId, editText: currentText } = editingRef.current;
       if (currentId) {
@@ -161,15 +130,18 @@ export function CommentPins() {
       }
     };
 
-    window.addEventListener('scroll', handleUpdate, { passive: true });
-    window.addEventListener('resize', handleUpdate);
+    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    window.addEventListener('resize', scheduleSync);
     window.addEventListener('click', handleOutsideClick);
     window.addEventListener('keydown', handleKeyDown);
     const unsub = state.subscribe(handleUpdate);
 
     return () => {
-      window.removeEventListener('scroll', handleUpdate);
-      window.removeEventListener('resize', handleUpdate);
+      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', scheduleSync);
       window.removeEventListener('click', handleOutsideClick);
       window.removeEventListener('keydown', handleKeyDown);
       unsub();
@@ -192,10 +164,38 @@ export function CommentPins() {
     return observeNextDomCommit(() => setTick((t) => t + 1));
   }, [currentPath, hasAnnotations]);
 
-  if (state.annotations.length === 0) return null;
+  useLayoutEffect(() => {
+    if (!anchorRef.current) return;
+    const measured = getPinAnchorOrigin(anchorRef.current);
+    if (
+      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
+      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
+    ) {
+      setTick((t) => t + 1);
+    }
+  }, [hasAnnotations, state.annotations.length, currentPath]);
 
-  const connectors: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; active: boolean }> = [];
-  const targetHighlights: Array<{ id: string; top: number; left: number; width: number; height: number }> = [];
+  if (state.annotations.length === 0) {
+    needsDocScrollSyncRef.current = false;
+    return null;
+  }
+
+  const anchor = getPinAnchorOrigin(anchorRef.current);
+  anchorOriginRef.current = anchor;
+
+  const connectors: Array<{
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    active: boolean;
+  }> = [];
+  const targetHighlights: Array<{
+    id: string;
+    fixed: boolean;
+    rect: PinRect;
+  }> = [];
 
   const pinItems: Array<{
     pinKey: string;
@@ -204,9 +204,15 @@ export function CommentPins() {
     subLabel: string;
     isMulti: boolean;
     multiTotal: number;
+    fixed: boolean;
     x: number;
     y: number;
+    viewportX: number;
+    viewportY: number;
   }> = [];
+
+  let hasDynamicScrollPin = false;
+  let hasFixedConnectorEndpoint = false;
 
   state.annotations.forEach((ann, idx) => {
     if (ann.targets && ann.targets.length > 1) {
@@ -222,7 +228,7 @@ export function CommentPins() {
         return;
       }
 
-      const coords: Array<{ x: number; y: number; tIdx: number }> = [];
+      const coords: Array<{ x: number; y: number; fixed: boolean }> = [];
       const isAnnActive = hoveredPinId === ann.id || editingPinId === ann.id;
 
       ann.targets.forEach((t, tIdx) => {
@@ -230,11 +236,16 @@ export function CommentPins() {
           return;
         }
 
-        const { x, y, rect } = locateElementOrBounds(t.targetSelector, t.sourceLocation, t.bounds);
-        const found = rect !== null || x !== 0 || y !== 0;
+        const pos = locatePinTarget({
+          targetSelector: t.targetSelector,
+          sourceLoc: t.sourceLocation,
+          bounds: t.bounds,
+          anchor,
+        });
 
-        if (found) {
-          coords.push({ x, y, tIdx });
+        if (pos.found) {
+          if (pos.dynamicScroll) hasDynamicScrollPin = true;
+          coords.push({ x: pos.x, y: pos.y, fixed: pos.fixed });
           pinItems.push({
             pinKey: `${ann.id}_${tIdx}`,
             ann,
@@ -242,17 +253,18 @@ export function CommentPins() {
             subLabel: `${idx + 1}${String.fromCharCode(65 + tIdx)}`,
             isMulti: true,
             multiTotal: ann.targets!.length,
-            x,
-            y,
+            fixed: pos.fixed,
+            x: pos.x,
+            y: pos.y,
+            viewportX: pos.viewportX,
+            viewportY: pos.viewportY,
           });
 
-          if (isAnnActive && rect) {
+          if (isAnnActive && pos.rect) {
             targetHighlights.push({
               id: `${ann.id}_hl_${tIdx}`,
-              top: rect.top,
-              left: rect.left,
-              width: rect.width,
-              height: rect.height,
+              fixed: pos.fixed,
+              rect: pos.rect,
             });
           }
         }
@@ -260,12 +272,15 @@ export function CommentPins() {
 
       if (coords.length > 1) {
         for (let i = 0; i < coords.length - 1; i++) {
+          const a = coords[i];
+          const b = coords[i + 1];
+          if (a.fixed || b.fixed) hasFixedConnectorEndpoint = true;
           connectors.push({
             id: `${ann.id}_conn_${i}`,
-            x1: coords[i].x,
-            y1: coords[i].y,
-            x2: coords[i + 1].x,
-            y2: coords[i + 1].y,
+            x1: a.fixed ? a.x - anchor.left : a.x,
+            y1: a.fixed ? a.y - anchor.top : a.y,
+            x2: b.fixed ? b.x - anchor.left : b.x,
+            y2: b.fixed ? b.y - anchor.top : b.y,
             active: isAnnActive,
           });
         }
@@ -279,9 +294,14 @@ export function CommentPins() {
         return;
       }
 
-      const { x, y } = locateElementOrBounds(ann.targetSelector, ann.sourceLocation, ann.bounds);
-      const found = x !== 0 || y !== 0;
-      if (found) {
+      const pos = locatePinTarget({
+        targetSelector: ann.targetSelector,
+        sourceLoc: ann.sourceLocation,
+        bounds: ann.bounds,
+        anchor,
+      });
+      if (pos.found) {
+        if (pos.dynamicScroll) hasDynamicScrollPin = true;
         pinItems.push({
           pinKey: ann.id,
           ann,
@@ -289,62 +309,124 @@ export function CommentPins() {
           subLabel: `${idx + 1}`,
           isMulti: false,
           multiTotal: 1,
-          x,
-          y,
+          fixed: pos.fixed,
+          x: pos.x,
+          y: pos.y,
+          viewportX: pos.viewportX,
+          viewportY: pos.viewportY,
         });
       }
     }
   });
 
+  needsDocScrollSyncRef.current =
+    hasDynamicScrollPin ||
+    hasFixedConnectorEndpoint ||
+    hoveredPinId !== null ||
+    editingPinId !== null ||
+    activeDragKey !== null;
+
   if (pinItems.length === 0 && connectors.length === 0 && targetHighlights.length === 0) {
     return null;
   }
 
+  let connectorSvg = null;
+  if (connectors.length > 0) {
+    const svgPad = 24;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const c of connectors) {
+      minX = Math.min(minX, c.x1, c.x2);
+      minY = Math.min(minY, c.y1, c.y2);
+      maxX = Math.max(maxX, c.x1, c.x2);
+      maxY = Math.max(maxY, c.y1, c.y2);
+    }
+    minX = Math.floor(minX - svgPad);
+    minY = Math.floor(minY - svgPad);
+    const svgW = Math.max(1, Math.ceil(maxX + svgPad - minX));
+    const svgH = Math.max(1, Math.ceil(maxY + svgPad - minY));
+
+    connectorSvg = (
+      <svg
+        class="ve-pins-svg-overlay"
+        width={svgW}
+        height={svgH}
+        viewBox={`${minX} ${minY} ${svgW} ${svgH}`}
+        style={{
+          left: `${minX}px`,
+          top: `${minY}px`,
+          width: `${svgW}px`,
+          height: `${svgH}px`,
+        }}
+      >
+        {connectors.map((c) => (
+          <line
+            key={c.id}
+            x1={c.x1}
+            y1={c.y1}
+            x2={c.x2}
+            y2={c.y2}
+            stroke={c.active ? '#38bdf8' : 'rgba(56, 189, 248, 0.45)'}
+            stroke-width={c.active ? '3' : '2'}
+            stroke-dasharray={c.active ? '6 3' : '4 3'}
+            style={{
+              filter: c.active ? 'drop-shadow(0 0 8px rgba(56, 189, 248, 0.95))' : undefined,
+              transition:
+                'stroke 0.15s ease-out, stroke-width 0.15s ease-out, filter 0.15s ease-out',
+            }}
+          />
+        ))}
+      </svg>
+    );
+  }
+
   return (
-    <Fragment>
+    <div class="ve-pins-layer" ref={anchorRef}>
       {targetHighlights.map((hl) => (
         <div
           key={hl.id}
           class="ve-pin-target-highlight"
           style={{
-            top: `${hl.top}px`,
-            left: `${hl.left}px`,
-            width: `${hl.width}px`,
-            height: `${hl.height}px`,
+            position: hl.fixed ? 'fixed' : undefined,
+            top: `${hl.rect.top}px`,
+            left: `${hl.rect.left}px`,
+            width: `${hl.rect.width}px`,
+            height: `${hl.rect.height}px`,
           }}
         />
       ))}
 
-      {connectors.length > 0 && (
-        <svg class="ve-pins-svg-overlay">
-          {connectors.map((c) => (
-            <line
-              key={c.id}
-              x1={c.x1}
-              y1={c.y1}
-              x2={c.x2}
-              y2={c.y2}
-              stroke={c.active ? '#38bdf8' : 'rgba(56, 189, 248, 0.45)'}
-              stroke-width={c.active ? '3' : '2'}
-              stroke-dasharray={c.active ? '6 3' : '4 3'}
-              style={{
-                filter: c.active ? 'drop-shadow(0 0 8px rgba(56, 189, 248, 0.95))' : undefined,
-                transition: 'all 0.15s ease-out',
-              }}
-            />
-          ))}
-        </svg>
-      )}
+      {connectorSvg}
 
       {pinItems.map((item) => {
-        const { pinKey, ann, annIdx, subLabel, isMulti, multiTotal, x, y } = item;
+        const {
+          pinKey,
+          ann,
+          annIdx,
+          subLabel,
+          isMulti,
+          multiTotal,
+          fixed,
+          x,
+          y,
+          viewportX,
+          viewportY,
+        } = item;
+        const isDragging = activeDragKey === pinKey;
+        const isSnapping = snappingKey === pinKey;
         const isHovered = hoveredPinId === ann.id || editingPinId === ann.id;
         const isEditing = editingPinId === ann.id;
-        const showTooltip = isHovered && (hoveredPinKey === pinKey || (!hoveredPinKey && isEditing));
+        const showTooltip =
+          !isDragging &&
+          activeDragKey !== pinKey &&
+          isHovered &&
+          (hoveredPinKey === pinKey || (!hoveredPinKey && isEditing));
 
-        const isNearTop = y < (isEditing ? 300 : 240);
-        const isNearLeft = x < 190;
-        const isNearRight = x > (window.innerWidth || 1000) - 200;
+        const isNearTop = viewportY < (isEditing ? 300 : 240);
+        const isNearLeft = viewportX < 190;
+        const isNearRight = viewportX > (window.innerWidth || 1000) - 200;
 
         const tooltipPositionStyle: Record<string, string> = {
           left: isNearLeft ? '-8px' : isNearRight ? 'auto' : '50%',
@@ -355,22 +437,43 @@ export function CommentPins() {
         return (
           <div
             key={pinKey}
-            class={`ve-pin ${isMulti ? 've-pin-multi' : ''}`}
-            style={{ left: `${x}px`, top: `${y}px` }}
+            class={[
+              've-pin',
+              isMulti ? 've-pin-multi' : '',
+              isDragging ? 've-dragging' : '',
+              isSnapping ? 've-snapping' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{
+              position: fixed ? 'fixed' : undefined,
+              left: `${x}px`,
+              top: `${y}px`,
+            }}
+            onPointerDown={(e) => {
+              startPinDrag(e, {
+                pinKey,
+                pinEl: e.currentTarget as HTMLElement,
+              });
+            }}
             onMouseEnter={() => {
-              if (!editingPinId) {
+              if (!activeDragKey && !editingPinId) {
                 setHoveredPinId(ann.id);
                 setHoveredPinKey(pinKey);
               }
             }}
             onMouseLeave={() => {
-              if (!editingPinId) {
+              if (!activeDragKey && !editingPinId) {
                 setHoveredPinId(null);
                 setHoveredPinKey(null);
               }
             }}
             onClick={(e) => {
               e.stopPropagation();
+              if (consumeSuppressedClick(pinKey)) {
+                e.preventDefault();
+                return;
+              }
               if (editingPinId === ann.id) {
                 state.updateAnnotation(ann.id, editText);
                 setEditingPinId(null);
@@ -390,7 +493,9 @@ export function CommentPins() {
               e.stopPropagation();
             }}
           >
-            <span>{subLabel}</span>
+            <span class="ve-glass-surface" aria-hidden="true" />
+            <span class="ve-glass-bevel" aria-hidden="true" />
+            <span class="ve-pin-label">{subLabel}</span>
             {isMulti && (
               <span class="ve-pin-link-badge" title={`Linked to ${multiTotal} elements`}>
                 <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
@@ -406,6 +511,8 @@ export function CommentPins() {
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
+                <span class="ve-glass-surface" aria-hidden="true" />
+                <span class="ve-glass-bevel" aria-hidden="true" />
                 <div class="ve-pin-tooltip-header">
                   <strong class="ve-pin-tooltip-title">
                     {isMulti
@@ -501,6 +608,6 @@ export function CommentPins() {
           </div>
         );
       })}
-    </Fragment>
+    </div>
   );
 }

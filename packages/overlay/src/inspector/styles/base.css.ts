@@ -60,7 +60,7 @@ export const BASE_CSS = `
   user-select: none;
   -webkit-font-smoothing: antialiased;
   z-index: 2147483647;
-  position: fixed;
+  position: absolute;
   inset-block-start: 0;
   inset-inline-start: 0;
   inline-size: 0;

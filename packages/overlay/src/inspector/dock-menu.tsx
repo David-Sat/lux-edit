@@ -1,14 +1,21 @@
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { VoiceRecorder } from './voice-recorder.js';
+import { createLiquidDragDeformer, prefersReducedMotion } from './liquid-glass.js';
 
-function useDraggableDock() {
+type DockSurfaceAnim = 'idle' | 'morph' | 'settle';
+type OrbSurfaceAnim = 'idle' | 'morph' | 'settle';
+type DockFocusKey = 'edit' | 'comment' | 'screenshot' | 'drawer';
+
+function useDraggableDock(callbacks?: { onDragStart?: () => void; onDropSettle?: () => void }) {
   const state = OverlayStateManager.getInstance();
   const [isDragging, setIsDragging] = useState(false);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const wasDraggingRef = useRef(false);
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
 
   useEffect(() => {
     return () => {
@@ -46,16 +53,24 @@ function useDraggableDock() {
     const height = rect.height;
 
     let hasMoved = false;
+    let lastX = startX;
+    let lastY = startY;
+    const deformer = createLiquidDragDeformer(targetElement);
     wasDraggingRef.current = false;
 
     const onPointerMove = (moveEv: PointerEvent) => {
       const dx = moveEv.clientX - startX;
       const dy = moveEv.clientY - startY;
+      const stepDx = moveEv.clientX - lastX;
+      const stepDy = moveEv.clientY - lastY;
+      lastX = moveEv.clientX;
+      lastY = moveEv.clientY;
 
       if (!hasMoved) {
         if (Math.hypot(dx, dy) >= 4) {
           hasMoved = true;
           setIsDragging(true);
+          callbacksRef.current?.onDragStart?.();
         }
       }
 
@@ -64,6 +79,7 @@ function useDraggableDock() {
         const newX = Math.max(10, Math.min(window.innerWidth - width - 10, initialLeft + dx));
         const newY = Math.max(10, Math.min(window.innerHeight - height - 10, initialTop + dy));
         setDragPos({ x: newX, y: newY });
+        deformer.push(stepDx, stepDy);
       }
     };
 
@@ -101,6 +117,7 @@ function useDraggableDock() {
         }
 
         state.setDockPosition({ side, verticalAnchor, offsetY });
+        callbacksRef.current?.onDropSettle?.();
       }
 
       setIsDragging(false);
@@ -108,6 +125,7 @@ function useDraggableDock() {
     };
 
     const cleanup = () => {
+      deformer.clear();
       window.removeEventListener('pointermove', onPointerMove, true);
       window.removeEventListener('pointerup', onPointerUp, true);
       window.removeEventListener('pointercancel', onPointerUp, true);
@@ -133,7 +151,56 @@ export function DockMenu() {
   const recorder = VoiceRecorder.getInstance();
   const [, setTick] = useState(0);
   const [voiceState, setVoiceState] = useState(recorder.getState());
-  const { isDragging, dragPos, wasDraggingRef, startDrag } = useDraggableDock();
+  const [dockAnim, setDockAnim] = useState<DockSurfaceAnim>('idle');
+  const [orbAnim, setOrbAnim] = useState<OrbSurfaceAnim>('idle');
+
+  const isLauncherView = !state.isDockMenuOpen && state.activeTool === 'none';
+  const isLive = state.reviewMode === 'live';
+  const focusKey: DockFocusKey | null =
+    state.activeTool === 'edit'
+      ? 'edit'
+      : state.activeTool === 'comment'
+        ? 'comment'
+        : state.activeTool === 'screenshot'
+          ? 'screenshot'
+          : state.isDrawerOpen
+            ? 'drawer'
+            : null;
+
+  const itemRefs = useRef<Partial<Record<DockFocusKey, HTMLButtonElement | null>>>({});
+  const [focusRect, setFocusRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [focusSliding, setFocusSliding] = useState(false);
+  const [isFocusGliding, setIsFocusGliding] = useState(false);
+  const prevFocusKeyRef = useRef<DockFocusKey | null>(null);
+  const focusGlideTimerRef = useRef<number | null>(null);
+  const prevWasLauncherRef = useRef(isLauncherView);
+
+  const handleDragStart = useCallback(() => {
+    setDockAnim('idle');
+    setOrbAnim('idle');
+  }, []);
+
+  const handleDropSettle = useCallback(() => {
+    if (prefersReducedMotion()) return;
+    if (isLauncherView) {
+      setOrbAnim('settle');
+    } else {
+      setDockAnim('settle');
+    }
+  }, [isLauncherView]);
+
+  const { isDragging, dragPos, wasDraggingRef, startDrag } = useDraggableDock({
+    onDragStart: handleDragStart,
+    onDropSettle: handleDropSettle,
+  });
+
+  const hasActiveOption =
+    state.activeTool !== 'none' || state.isDrawerOpen || state.reviewMode === 'live';
 
   useEffect(() => {
     const unsubState = state.subscribe(() => setTick((t) => t + 1));
@@ -141,8 +208,97 @@ export function DockMenu() {
     return () => {
       unsubState();
       unsubRecorder();
+      if (focusGlideTimerRef.current !== null) {
+        window.clearTimeout(focusGlideTimerRef.current);
+      }
     };
   }, [state, recorder]);
+
+  useLayoutEffect(() => {
+    const prevWasLauncher = prevWasLauncherRef.current;
+    prevWasLauncherRef.current = isLauncherView;
+
+    if (prefersReducedMotion()) {
+      setDockAnim('idle');
+      setOrbAnim('idle');
+      return;
+    }
+
+    if (prevWasLauncher && !isLauncherView) {
+      setDockAnim('morph');
+      setOrbAnim('idle');
+    } else if (!prevWasLauncher && isLauncherView) {
+      setOrbAnim('morph');
+      setDockAnim('idle');
+    }
+  }, [isLauncherView]);
+
+  useLayoutEffect(() => {
+    if (isLauncherView || state.activeTool === 'voice') {
+      prevFocusKeyRef.current = null;
+      setFocusSliding(false);
+      setIsFocusGliding(false);
+      return;
+    }
+
+    const prevKey = prevFocusKeyRef.current;
+    prevFocusKeyRef.current = focusKey;
+
+    const targetBtn = focusKey ? itemRefs.current[focusKey] : null;
+    if (!targetBtn) {
+      setFocusSliding(false);
+      setIsFocusGliding(false);
+      return;
+    }
+
+    const FOCUS_PAD_X = 6;
+    const FOCUS_PAD_Y = 4;
+    const nextRect = {
+      left: targetBtn.offsetLeft - FOCUS_PAD_X,
+      top: targetBtn.offsetTop - FOCUS_PAD_Y,
+      width: targetBtn.offsetWidth + FOCUS_PAD_X * 2,
+      height: targetBtn.offsetHeight + FOCUS_PAD_Y * 2,
+    };
+    const shouldSlide =
+      !prefersReducedMotion() &&
+      prevKey !== null &&
+      nextRect.width > 0 &&
+      nextRect.height > 0;
+
+    setFocusSliding(shouldSlide);
+    setFocusRect((prev) =>
+      prev &&
+      prev.left === nextRect.left &&
+      prev.top === nextRect.top &&
+      prev.width === nextRect.width &&
+      prev.height === nextRect.height
+        ? prev
+        : nextRect
+    );
+
+    if (shouldSlide && prevKey !== focusKey) {
+      if (focusGlideTimerRef.current !== null) {
+        window.clearTimeout(focusGlideTimerRef.current);
+      }
+      setIsFocusGliding(true);
+      focusGlideTimerRef.current = window.setTimeout(() => {
+        focusGlideTimerRef.current = null;
+        setIsFocusGliding(false);
+      }, 260);
+    }
+  }, [isLauncherView, state.activeTool, state.isDrawerOpen, isLive, focusKey]);
+
+  const handleDockAnimationEnd = (e: AnimationEvent) => {
+    if (e.target === e.currentTarget) {
+      setDockAnim('idle');
+    }
+  };
+
+  const handleOrbAnimationEnd = (e: AnimationEvent) => {
+    if (e.target === e.currentTarget) {
+      setOrbAnim('idle');
+    }
+  };
 
   const totalCount =
     state.mutations.length +
@@ -157,7 +313,9 @@ export function DockMenu() {
 
     return (
       <div
-        class={`ve-dock-menu ve-voice-recording-dock ${voiceState.isReady ? 'is-ready' : ''} ${isDragging ? 've-dragging' : ''}`}
+        class={`ve-dock-menu ve-voice-recording-dock ${voiceState.isReady ? 'is-ready' : ''} ${isDragging ? 've-dragging' : ''} ${hasActiveOption ? 've-has-selection' : ''}`}
+        data-ve-anim={dockAnim}
+        onAnimationEnd={handleDockAnimationEnd}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={
@@ -174,6 +332,8 @@ export function DockMenu() {
             : undefined
         }
       >
+        <span class="ve-glass-surface" aria-hidden="true" />
+        <span class="ve-glass-bevel" aria-hidden="true" />
         <div
           class="ve-dock-drag-handle"
           title="Drag to reposition (snaps to edge)"
@@ -252,10 +412,12 @@ export function DockMenu() {
     );
   }
 
-  if (!state.isDockMenuOpen && state.activeTool === 'none') {
+  if (isLauncherView) {
     return (
       <button
         class={`ve-launcher-btn ${isDragging ? 've-dragging' : ''}`}
+        data-ve-anim={orbAnim}
+        onAnimationEnd={handleOrbAnimationEnd}
         style={
           isDragging && dragPos
             ? {
@@ -279,6 +441,8 @@ export function DockMenu() {
           state.setDockMenuOpen(true);
         }}
       >
+        <span class="ve-glass-surface" aria-hidden="true" />
+        <span class="ve-glass-bevel" aria-hidden="true" />
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="12 2 2 7 12 12 22 7 12 2" />
           <polyline points="2 17 12 22 22 17" />
@@ -289,11 +453,11 @@ export function DockMenu() {
     );
   }
 
-  const isLive = state.reviewMode === 'live';
-
   return (
     <div
-      class={`ve-dock-menu ${isDragging ? 've-dragging' : ''}`}
+      class={`ve-dock-menu ${isDragging ? 've-dragging' : ''} ${hasActiveOption ? 've-has-selection' : ''}`}
+      data-ve-anim={dockAnim}
+      onAnimationEnd={handleDockAnimationEnd}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       style={
@@ -310,6 +474,21 @@ export function DockMenu() {
           : undefined
       }
     >
+      <span class="ve-glass-surface" aria-hidden="true" />
+      <span class="ve-glass-bevel" aria-hidden="true" />
+      <span
+        class={`ve-dock-focus-pill ${focusKey ? 'is-visible' : ''} ${focusSliding ? 'is-sliding' : ''} ${isFocusGliding ? 'is-gliding' : ''}`}
+        aria-hidden="true"
+        style={
+          focusRect
+            ? {
+                width: `${focusRect.width}px`,
+                height: `${focusRect.height}px`,
+                transform: `translate3d(${focusRect.left}px, ${focusRect.top}px, 0)`,
+              }
+            : undefined
+        }
+      />
       <div
         class="ve-dock-drag-handle"
         title="Drag to reposition (snaps to edge)"
@@ -341,7 +520,10 @@ export function DockMenu() {
         <span>{isLive ? 'Live' : 'Batch'}</span>
       </button>
       <button
-        class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''}`}
+        ref={(el) => {
+          itemRefs.current.edit = el;
+        }}
+        class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''} ${focusKey === 'edit' ? 've-focus-target' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'edit' ? 'none' : 'edit')}
         title="Visual Edit Mode (V)"
       >
@@ -351,7 +533,10 @@ export function DockMenu() {
         </svg>
       </button>
       <button
-        class={`ve-dock-item ${state.activeTool === 'comment' ? 've-active' : ''}`}
+        ref={(el) => {
+          itemRefs.current.comment = el;
+        }}
+        class={`ve-dock-item ${state.activeTool === 'comment' ? 've-active' : ''} ${focusKey === 'comment' ? 've-focus-target' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'comment' ? 'none' : 'comment')}
         title="Comment Pin Mode (C)"
       >
@@ -371,7 +556,10 @@ export function DockMenu() {
         </svg>
       </button>
       <button
-        class={`ve-dock-item ${state.activeTool === 'screenshot' ? 've-active' : ''}`}
+        ref={(el) => {
+          itemRefs.current.screenshot = el;
+        }}
+        class={`ve-dock-item ${state.activeTool === 'screenshot' ? 've-active' : ''} ${focusKey === 'screenshot' ? 've-focus-target' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'screenshot' ? 'none' : 'screenshot')}
         title="Capture Visual Screenshot (S)"
       >
@@ -381,7 +569,10 @@ export function DockMenu() {
         </svg>
       </button>
       <button
-        class={`ve-dock-item ve-dock-item--relative ${state.isDrawerOpen ? 've-active' : ''}`}
+        ref={(el) => {
+          itemRefs.current.drawer = el;
+        }}
+        class={`ve-dock-item ve-dock-item--relative ${state.isDrawerOpen ? 've-active' : ''} ${focusKey === 'drawer' ? 've-focus-target' : ''}`}
         onClick={() => state.setDrawerOpen(!state.isDrawerOpen)}
         title={`Review Changes (${totalCount})`}
       >

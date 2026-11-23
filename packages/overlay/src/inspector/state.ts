@@ -17,6 +17,11 @@ import {
 import { VoiceRecorder } from './voice-recorder.js';
 import { getRouteFromLocation, normalizeRoute } from './route-utils.js';
 import { DomMutationManager, ElementSnapshot } from './dom-mutations.js';
+import {
+  DEFAULT_LIQUID_GLASS_TUNING,
+  GlassMaterialMode,
+  LiquidGlassTuning,
+} from './liquid-glass.js';
 import { VariantManager } from './variant-manager.js';
 import { VoiceReviewManager } from './voice-review-manager.js';
 import { AnnotationManager } from './annotation-manager.js';
@@ -75,6 +80,8 @@ export class OverlayStateManager {
   public activeTool: ActiveTool = 'none';
   public isDockMenuOpen = false;
   public isDrawerOpen = false;
+  public glassMode: GlassMaterialMode = 'svg-refract';
+  public glassTuning: LiquidGlassTuning = { ...DEFAULT_LIQUID_GLASS_TUNING };
   public dockPosition: DockPosition = {
     side: 'right',
     verticalAnchor: 'bottom',
@@ -783,6 +790,22 @@ export class OverlayStateManager {
   public setDockMenuOpen(val: boolean): void {
     this.isDockMenuOpen = val;
     this.notify();
+  }
+
+  public setGlassMode(mode: GlassMaterialMode): void {
+    if (this.glassMode === mode) return;
+    this.glassMode = mode;
+    this.notify({ skipSync: true });
+  }
+
+  public setGlassTuning(patch: Partial<LiquidGlassTuning>): void {
+    this.glassTuning = { ...this.glassTuning, ...patch };
+    this.notify({ skipSync: true });
+  }
+
+  public resetGlassTuning(): void {
+    this.glassTuning = { ...DEFAULT_LIQUID_GLASS_TUNING };
+    this.notify({ skipSync: true });
   }
 
   public setDockPosition(pos: DockPosition): void {

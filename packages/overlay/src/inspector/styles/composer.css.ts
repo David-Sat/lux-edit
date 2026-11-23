@@ -90,13 +90,20 @@ export const COMPOSER_CSS = `
   }
 }
 
+.ve-pins-layer {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 0;
+  block-size: 0;
+  pointer-events: none;
+}
+
 .ve-pins-svg-overlay {
-  position: fixed;
-  inset: 0;
+  position: absolute;
   pointer-events: none;
   z-index: calc(var(--ve-z-pin) - 1);
-  inline-size: 100vw;
-  block-size: 100vh;
+  overflow: visible;
 }
 
 .ve-hint {
@@ -114,7 +121,7 @@ export const COMPOSER_CSS = `
 
 /* Comment Pins on Canvas */
 .ve-pin {
-  position: fixed;
+  position: absolute;
   inline-size: 26px;
   block-size: 26px;
   border-radius: 50%;
@@ -131,6 +138,7 @@ export const COMPOSER_CSS = `
     0 0 0 1px rgba(0, 0, 0, 0.3),
     inset 0 1px 1.5px rgba(255, 255, 255, 0.4);
   cursor: pointer;
+  touch-action: none;
   pointer-events: auto;
   z-index: var(--ve-z-pin);
   transform: translate(-50%, -50%);
@@ -179,7 +187,7 @@ export const COMPOSER_CSS = `
 }
 
 .ve-pin-target-highlight {
-  position: fixed;
+  position: absolute;
   pointer-events: none;
   border: 2px dashed #38bdf8;
   background-color: rgba(56, 189, 248, 0.12);
@@ -215,9 +223,9 @@ export const COMPOSER_CSS = `
     &::after {
       content: '';
       position: absolute;
-      inset-block-end: -16px;
-      inset-inline: -20px;
-      block-size: 20px;
+      inset-block-end: -4px;
+      inset-inline: -8px;
+      block-size: 5px;
       background: transparent;
       pointer-events: auto;
     }
@@ -230,9 +238,9 @@ export const COMPOSER_CSS = `
     &::after {
       content: '';
       position: absolute;
-      inset-block-start: -16px;
-      inset-inline: -20px;
-      block-size: 20px;
+      inset-block-start: -4px;
+      inset-inline: -8px;
+      block-size: 5px;
       background: transparent;
       pointer-events: auto;
     }

@@ -10,7 +10,12 @@ import {
 } from '../inspector/route-utils.js';
 import { VoicePins } from '../inspector/voice-pins.js';
 import { EditReviewDrawer } from '../drawer/edit-review-drawer.js';
+import { clampPinDragOffset, parseTranslateOffset } from '../inspector/pin-drag.js';
+import { locatePinTarget } from '../inspector/pin-position.js';
 import { OverlayStateManager } from '../inspector/state.js';
+import { BASE_CSS } from '../inspector/styles/base.css.js';
+import { COMPOSER_CSS } from '../inspector/styles/composer.css.js';
+import { LIQUID_GLASS_CSS } from '../inspector/styles/liquid-glass.css.js';
 
 const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 const flushRender = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
@@ -497,6 +502,300 @@ describe('Route-aware Pins & Navigation', () => {
 
       render(h(EditReviewDrawer, {}), mount);
       expect(mount.textContent).toContain('/about');
+
+      render(null, mount);
+    });
+
+    it('locatePinTarget tracks document coordinates linearly across viewport edges, detects fixed parents, and resolves bounds fallback', () => {
+      const docEl = document.createElement('section');
+      docEl.id = 'scroll-target';
+      docEl.getBoundingClientRect = () =>
+        ({ left: 40, top: 2, width: 120, height: 100, right: 160, bottom: 102, x: 40, y: 2, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(docEl);
+
+      // Crossing top viewport edge (top = 2 < 4 while bottom = 102 > 28) must NOT clamp to 16
+      const nearTop = locatePinTarget({
+        targetSelector: '#scroll-target',
+        anchor: { left: 0, top: -198 },
+      });
+      expect(nearTop.found).toBe(true);
+      expect(nearTop.fixed).toBe(false);
+      expect(nearTop.viewportX).toBe(52);
+      expect(nearTop.viewportY).toBe(14);
+      expect(nearTop.x).toBe(52);
+      expect(nearTop.y).toBe(212);
+
+      // Scrolled further up (top = -18, bottom = 82) keeps identical document coordinate 212 without jumping
+      docEl.getBoundingClientRect = () =>
+        ({ left: 40, top: -18, width: 120, height: 100, right: 160, bottom: 82, x: 40, y: -18, toJSON: () => {} } as DOMRect);
+      const scrolledPartway = locatePinTarget({
+        targetSelector: '#scroll-target',
+        anchor: { left: 0, top: -218 },
+      });
+      expect(scrolledPartway.viewportY).toBe(-6);
+      expect(scrolledPartway.y).toBe(212);
+
+      // Scrolled completely past bottom <= 28 (top = -80, bottom = 20) still stays locked at document coordinate 212
+      docEl.getBoundingClientRect = () =>
+        ({ left: 40, top: -80, width: 120, height: 100, right: 160, bottom: 20, x: 40, y: -80, toJSON: () => {} } as DOMRect);
+      const scrolledPast = locatePinTarget({
+        targetSelector: '#scroll-target',
+        anchor: { left: 0, top: -280 },
+      });
+      expect(scrolledPast.viewportY).toBe(-68);
+      expect(scrolledPast.y).toBe(212);
+
+      // Element inside a position: fixed ancestor switches to fixed: true and viewport coordinates
+      const fixedHeader = document.createElement('header');
+      fixedHeader.style.position = 'fixed';
+      const fixedBtn = document.createElement('button');
+      fixedBtn.id = 'fixed-btn';
+      fixedBtn.getBoundingClientRect = () =>
+        ({ left: 200, top: 18, width: 80, height: 32, right: 280, bottom: 50, x: 200, y: 18, toJSON: () => {} } as DOMRect);
+      fixedHeader.appendChild(fixedBtn);
+      document.body.appendChild(fixedHeader);
+
+      const fixedPos = locatePinTarget({
+        targetSelector: '#fixed-btn',
+        anchor: { left: 0, top: -300 },
+      });
+      expect(fixedPos.found).toBe(true);
+      expect(fixedPos.fixed).toBe(true);
+      expect(fixedPos.x).toBe(212);
+      expect(fixedPos.y).toBe(30);
+
+      // Missing selector falls back to stored document bounds relative to anchor
+      Object.defineProperty(window, 'scrollX', { value: 20, configurable: true });
+      Object.defineProperty(window, 'scrollY', { value: 150, configurable: true });
+      const fallback = locatePinTarget({
+        targetSelector: '#does-not-exist',
+        bounds: { x: 100, y: 300, width: 90, height: 40 },
+        anchor: { left: -20, top: -150 },
+      });
+      expect(fallback.found).toBe(true);
+      expect(fallback.fixed).toBe(false);
+      expect(fallback.x).toBe(112);
+      expect(fallback.y).toBe(312);
+      expect(fallback.rect).toEqual({ left: 100, top: 300, width: 90, height: 40 });
+      Object.defineProperty(window, 'scrollX', { value: 0, configurable: true });
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+    });
+
+    it('CommentPins uses absolute document positioning in CSS, keeps pins mounted at (0, 0), and skips document-scroll re-renders', async () => {
+      const hostRule = BASE_CSS.match(/:host\s*\{[\s\S]*?\}/)?.[0] ?? '';
+      expect(hostRule).toContain('position: absolute;');
+      const pinCssRule = COMPOSER_CSS.match(/\/\* Comment Pins on Canvas \*\/\s*\.ve-pin\s*\{[\s\S]*?transform:/)?.[0] ?? '';
+      expect(pinCssRule).toContain('position: absolute;');
+      expect(COMPOSER_CSS).toContain('.ve-pins-layer {');
+
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const originTarget = document.createElement('div');
+      originTarget.id = 'origin-pin-target';
+      const originRectSpy = vi.fn(
+        () => ({ left: -12, top: -12, width: 80, height: 40, right: 68, bottom: 28, x: -12, y: -12, toJSON: () => {} } as DOMRect)
+      );
+      originTarget.getBoundingClientRect = originRectSpy;
+      document.body.appendChild(originTarget);
+
+      state.handleRouteChange('/');
+      state.addComment('Zero coordinate pin', originTarget);
+
+      render(h(CommentPins, {}), mount);
+      await flushRender();
+
+      const renderedPin = mount.querySelector('.ve-pin') as HTMLElement | null;
+      expect(renderedPin).not.toBeNull();
+      expect(renderedPin!.style.left).toBe('0px');
+      expect(renderedPin!.style.top).toBe('0px');
+
+      // Normal document scroll must NOT re-render or re-measure document-anchored pins
+      originRectSpy.mockClear();
+      document.dispatchEvent(new Event('scroll'));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(originRectSpy).not.toHaveBeenCalled();
+
+      // Nested scrollable container scroll SHOULD schedule a pin position sync
+      const scrollBox = document.createElement('div');
+      scrollBox.style.overflowY = 'auto';
+      Object.defineProperty(scrollBox, 'scrollHeight', { value: 600, configurable: true });
+      Object.defineProperty(scrollBox, 'clientHeight', { value: 200, configurable: true });
+      const nestedTarget = document.createElement('p');
+      nestedTarget.id = 'nested-scroll-target';
+      const nestedRectSpy = vi.fn(
+        () => ({ left: 30, top: 80, width: 120, height: 24, right: 150, bottom: 104, x: 30, y: 80, toJSON: () => {} } as DOMRect)
+      );
+      nestedTarget.getBoundingClientRect = nestedRectSpy;
+      scrollBox.appendChild(nestedTarget);
+      document.body.appendChild(scrollBox);
+
+      state.addComment('Nested pin', nestedTarget);
+      await flushRender();
+      nestedRectSpy.mockClear();
+
+      scrollBox.dispatchEvent(new Event('scroll'));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(nestedRectSpy).toHaveBeenCalled();
+
+      render(null, mount);
+    });
+
+    it('parseTranslateOffset and clampPinDragOffset parse CSS translate values and bound peek offsets to viewport', () => {
+      expect(parseTranslateOffset(null)).toEqual({ dx: 0, dy: 0 });
+      expect(parseTranslateOffset('')).toEqual({ dx: 0, dy: 0 });
+      expect(parseTranslateOffset('none')).toEqual({ dx: 0, dy: 0 });
+      expect(parseTranslateOffset('40px')).toEqual({ dx: 40, dy: 0 });
+      expect(parseTranslateOffset('40px -25px')).toEqual({ dx: 40, dy: -25 });
+      expect(parseTranslateOffset('12.5px 8px 0px')).toEqual({ dx: 12.5, dy: 8 });
+
+      // Clamped inside [16, viewport - 16] around homeCenter
+      expect(clampPinDragOffset(80, 45, 200, 180, 1000, 800, 16)).toEqual({ dx: 80, dy: 45 });
+      expect(clampPinDragOffset(-500, 900, 200, 180, 1000, 800, 16)).toEqual({
+        dx: -184,
+        dy: 604,
+      });
+      // When viewport <= margin * 2, leaves offsets unclamped safely
+      expect(clampPinDragOffset(80, 45, 20, 20, 30, 30, 16)).toEqual({ dx: 80, dy: 45 });
+    });
+
+    it('CommentPins supports uniform drag-to-peek without a tether line, keeps cursor pointer on hover, snaps back on release, and preserves click editing', async () => {
+      const pinCssRule = COMPOSER_CSS.match(/\/\* Comment Pins on Canvas \*\/\s*\.ve-pin\s*\{[\s\S]*?transform:/)?.[0] ?? '';
+      expect(pinCssRule).toContain('cursor: pointer;');
+      expect(pinCssRule).not.toContain('cursor: grab;');
+      expect(COMPOSER_CSS).not.toContain('.ve-pin-drag-tether');
+      expect(COMPOSER_CSS).not.toContain('inset-block-end: -16px');
+      expect(COMPOSER_CSS).not.toContain('inset-block-start: -16px');
+      expect(LIQUID_GLASS_CSS).not.toContain('cursor: grab;');
+      expect(LIQUID_GLASS_CSS).toMatch(/\.ve-root\.ve-glass-liquid \.ve-pin-label\s*\{[^}]*pointer-events:\s*none;/);
+
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const target = document.createElement('button');
+      target.id = 'drag-comment-target';
+      target.getBoundingClientRect = () =>
+        ({ left: 188, top: 168, width: 120, height: 32, right: 308, bottom: 200, x: 188, y: 168, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(target);
+
+      state.handleRouteChange('/');
+      state.addComment('Obscured text under pin', target);
+
+      render(h(CommentPins, {}), mount);
+      await flushRender();
+
+      const pin = mount.querySelector('.ve-pin') as HTMLElement;
+      expect(pin).not.toBeNull();
+      pin.getBoundingClientRect = () =>
+        ({ left: 185, top: 165, width: 30, height: 30, right: 215, bottom: 195, x: 185, y: 165, toJSON: () => {} } as DOMRect);
+
+      // Hover first so tooltip is open, verify pointerdown inside tooltip does NOT start pin drag
+      pin.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      await flushRender();
+      const tooltip = mount.querySelector('.ve-pin-tooltip') as HTMLElement;
+      expect(tooltip).not.toBeNull();
+
+      tooltip.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 210, clientY: 140, pointerId: 1 })
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 280, clientY: 200, pointerId: 1 })
+      );
+      await flushRender();
+      expect(pin.classList.contains('ve-dragging')).toBe(false);
+      expect(mount.querySelector('.ve-pin-drag-tether')).toBeNull();
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1 }));
+
+      // Drag >= 4px activates dragging, sets translate without rendering any tether, and hides tooltip
+      pin.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 200, clientY: 191, pointerId: 2 })
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 280, clientY: 236, pointerId: 2 })
+      );
+      await flushRender();
+
+      expect(pin.classList.contains('ve-dragging')).toBe(true);
+      expect(pin.style.translate).toBe('80px 45px');
+      expect(mount.querySelector('.ve-pin-drag-tether')).toBeNull();
+      expect(mount.querySelector('.ve-pin-tooltip')).toBeNull();
+
+      // Releasing removes dragging, starts snapping to 0px 0px, and suppresses follow-up click
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: 280, clientY: 236, pointerId: 2 })
+      );
+      expect(pin.classList.contains('ve-dragging')).toBe(false);
+      expect(pin.classList.contains('ve-snapping')).toBe(true);
+      expect(pin.style.translate).toBe('0px 0px');
+
+      pin.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushRender();
+      expect(mount.querySelector('.ve-pin-drag-tether')).toBeNull();
+      expect(mount.querySelector('textarea')).toBeNull();
+
+      // Plain click (< 4px move) after suppressed window expires opens edit textarea normally
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      pin.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 200, clientY: 180, pointerId: 3 })
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 201, clientY: 181, pointerId: 3 })
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: 201, clientY: 181, pointerId: 3 })
+      );
+      pin.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushRender();
+      expect(mount.querySelector('textarea')).not.toBeNull();
+
+      render(null, mount);
+    });
+
+    it('VoicePins supports drag-to-peek without a tether and snaps back to 0px 0px on release', async () => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+
+      const target = document.createElement('button');
+      target.id = 'voice-drag-target';
+      target.getBoundingClientRect = () =>
+        ({ left: 160, top: 220, width: 140, height: 40, right: 300, bottom: 260, x: 160, y: 220, toJSON: () => {} } as DOMRect);
+      document.body.appendChild(target);
+
+      state.handleRouteChange('/');
+      state.activeTool = 'voice';
+      state.activeVoicePins = [
+        { id: 'vp_drag', order: 1, targetSelector: '#voice-drag-target', pathname: '/', bounds: { x: 160, y: 220, width: 140, height: 40 } },
+      ];
+
+      render(h(VoicePins, {}), mount);
+      await flushRender();
+
+      const voicePin = mount.querySelector('.ve-voice-pin') as HTMLElement;
+      expect(voicePin).not.toBeNull();
+      voicePin.getBoundingClientRect = () =>
+        ({ left: 160, top: 206, width: 76, height: 24, right: 236, bottom: 230, x: 160, y: 206, toJSON: () => {} } as DOMRect);
+
+      voicePin.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 198, clientY: 218, pointerId: 1 })
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 268, clientY: 258, pointerId: 1 })
+      );
+      await flushRender();
+
+      expect(voicePin.classList.contains('ve-dragging')).toBe(true);
+      expect(voicePin.style.translate).toBe('70px 40px');
+      expect(mount.querySelector('.ve-pin-drag-tether')).toBeNull();
+
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: 268, clientY: 258, pointerId: 1 })
+      );
+      expect(voicePin.classList.contains('ve-dragging')).toBe(false);
+      expect(voicePin.classList.contains('ve-snapping')).toBe(true);
+      expect(voicePin.style.translate).toBe('0px 0px');
+
+      await flushRender();
+      expect(mount.querySelector('.ve-pin-drag-tether')).toBeNull();
 
       render(null, mount);
     });

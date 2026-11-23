@@ -266,6 +266,8 @@ export function VariantSwitcher() {
                 top: `${barTop}px`,
               }}
             >
+              <span class="ve-glass-surface" aria-hidden="true" />
+              <span class="ve-glass-bevel" aria-hidden="true" />
               {/* Row 1: Header (Title, Drag Grip, Shortcut Hint, Close Button) */}
               <div class="ve-variant-header">
                 <div
