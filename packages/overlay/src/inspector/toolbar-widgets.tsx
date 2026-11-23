@@ -1,5 +1,6 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { handleRovingArrowKey } from './keyboard-nav.js';
 
 export function getElementCleanText(el: HTMLElement | null): string {
   if (!el) return '';
@@ -8,6 +9,18 @@ export function getElementCleanText(el: HTMLElement | null): string {
     return (el.innerText || raw).trim();
   }
   return raw;
+}
+
+/** Handles Left/Right/Home/End roving focus inside a toolbar button or swatch group. */
+export function handleControlGroupArrowKey(
+  e: KeyboardEvent,
+  groupEl: HTMLElement | null
+): void {
+  if (!groupEl) return;
+  const controls = Array.from(
+    groupEl.querySelectorAll('button, input[type="color"]')
+  ) as HTMLElement[];
+  handleRovingArrowKey(e, controls, { orientation: 'horizontal', loop: true });
 }
 
 export interface AdaptiveTextEditorProps {
@@ -64,6 +77,7 @@ export function AdaptiveTextEditor({
           class="ve-textarea-adaptive"
           rows={1}
           value={value}
+          aria-label={label}
           placeholder="Edit text content..."
           onFocus={() => {
             isFocusedRef.current = true;
@@ -100,6 +114,7 @@ export function AdaptiveTextEditor({
         class="ve-textarea-adaptive"
         rows={isParagraphLike ? 4 : 2}
         value={value}
+        aria-label={label}
         placeholder="Edit text content..."
         onFocus={() => {
           isFocusedRef.current = true;
@@ -152,17 +167,27 @@ export function OriginSliderRow({
           step={step}
           class="ve-slider"
           value={value}
+          aria-label={label}
+          aria-valuetext={`${value}px`}
           onInput={(e) => onChange(`${(e.target as HTMLInputElement).value}px`)}
+          onKeyDown={(e) => {
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              e.preventDefault();
+              e.stopPropagation();
+              onReset();
+            }
+          }}
         />
         {originValue >= min && originValue <= max && (
           <div
             class="ve-origin-tick"
+            aria-hidden="true"
             style={{ left: `${((originValue - min) / (max - min)) * 100}%` }}
             title={`Original: ${originValue}px`}
           />
         )}
       </div>
-      <span class="ve-slider-val" title="Double-click to reset" onDblClick={onReset}>
+      <span class="ve-slider-val" title="Double-click or press Delete to reset" onDblClick={onReset}>
         {value}px
       </span>
     </div>
@@ -185,13 +210,21 @@ export function ColorSwatchesRow({
   return (
     <div class="ve-row">
       <span class="ve-label">{label}</span>
-      <div class="ve-swatch-row">
+      <div
+        class="ve-swatch-row"
+        role="group"
+        aria-label={`${label} swatches`}
+        onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+      >
         {appColors.map((color) => (
           <button
             key={color}
+            type="button"
             class={`ve-swatch ${currentColor === color ? 'is-active' : ''}`}
             style={{ background: color }}
             onClick={() => onToggleColor(color)}
+            aria-label={`${label} ${color}`}
+            aria-pressed={currentColor === color}
             title={`Apply ${label.toLowerCase()}: ${color} (click again to reset)`}
           />
         ))}
@@ -199,6 +232,7 @@ export function ColorSwatchesRow({
           type="color"
           class="ve-color-picker ve-color-picker--sm"
           value={currentColor}
+          aria-label={`Custom ${label.toLowerCase()}`}
           onChange={(e) => onChangeColor((e.target as HTMLInputElement).value)}
           title={`Custom ${label}`}
         />

@@ -77,6 +77,11 @@ export const TOOLBAR_CSS = `
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     font-weight: 600;
   }
+
+  &:focus-visible {
+    outline: 2px solid #7dd3fc;
+    outline-offset: -2px;
+  }
 }
 
 .ve-toolbar-content {
@@ -278,6 +283,15 @@ export const TOOLBAR_CSS = `
       transform: scale(1.2);
     }
   }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px #0f172a, 0 0 0 4px rgba(56, 189, 248, 0.9);
+  }
+
+  &:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
+  }
 }
 
 .ve-slider-val {
@@ -348,7 +362,7 @@ export const TOOLBAR_CSS = `
   align-items: center;
   flex: 1;
   overflow-x: auto;
-  padding: 2px 0;
+  padding: 5px 4px;
 }
 
 .ve-swatch {
@@ -358,6 +372,11 @@ export const TOOLBAR_CSS = `
   border: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.ve-swatch:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 .ve-swatch.is-active {

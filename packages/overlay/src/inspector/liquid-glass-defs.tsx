@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   DEFAULT_LIQUID_GLASS_TUNING,
   LiquidGlassFilterConfigOptions,
@@ -10,12 +10,34 @@ import {
   prefersReducedMotion,
 } from './liquid-glass.js';
 
+export interface ActiveGlassSurfaces {
+  launcher: boolean;
+  dock: boolean;
+  pins: boolean;
+  voicePins: boolean;
+  drawer: boolean;
+  toolbar: boolean;
+  composer: boolean;
+  switcher: boolean;
+}
+
+const DEFAULT_ACTIVE_SURFACES: ActiveGlassSurfaces = {
+  launcher: true,
+  dock: false,
+  pins: false,
+  voicePins: false,
+  drawer: false,
+  toolbar: false,
+  composer: false,
+  switcher: false,
+};
+
 interface LiquidGlassDefsProps {
   shadowRoot: ShadowRoot;
   tuning: LiquidGlassTuning;
   enabled: boolean;
   activeBoost?: boolean;
-  interactionPulse?: number;
+  activeSurfaces?: ActiveGlassSurfaces;
 }
 
 interface Size2D {
@@ -30,7 +52,6 @@ const DEFAULT_COMPOSER_SIZE: Size2D = { width: 360, height: 192 };
 const DEFAULT_SWITCHER_SIZE: Size2D = { width: 472, height: 112 };
 const DEFAULT_TOOLTIP_SIZE: Size2D = { width: 280, height: 112 };
 const DOCK_BOOST_DURATION_MS = 220;
-const INTERACTION_PULSE_DURATION_MS = 240;
 
 function readExactSize(el: HTMLElement | null): Size2D | null {
   if (!el) return null;
@@ -40,7 +61,7 @@ function readExactSize(el: HTMLElement | null): Size2D | null {
   return { width: w, height: h };
 }
 
-function readQuantizedSize(el: HTMLElement | null, step = 8): Size2D | null {
+function readQuantizedSize(el: HTMLElement | null, step = 16): Size2D | null {
   const exact = readExactSize(el);
   if (!exact) return null;
   return {
@@ -65,8 +86,9 @@ function renderGlassFilter(
 
   const cfg = buildLiquidGlassFilterConfig(map, tuning, filterOptions);
   const baseInput = cfg.blurStdDev > 0.05 ? 'blurred' : 'SourceGraphic';
-  const postCausticInput = cfg.useCausticRim ? 'withCaustic' : 'interior';
-  const includeSpecular = cfg.specularOpacity > 0.005;
+  const includeCaustic = cfg.useCausticRim && Boolean(map.causticMaskUrl);
+  const postCausticInput = includeCaustic ? 'withCaustic' : 'interior';
+  const includeSpecular = cfg.specularOpacity > 0.005 && Boolean(map.specularUrl);
 
   return (
     <filter key={id} id={id} color-interpolation-filters="sRGB">
@@ -154,7 +176,7 @@ function renderGlassFilter(
         result="interior"
       />
 
-      {cfg.useCausticRim && (
+      {includeCaustic && (
         <>
           <feColorMatrix
             in="displaced"
@@ -207,12 +229,33 @@ function renderGlassFilter(
   );
 }
 
+function applyDockScaleAttributes(
+  svgEl: SVGSVGElement | null,
+  dockMap: LiquidGlassMapResult | null,
+  tuning: LiquidGlassTuning,
+  scaleMultiplier: number
+): void {
+  if (!svgEl || !dockMap) return;
+  const cfg = buildLiquidGlassFilterConfig(dockMap, tuning, {
+    blurOverridePx: tuning.heroBlurPx * 1.35,
+    scaleMultiplier,
+  });
+  const dispNodes = svgEl.querySelectorAll('#lux-glass-dock feDisplacementMap');
+  if (dispNodes.length === 3 && cfg.useDispersion) {
+    dispNodes[0].setAttribute('scale', String(cfg.rScale));
+    dispNodes[1].setAttribute('scale', String(cfg.gScale));
+    dispNodes[2].setAttribute('scale', String(cfg.bScale));
+  } else if (dispNodes.length >= 1) {
+    dispNodes[0].setAttribute('scale', String(cfg.scale));
+  }
+}
+
 export function LiquidGlassDefs({
   shadowRoot,
   tuning,
   enabled,
   activeBoost = false,
-  interactionPulse = 0,
+  activeSurfaces = DEFAULT_ACTIVE_SURFACES,
 }: LiquidGlassDefsProps) {
   const [dockSize, setDockSize] = useState<Size2D>(DEFAULT_DOCK_SIZE);
   const [drawerSize, setDrawerSize] = useState<Size2D>(DEFAULT_DRAWER_SIZE);
@@ -221,91 +264,126 @@ export function LiquidGlassDefs({
   const [switcherSize, setSwitcherSize] = useState<Size2D>(DEFAULT_SWITCHER_SIZE);
   const [tooltipSize, setTooltipSize] = useState<Size2D>(DEFAULT_TOOLTIP_SIZE);
 
-  const initialBoostScale = activeBoost ? 1.58 : 1.2;
-  const [dockScaleMultiplier, setDockScaleMultiplier] = useState<number>(initialBoostScale);
+  const [initialBoostScale] = useState<number>(() => (enabled && activeBoost ? 1.58 : 1.2));
   const dockScaleRef = useRef<number>(initialBoostScale);
-  const [pulseMultiplier, setPulseMultiplier] = useState<number>(1);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const [warmStage, setWarmStage] = useState<number>(0);
+  const [seenSurfaces, setSeenSurfaces] = useState<ActiveGlassSurfaces>(() => ({
+    ...activeSurfaces,
+  }));
 
   const { ior, bezelWidth, thickness, dispersion, refractPanels } = tuning;
 
+  const mapTuning = useMemo(
+    () => ({ ...DEFAULT_LIQUID_GLASS_TUNING, ior, bezelWidth, thickness, dispersion }),
+    [ior, bezelWidth, thickness, dispersion]
+  );
+
+  const panelMapTuning = useMemo(
+    () => ({
+      ...mapTuning,
+      bezelWidth: Math.min(bezelWidth, 26),
+      thickness: Math.min(thickness, 58),
+    }),
+    [mapTuning, bezelWidth, thickness]
+  );
+
+  const dockMapRef = useRef<LiquidGlassMapResult | null>(null);
+  const tuningRef = useRef<LiquidGlassTuning>(tuning);
+  tuningRef.current = tuning;
+
+  // Record sticky visibility flags so previously shown surfaces stay warm in the ShadowRoot
   useEffect(() => {
-    if (
-      !enabled ||
-      interactionPulse <= 0 ||
-      prefersReducedMotion() ||
-      typeof requestAnimationFrame === 'undefined'
-    ) {
-      setPulseMultiplier(1);
-      return;
-    }
-
-    let rafId = 0;
-    const startTime = performance.now();
-
-    const step = (now: number) => {
-      const t = Math.max(0, Math.min(1, (now - startTime) / INTERACTION_PULSE_DURATION_MS));
-      if (t >= 1) {
-        setPulseMultiplier(1);
-        rafId = 0;
-        return;
+    if (!enabled) return;
+    setSeenSurfaces((prev) => {
+      if (
+        (prev.launcher || !activeSurfaces.launcher) &&
+        (prev.dock || !activeSurfaces.dock) &&
+        (prev.pins || !activeSurfaces.pins) &&
+        (prev.voicePins || !activeSurfaces.voicePins) &&
+        (prev.drawer || !activeSurfaces.drawer) &&
+        (prev.toolbar || !activeSurfaces.toolbar) &&
+        (prev.composer || !activeSurfaces.composer) &&
+        (prev.switcher || !activeSurfaces.switcher)
+      ) {
+        return prev;
       }
-      const envelope = 0.1 * Math.sin(Math.pow(t, 0.72) * Math.PI);
-      setPulseMultiplier(Number.isFinite(envelope) ? 1 + envelope : 1);
-      rafId = requestAnimationFrame(step);
-    };
+      return {
+        launcher: prev.launcher || activeSurfaces.launcher,
+        dock: prev.dock || activeSurfaces.dock,
+        pins: prev.pins || activeSurfaces.pins,
+        voicePins: prev.voicePins || activeSurfaces.voicePins,
+        drawer: prev.drawer || activeSurfaces.drawer,
+        toolbar: prev.toolbar || activeSurfaces.toolbar,
+        composer: prev.composer || activeSurfaces.composer,
+        switcher: prev.switcher || activeSurfaces.switcher,
+      };
+    });
+  }, [
+    enabled,
+    activeSurfaces.launcher,
+    activeSurfaces.dock,
+    activeSurfaces.pins,
+    activeSurfaces.voicePins,
+    activeSurfaces.drawer,
+    activeSurfaces.toolbar,
+    activeSurfaces.composer,
+    activeSurfaces.switcher,
+  ]);
 
-    rafId = requestAnimationFrame(step);
-    return () => {
-      if (rafId !== 0) {
-        cancelAnimationFrame(rafId);
-      }
-    };
-  }, [enabled, interactionPulse]);
-
+  // Progressive idle pre-warming across 4 stages so initial mount only generates visible maps
   useEffect(() => {
-    const target = enabled && activeBoost ? 1.58 : 1.2;
-    const startVal = dockScaleRef.current;
-    if (Math.abs(target - startVal) < 0.002) {
-      dockScaleRef.current = target;
-      setDockScaleMultiplier(target);
+    if (!enabled) {
+      setWarmStage(0);
       return;
     }
+    setWarmStage(0);
 
-    if (!enabled || typeof requestAnimationFrame === 'undefined') {
-      dockScaleRef.current = target;
-      setDockScaleMultiplier(target);
-      return;
-    }
+    let currentStage = 0;
+    let idleHandle: number | null = null;
+    let timerHandle: number | null = null;
+    let cancelled = false;
 
-    let rafId = 0;
-    const startTime = performance.now();
+    const scheduleNext = () => {
+      if (cancelled || currentStage >= 4) return;
+      const advance = () => {
+        if (cancelled) return;
+        currentStage += 1;
+        setWarmStage(currentStage);
+        scheduleNext();
+      };
 
-    const step = (now: number) => {
-      const progress = Math.max(0, Math.min(1, (now - startTime) / DOCK_BOOST_DURATION_MS));
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const next = startVal + (target - startVal) * eased;
-      dockScaleRef.current = next;
-      setDockScaleMultiplier(next);
-      if (progress < 1) {
-        rafId = requestAnimationFrame(step);
-      } else {
-        rafId = 0;
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        idleHandle = window.requestIdleCallback(advance, { timeout: 1200 });
+      } else if (typeof window !== 'undefined') {
+        timerHandle = window.setTimeout(advance, 150);
       }
     };
 
-    rafId = requestAnimationFrame(step);
+    scheduleNext();
     return () => {
-      if (rafId !== 0) {
-        cancelAnimationFrame(rafId);
+      cancelled = true;
+      if (
+        idleHandle !== null &&
+        typeof window !== 'undefined' &&
+        typeof window.cancelIdleCallback === 'function'
+      ) {
+        window.cancelIdleCallback(idleHandle);
+      }
+      if (timerHandle !== null && typeof window !== 'undefined') {
+        window.clearTimeout(timerHandle);
       }
     };
-  }, [enabled, activeBoost]);
+  }, [enabled, mapTuning]);
 
+  // rAF-throttled ResizeObserver + MutationObserver tracking Shadow DOM surface sizes
   useEffect(() => {
     if (!enabled || !shadowRoot) return;
 
     const observed = new Map<string, HTMLElement>();
     let resizeObserver: ResizeObserver | null = null;
+    let syncRafId = 0;
 
     const syncElements = () => {
       const dockEl = shadowRoot.querySelector('.ve-dock-menu') as HTMLElement | null;
@@ -328,10 +406,10 @@ export function LiquidGlassDefs({
       const entries: Array<[string, HTMLElement | null, boolean, number]> = [
         ['dock', dockEl, true, 1],
         ['drawer', drawerEl, false, 16],
-        ['toolbar', toolbarEl, false, 8],
-        ['composer', composerEl, false, 8],
-        ['switcher', switcherEl, false, 8],
-        ['tooltip', tooltipEl, false, 8],
+        ['toolbar', toolbarEl, false, 16],
+        ['composer', composerEl, false, 16],
+        ['switcher', switcherEl, false, 16],
+        ['tooltip', tooltipEl, false, 16],
       ];
 
       for (const [key, nextEl, exact, step] of entries) {
@@ -366,45 +444,64 @@ export function LiquidGlassDefs({
       }
     };
 
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
+    const scheduleSync = () => {
+      if (typeof requestAnimationFrame === 'undefined') {
+        syncElements();
+        return;
+      }
+      if (syncRafId !== 0) return;
+      syncRafId = requestAnimationFrame(() => {
+        syncRafId = 0;
         syncElements();
       });
+    };
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(scheduleSync);
     }
 
     syncElements();
 
     const mutationObserver =
       typeof MutationObserver !== 'undefined'
-        ? new MutationObserver(() => {
-            syncElements();
-          })
+        ? new MutationObserver(scheduleSync)
         : null;
 
     mutationObserver?.observe(shadowRoot, { childList: true, subtree: true });
 
     return () => {
+      if (syncRafId !== 0 && typeof cancelAnimationFrame !== 'undefined') {
+        cancelAnimationFrame(syncRafId);
+      }
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
     };
   }, [enabled, shadowRoot, refractPanels]);
 
-  const mapTuning = useMemo(
-    () => ({ ...DEFAULT_LIQUID_GLASS_TUNING, ior, bezelWidth, thickness, dispersion }),
-    [ior, bezelWidth, thickness, dispersion]
-  );
-
-  const panelMapTuning = useMemo(
-    () => ({
-      ...mapTuning,
-      bezelWidth: Math.min(bezelWidth, 26),
-      thickness: Math.min(thickness, 58),
-    }),
-    [mapTuning, bezelWidth, thickness]
-  );
+  const needLauncher = enabled && (activeSurfaces.launcher || seenSurfaces.launcher || warmStage >= 1);
+  const needDock = enabled && (activeSurfaces.dock || seenSurfaces.dock || warmStage >= 1);
+  const needPins = enabled && (activeSurfaces.pins || seenSurfaces.pins || warmStage >= 1);
+  const needVoicePins =
+    enabled && (activeSurfaces.voicePins || seenSurfaces.voicePins || warmStage >= 1);
+  const needTabPill = enabled && (activeSurfaces.toolbar || seenSurfaces.toolbar || warmStage >= 2);
+  const needToolbar = enabled && refractPanels && (activeSurfaces.toolbar || seenSurfaces.toolbar || warmStage >= 2);
+  const needTooltip =
+    enabled &&
+    refractPanels &&
+    (activeSurfaces.pins ||
+      activeSurfaces.voicePins ||
+      seenSurfaces.pins ||
+      seenSurfaces.voicePins ||
+      warmStage >= 2);
+  const needComposer =
+    enabled && refractPanels && (activeSurfaces.composer || seenSurfaces.composer || warmStage >= 3);
+  const needSwitcher =
+    enabled && refractPanels && (activeSurfaces.switcher || seenSurfaces.switcher || warmStage >= 3);
+  const needDrawer =
+    enabled && refractPanels && (activeSurfaces.drawer || seenSurfaces.drawer || warmStage >= 4);
 
   const launcherMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needLauncher) return null;
     return generateLiquidGlassMaps({
       width: 52,
       height: 52,
@@ -416,10 +513,10 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, thickness]);
+  }, [needLauncher, mapTuning, thickness]);
 
   const dockMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needDock) return null;
     return generateLiquidGlassMaps({
       width: dockSize.width,
       height: dockSize.height,
@@ -427,10 +524,12 @@ export function LiquidGlassDefs({
       tuning: mapTuning,
       exact: true,
     });
-  }, [enabled, dockSize.width, dockSize.height, mapTuning]);
+  }, [needDock, dockSize.width, dockSize.height, mapTuning]);
+
+  dockMapRef.current = dockMap;
 
   const focusLensMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needDock) return null;
     return generateLiquidGlassMaps({
       width: 52,
       height: 48,
@@ -443,10 +542,10 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, ior, thickness]);
+  }, [needDock, mapTuning, ior, thickness]);
 
   const bubbleMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needDock) return null;
     return generateLiquidGlassMaps({
       width: 40,
       height: 40,
@@ -459,10 +558,10 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, ior, thickness]);
+  }, [needDock, mapTuning, ior, thickness]);
 
   const pillActiveMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needDock) return null;
     return generateLiquidGlassMaps({
       width: 54,
       height: 28,
@@ -474,10 +573,10 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, thickness]);
+  }, [needDock, mapTuning, thickness]);
 
   const tabPillMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needTabPill) return null;
     return generateLiquidGlassMaps({
       width: 52,
       height: 28,
@@ -489,15 +588,17 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, thickness]);
+  }, [needTabPill, mapTuning, thickness]);
 
   const pinMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needPins) return null;
     return generateLiquidGlassMaps({
       width: 30,
       height: 30,
       radius: 15,
       shapeProfile: 'lens',
+      includeSpecular: false,
+      includeCaustic: false,
       tuning: {
         ...mapTuning,
         ior: Math.max(1.55, ior + 0.05),
@@ -505,10 +606,10 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, ior, thickness]);
+  }, [needPins, mapTuning, ior, thickness]);
 
   const voicePinMap = useMemo(() => {
-    if (!enabled) return null;
+    if (!needVoicePins) return null;
     return generateLiquidGlassMaps({
       width: 82,
       height: 24,
@@ -520,10 +621,10 @@ export function LiquidGlassDefs({
       },
       exact: true,
     });
-  }, [enabled, mapTuning, thickness]);
+  }, [needVoicePins, mapTuning, thickness]);
 
   const drawerMap = useMemo(() => {
-    if (!enabled || !refractPanels) return null;
+    if (!needDrawer) return null;
     return generateLiquidGlassMaps({
       width: drawerSize.width,
       height: drawerSize.height,
@@ -537,10 +638,10 @@ export function LiquidGlassDefs({
       exact: false,
       quantizeStep: 16,
     });
-  }, [enabled, refractPanels, drawerSize, mapTuning, bezelWidth, thickness]);
+  }, [needDrawer, drawerSize, mapTuning, bezelWidth, thickness]);
 
   const toolbarMap = useMemo(() => {
-    if (!enabled || !refractPanels) return null;
+    if (!needToolbar) return null;
     return generateLiquidGlassMaps({
       width: toolbarSize.width,
       height: toolbarSize.height,
@@ -548,11 +649,12 @@ export function LiquidGlassDefs({
       tuning: panelMapTuning,
       dpr: 1,
       exact: false,
+      quantizeStep: 16,
     });
-  }, [enabled, refractPanels, toolbarSize, panelMapTuning]);
+  }, [needToolbar, toolbarSize, panelMapTuning]);
 
   const composerMap = useMemo(() => {
-    if (!enabled || !refractPanels) return null;
+    if (!needComposer) return null;
     return generateLiquidGlassMaps({
       width: composerSize.width,
       height: composerSize.height,
@@ -560,11 +662,12 @@ export function LiquidGlassDefs({
       tuning: panelMapTuning,
       dpr: 1,
       exact: false,
+      quantizeStep: 16,
     });
-  }, [enabled, refractPanels, composerSize, panelMapTuning]);
+  }, [needComposer, composerSize, panelMapTuning]);
 
   const switcherMap = useMemo(() => {
-    if (!enabled || !refractPanels) return null;
+    if (!needSwitcher) return null;
     return generateLiquidGlassMaps({
       width: switcherSize.width,
       height: switcherSize.height,
@@ -572,11 +675,12 @@ export function LiquidGlassDefs({
       tuning: panelMapTuning,
       dpr: 1,
       exact: false,
+      quantizeStep: 16,
     });
-  }, [enabled, refractPanels, switcherSize, panelMapTuning]);
+  }, [needSwitcher, switcherSize, panelMapTuning]);
 
   const tooltipMap = useMemo(() => {
-    if (!enabled || !refractPanels) return null;
+    if (!needTooltip) return null;
     return generateLiquidGlassMaps({
       width: tooltipSize.width,
       height: tooltipSize.height,
@@ -588,17 +692,215 @@ export function LiquidGlassDefs({
       },
       dpr: 1,
       exact: false,
+      quantizeStep: 16,
     });
-  }, [enabled, refractPanels, tooltipSize, mapTuning, bezelWidth, thickness]);
+  }, [needTooltip, tooltipSize, mapTuning, bezelWidth, thickness]);
 
-  if (!enabled || (!launcherMap && !dockMap)) {
-    return null;
-  }
+  // Animate #lux-glass-dock scale imperatively via SVG DOM attributes (zero Preact re-renders)
+  useEffect(() => {
+    const target = enabled && activeBoost ? 1.58 : 1.2;
+    const startVal = dockScaleRef.current;
+    if (
+      Math.abs(target - startVal) < 0.002 ||
+      !enabled ||
+      typeof requestAnimationFrame === 'undefined' ||
+      prefersReducedMotion()
+    ) {
+      dockScaleRef.current = target;
+      applyDockScaleAttributes(svgRef.current, dockMapRef.current, tuningRef.current, target);
+      return;
+    }
+
+    let rafId = 0;
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+      const progress = Math.max(0, Math.min(1, (now - startTime) / DOCK_BOOST_DURATION_MS));
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = startVal + (target - startVal) * eased;
+      dockScaleRef.current = next;
+      applyDockScaleAttributes(svgRef.current, dockMapRef.current, tuningRef.current, next);
+      if (progress < 1) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        rafId = 0;
+      }
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => {
+      if (rafId !== 0) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, [enabled, activeBoost]);
+
+  // Re-apply current animated boost scale whenever #lux-glass-dock mounts or recreates
+  useLayoutEffect(() => {
+    applyDockScaleAttributes(svgRef.current, dockMap, tuning, dockScaleRef.current);
+  }, [dockMap, tuning]);
 
   const panelBlurOverride = tuning.panelBlurPx > 0 ? Math.max(2.0, tuning.panelBlurPx * 0.58) : 0;
 
+  const launcherFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-launcher', launcherMap, tuning, {
+        blurOverridePx: Math.min(3.2, tuning.heroBlurPx * 0.72),
+        scaleMultiplier: 1.85,
+        rimSaturationMultiplier: 1.35,
+      }),
+    [launcherMap, tuning]
+  );
+
+  const dockFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-dock', dockMap, tuning, {
+        blurOverridePx: tuning.heroBlurPx * 1.35,
+        scaleMultiplier: initialBoostScale,
+      }),
+    [dockMap, tuning, initialBoostScale]
+  );
+
+  const focusFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-focus', focusLensMap, tuning, {
+        blurOverridePx: Math.min(0.8, tuning.heroBlurPx * 0.22),
+        scaleMultiplier: 2.35,
+        rimSaturationMultiplier: 1.75,
+      }),
+    [focusLensMap, tuning]
+  );
+
+  const bubbleFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-bubble', bubbleMap, tuning, {
+        blurOverridePx: Math.min(0.9, tuning.heroBlurPx * 0.24),
+        scaleMultiplier: 2.0,
+        rimSaturationMultiplier: 1.55,
+      }),
+    [bubbleMap, tuning]
+  );
+
+  const pillActiveFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-pill-active', pillActiveMap, tuning, {
+        blurOverridePx: Math.min(1.0, tuning.heroBlurPx * 0.26),
+        scaleMultiplier: 1.85,
+        rimSaturationMultiplier: 1.5,
+      }),
+    [pillActiveMap, tuning]
+  );
+
+  const tabPillFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-tab-pill', tabPillMap, tuning, {
+        blurOverridePx: Math.min(0.9, tuning.heroBlurPx * 0.24),
+        scaleMultiplier: 1.95,
+        rimSaturationMultiplier: 1.5,
+      }),
+    [tabPillMap, tuning]
+  );
+
+  const pinFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-pin', pinMap, tuning, {
+        blurOverridePx: Math.min(1.15, tuning.heroBlurPx * 0.32),
+        scaleMultiplier: 1.95,
+        specularOpacityMultiplier: 0,
+        disableCausticRim: true,
+        disableDispersion: true,
+      }),
+    [pinMap, tuning]
+  );
+
+  const voicePinFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-voice-pin', voicePinMap, tuning, {
+        blurOverridePx: Math.min(2.8, tuning.heroBlurPx * 0.65),
+        scaleMultiplier: 1.45,
+        rimSaturationMultiplier: 1.25,
+      }),
+    [voicePinMap, tuning]
+  );
+
+  const drawerFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-drawer', drawerMap, tuning, {
+        blurOverridePx: panelBlurOverride,
+        scaleMultiplier: 1.45,
+        rimSaturationMultiplier: 1.25,
+        disableDispersion: true,
+      }),
+    [drawerMap, tuning, panelBlurOverride]
+  );
+
+  const toolbarFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-toolbar', toolbarMap, tuning, {
+        blurOverridePx: panelBlurOverride,
+        scaleMultiplier: 1.45,
+        rimSaturationMultiplier: 1.25,
+        disableDispersion: true,
+      }),
+    [toolbarMap, tuning, panelBlurOverride]
+  );
+
+  const composerFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-composer', composerMap, tuning, {
+        blurOverridePx: panelBlurOverride,
+        scaleMultiplier: 1.45,
+        rimSaturationMultiplier: 1.25,
+        disableDispersion: true,
+      }),
+    [composerMap, tuning, panelBlurOverride]
+  );
+
+  const switcherFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-switcher', switcherMap, tuning, {
+        blurOverridePx: panelBlurOverride,
+        scaleMultiplier: 1.45,
+        rimSaturationMultiplier: 1.25,
+        disableDispersion: true,
+      }),
+    [switcherMap, tuning, panelBlurOverride]
+  );
+
+  const tooltipFilter = useMemo(
+    () =>
+      renderGlassFilter('lux-glass-tooltip', tooltipMap, tuning, {
+        blurOverridePx: panelBlurOverride,
+        scaleMultiplier: 1.45,
+        rimSaturationMultiplier: 1.25,
+        disableDispersion: true,
+      }),
+    [tooltipMap, tuning, panelBlurOverride]
+  );
+
+  const hasAnyMap = Boolean(
+    launcherMap ||
+      dockMap ||
+      focusLensMap ||
+      bubbleMap ||
+      pillActiveMap ||
+      tabPillMap ||
+      pinMap ||
+      voicePinMap ||
+      drawerMap ||
+      toolbarMap ||
+      composerMap ||
+      switcherMap ||
+      tooltipMap
+  );
+
+  if (!enabled || !hasAnyMap) {
+    return null;
+  }
+
   return (
     <svg
+      ref={svgRef}
       aria-hidden="true"
       width="0"
       height="0"
@@ -612,76 +914,19 @@ export function LiquidGlassDefs({
       }}
     >
       <defs>
-        {renderGlassFilter('lux-glass-launcher', launcherMap, tuning, {
-          blurOverridePx: Math.min(3.2, tuning.heroBlurPx * 0.72),
-          scaleMultiplier: 1.85 * pulseMultiplier,
-          rimSaturationMultiplier: 1.35,
-        })}
-        {renderGlassFilter('lux-glass-dock', dockMap, tuning, {
-          blurOverridePx: tuning.heroBlurPx * 1.35,
-          scaleMultiplier: dockScaleMultiplier * pulseMultiplier,
-        })}
-        {renderGlassFilter('lux-glass-focus', focusLensMap, tuning, {
-          blurOverridePx: Math.min(0.8, tuning.heroBlurPx * 0.22),
-          scaleMultiplier: 2.35 * pulseMultiplier,
-          rimSaturationMultiplier: 1.75,
-        })}
-        {renderGlassFilter('lux-glass-bubble', bubbleMap, tuning, {
-          blurOverridePx: Math.min(0.9, tuning.heroBlurPx * 0.24),
-          scaleMultiplier: 2.0 * pulseMultiplier,
-          rimSaturationMultiplier: 1.55,
-        })}
-        {renderGlassFilter('lux-glass-pill-active', pillActiveMap, tuning, {
-          blurOverridePx: Math.min(1.0, tuning.heroBlurPx * 0.26),
-          scaleMultiplier: 1.85 * pulseMultiplier,
-          rimSaturationMultiplier: 1.5,
-        })}
-        {renderGlassFilter('lux-glass-tab-pill', tabPillMap, tuning, {
-          blurOverridePx: Math.min(0.9, tuning.heroBlurPx * 0.24),
-          scaleMultiplier: 1.95 * pulseMultiplier,
-          rimSaturationMultiplier: 1.5,
-        })}
-        {renderGlassFilter('lux-glass-pin', pinMap, tuning, {
-          blurOverridePx: Math.min(1.15, tuning.heroBlurPx * 0.32),
-          scaleMultiplier: 1.95,
-          specularOpacityMultiplier: 0,
-          disableCausticRim: true,
-        })}
-        {renderGlassFilter('lux-glass-voice-pin', voicePinMap, tuning, {
-          blurOverridePx: Math.min(2.8, tuning.heroBlurPx * 0.65),
-          scaleMultiplier: 1.45,
-          rimSaturationMultiplier: 1.25,
-        })}
-        {renderGlassFilter('lux-glass-drawer', drawerMap, tuning, {
-          blurOverridePx: panelBlurOverride,
-          scaleMultiplier: 1.45,
-          rimSaturationMultiplier: 1.25,
-          disableDispersion: true,
-        })}
-        {renderGlassFilter('lux-glass-toolbar', toolbarMap, tuning, {
-          blurOverridePx: panelBlurOverride,
-          scaleMultiplier: 1.45,
-          rimSaturationMultiplier: 1.25,
-          disableDispersion: true,
-        })}
-        {renderGlassFilter('lux-glass-composer', composerMap, tuning, {
-          blurOverridePx: panelBlurOverride,
-          scaleMultiplier: 1.45,
-          rimSaturationMultiplier: 1.25,
-          disableDispersion: true,
-        })}
-        {renderGlassFilter('lux-glass-switcher', switcherMap, tuning, {
-          blurOverridePx: panelBlurOverride,
-          scaleMultiplier: 1.45,
-          rimSaturationMultiplier: 1.25,
-          disableDispersion: true,
-        })}
-        {renderGlassFilter('lux-glass-tooltip', tooltipMap, tuning, {
-          blurOverridePx: panelBlurOverride,
-          scaleMultiplier: 1.45,
-          rimSaturationMultiplier: 1.25,
-          disableDispersion: true,
-        })}
+        {launcherFilter}
+        {dockFilter}
+        {focusFilter}
+        {bubbleFilter}
+        {pillActiveFilter}
+        {tabPillFilter}
+        {pinFilter}
+        {voicePinFilter}
+        {drawerFilter}
+        {toolbarFilter}
+        {composerFilter}
+        {switcherFilter}
+        {tooltipFilter}
       </defs>
     </svg>
   );

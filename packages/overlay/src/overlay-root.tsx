@@ -1,8 +1,18 @@
 import { h } from 'preact';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import { OVERLAY_STYLES } from './inspector/styles.css.js';
 import { OverlayStateManager } from './inspector/state.js';
 import { supportsSvgBackdropFilter, useLiquidGlassMotion } from './inspector/liquid-glass.js';
+import {
+  OverlayHotkeyAction,
+  hasCommandModifierInHotkey,
+  matchesHotkeyEvent,
+} from './inspector/hotkeys.js';
+import {
+  getShadowActiveElement,
+  isEditableTargetInPath,
+  isHotkeyCaptureTarget,
+} from './inspector/keyboard-nav.js';
 import { LiquidGlassDefs } from './inspector/liquid-glass-defs.js';
 import { SelectionBox } from './inspector/selection-box.js';
 import { FloatingToolbar } from './inspector/floating-toolbar.js';
@@ -247,7 +257,18 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       target.addEventListener('blur', handleBlur);
     };
 
+    const isElEditable = (node: HTMLElement | null): boolean =>
+      Boolean(
+        node &&
+          (node.tagName === 'INPUT' ||
+            node.tagName === 'TEXTAREA' ||
+            node.tagName === 'SELECT' ||
+            node.isContentEditable)
+      );
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || isHotkeyCaptureTarget(e)) return;
+
       if (e.key === 'Escape') {
         if (currentInlineEl) {
           currentInlineEl.blur();
@@ -276,67 +297,94 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         return;
       }
 
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-      const activeEl = document.activeElement as HTMLElement | null;
+      const activeLightEl = document.activeElement as HTMLElement | null;
+      const activeShadowEl = getShadowActiveElement(shadowRoot);
       const isTyping =
-        (activeEl &&
-          (activeEl.tagName === 'INPUT' ||
-            activeEl.tagName === 'TEXTAREA' ||
-            activeEl.isContentEditable ||
-            isInsideShadow(e))) ||
+        isElEditable(activeLightEl) ||
+        isElEditable(activeShadowEl) ||
+        isEditableTargetInPath(e, shadowRoot) ||
         !!currentInlineEl;
 
-      if (isTyping) return;
-
-      if (e.key === 'v' || e.key === 'V' || e.key === 'e' || e.key === 'E') {
+      const triggerAction = (action: OverlayHotkeyAction) => {
         e.preventDefault();
-        state.setDockMenuOpen(true);
-        state.setTool(state.activeTool === 'edit' ? 'none' : 'edit');
-      } else if (e.key === 'c' || e.key === 'C') {
-        e.preventDefault();
-        state.setDockMenuOpen(true);
-        state.setTool(state.activeTool === 'comment' ? 'none' : 'comment');
-      } else if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
-        state.setDockMenuOpen(true);
-        state.setTool(state.activeTool === 'voice' ? 'none' : 'voice');
-      } else if (e.key === 's' || e.key === 'S') {
-        e.preventDefault();
-        state.setDockMenuOpen(true);
-        state.setTool(state.activeTool === 'screenshot' ? 'none' : 'screenshot');
-      }
-    };
-
-    const isEditableShadowTarget = (e: Event): boolean => {
-      try {
-        const path = e.composedPath ? e.composedPath() : [];
-        for (const node of path) {
-          if (node === shadowRoot) break;
-          const el = node as HTMLElement;
-          if (!el || !el.tagName) continue;
-          const tag = el.tagName.toUpperCase();
-          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) {
-            return true;
+        e.stopPropagation();
+        if (action === 'edit') {
+          state.setDockMenuOpen(true);
+          state.setTool(state.activeTool === 'edit' ? 'none' : 'edit');
+        } else if (action === 'comment') {
+          state.setDockMenuOpen(true);
+          state.setTool(state.activeTool === 'comment' ? 'none' : 'comment');
+        } else if (action === 'voice') {
+          state.setDockMenuOpen(true);
+          state.setTool(state.activeTool === 'voice' ? 'none' : 'voice');
+        } else if (action === 'screenshot') {
+          state.setDockMenuOpen(true);
+          state.setTool(state.activeTool === 'screenshot' ? 'none' : 'screenshot');
+        } else if (action === 'drawer') {
+          const nextOpen = !state.isDrawerOpen;
+          if (nextOpen) {
+            state.setDockMenuOpen(true);
           }
+          state.setDrawerOpen(nextOpen);
         }
-      } catch {
-        // Ignore cross-origin / detached composedPath errors
+      };
+
+      const actionOrder: OverlayHotkeyAction[] = [
+        'edit',
+        'comment',
+        'voice',
+        'screenshot',
+        'drawer',
+      ];
+      for (const action of actionOrder) {
+        const binding = state.hotkeys[action];
+        if (!binding) continue;
+        if (!hasCommandModifierInHotkey(binding) && isTyping) continue;
+        if (matchesHotkeyEvent(e, binding)) {
+          triggerAction(action);
+          return;
+        }
       }
-      return false;
+
+      if (
+        !isTyping &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey &&
+        e.key.toLowerCase() === 'e' &&
+        state.hotkeys.edit === 'v' &&
+        !Object.values(state.hotkeys).includes('e')
+      ) {
+        triggerAction('edit');
+        return;
+      }
+
+      if (!isTyping && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === '?') {
+        e.preventDefault();
+        e.stopPropagation();
+        const isCurrentlyShowingShortcuts = state.isDrawerOpen && state.isShortcutsPanelOpen;
+        state.setShortcutsPanelOpen(!isCurrentlyShowingShortcuts);
+      }
     };
 
     const handleShadowKeyboardEvent = (e: Event) => {
-      if (!isEditableShadowTarget(e)) return;
+      const isCapturingHotkey = isHotkeyCaptureTarget(e);
+      const isEditable = isEditableTargetInPath(e, shadowRoot);
+      if (!isEditable && !isCapturingHotkey) return;
 
-      // Prevent keystrokes inside overlay inputs/textareas (e.g. comment composer,
-      // pin editor, drawer inputs) from bubbling out of the Shadow DOM to the host
-      // page, where Shadow DOM retargeting would hide the INPUT/TEXTAREA target and
-      // accidentally trigger page-level keyboard shortcuts (e.g. 'N' for next page).
+      // Prevent keystrokes inside overlay inputs/textareas or active hotkey capture buttons
+      // from bubbling out of the Shadow DOM to the host page, where Shadow DOM retargeting
+      // would hide the target and accidentally trigger page-level keyboard shortcuts.
       e.stopPropagation();
 
       const ke = e as KeyboardEvent;
-      if (e.type === 'keydown' && ke.key === 'Escape' && !ke.defaultPrevented) {
+      if (
+        e.type === 'keydown' &&
+        ke.key === 'Escape' &&
+        !ke.defaultPrevented &&
+        !isCapturingHotkey
+      ) {
         if (state.commentTargetElement) {
           state.setCommentTarget(null);
         } else if (state.isDrawerOpen) {
@@ -379,20 +427,49 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const svgSupported = useMemo(() => supportsSvgBackdropFilter(), []);
   const isSvgRefract = state.glassMode === 'svg-refract' && svgSupported;
   const tuning = state.glassTuning;
-  const [glassPulse, setGlassPulse] = useState(0);
 
-  const handleGlassPulse = useCallback(() => {
-    if (isSvgRefract) {
-      setGlassPulse((p) => p + 1);
-    }
-  }, [isSvgRefract]);
-
-  useLiquidGlassMotion(shadowRoot, tuning.pointerGlint, handleGlassPulse);
+  useLiquidGlassMotion(shadowRoot, tuning.pointerGlint);
 
   const toneClass = tuning.surfaceTone === 'dark' ? 've-glass-obsidian' : 've-glass-clear';
   const panelRefractClass = isSvgRefract && tuning.refractPanels ? 've-glass-refract-panels' : '';
   const hasActiveDockOption =
     state.activeTool !== 'none' || state.isDrawerOpen || state.reviewMode === 'live';
+
+  const isLauncherVisible = !state.isDockMenuOpen && state.activeTool === 'none';
+  const isDockVisible = !isLauncherVisible;
+  const hasPins = state.annotations.length > 0;
+  const hasVoicePins =
+    (state.activeTool === 'voice' && state.activeVoicePins.length > 0) ||
+    state.voiceReviews.length > 0;
+  const isDrawerVisible = state.isDrawerOpen;
+  const isToolbarVisible = state.activeTool === 'edit' && Boolean(state.activeElement);
+  const isComposerVisible = Boolean(state.commentTargetElement);
+  const hasVariantSwitcher = state.variantSets.some(
+    (s) => s.status === 'pending' || s.status === 'decided'
+  );
+
+  const activeSurfaces = useMemo(
+    () => ({
+      launcher: isLauncherVisible,
+      dock: isDockVisible,
+      pins: hasPins,
+      voicePins: hasVoicePins,
+      drawer: isDrawerVisible,
+      toolbar: isToolbarVisible,
+      composer: isComposerVisible,
+      switcher: hasVariantSwitcher,
+    }),
+    [
+      isLauncherVisible,
+      isDockVisible,
+      hasPins,
+      hasVoicePins,
+      isDrawerVisible,
+      isToolbarVisible,
+      isComposerVisible,
+      hasVariantSwitcher,
+    ]
+  );
 
   return (
     <div
@@ -413,7 +490,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
         tuning={tuning}
         enabled={isSvgRefract}
         activeBoost={hasActiveDockOption}
-        interactionPulse={glassPulse}
+        activeSurfaces={activeSurfaces}
       />
       <SelectionBox />
       <FloatingToolbar />

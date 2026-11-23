@@ -3,12 +3,14 @@ import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { prefersReducedMotion } from './liquid-glass.js';
+import { handleRovingArrowKey } from './keyboard-nav.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import {
   AdaptiveTextEditor,
   ColorSwatchesRow,
   OriginSliderRow,
   getElementCleanText,
+  handleControlGroupArrowKey,
 } from './toolbar-widgets.js';
 import {
   ClassesTab,
@@ -153,6 +155,7 @@ export function FloatingToolbar() {
   useEffect(() => {
     if (!el || !toolbarRef.current) return;
 
+    let rafId = 0;
     const updatePos = () => {
       if (!el || !toolbarRef.current) return;
       computePosition(el, toolbarRef.current, {
@@ -177,12 +180,27 @@ export function FloatingToolbar() {
       });
     };
 
+    const schedulePos = () => {
+      if (typeof window.requestAnimationFrame !== 'function') {
+        updatePos();
+        return;
+      }
+      if (rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        updatePos();
+      });
+    };
+
     updatePos();
-    window.addEventListener('scroll', updatePos, { passive: true });
-    window.addEventListener('resize', updatePos);
+    window.addEventListener('scroll', schedulePos, { passive: true });
+    window.addEventListener('resize', schedulePos);
     return () => {
-      window.removeEventListener('scroll', updatePos);
-      window.removeEventListener('resize', updatePos);
+      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      window.removeEventListener('scroll', schedulePos);
+      window.removeEventListener('resize', schedulePos);
     };
   }, [el, activeTab]);
 
@@ -218,10 +236,14 @@ export function FloatingToolbar() {
   const originRadius = parseNumericPx(snapshot?.styles['border-radius']);
 
   const tabProps = { el, computed, state, toggleStyle, handleStyleChange };
+  const targetLabel = sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.tag;
+  const activeTabIndex = Math.max(0, TOOLBAR_TABS.findIndex((t) => t.id === activeTab));
 
   return (
     <div
       ref={toolbarRef}
+      role="region"
+      aria-label={`Edit ${targetLabel}`}
       class={`ve-toolbar ${activeTab === 'quick' && isMultilineText ? 've-toolbar-wide' : ''}`}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -232,18 +254,20 @@ export function FloatingToolbar() {
       <div class="ve-toolbar-header">
         <div class="ve-toolbar-title-wrap">
           <span class="ve-target-tag">
-            {sourceLoc.componentName ? `<${sourceLoc.componentName}>` : sourceLoc.tag}
+            {targetLabel}
             {sourceLoc.fileName ? ` (${sourceLoc.fileName.split('/').pop()}:${sourceLoc.lineNumber || 1})` : ''}
           </span>
           {hasDraftedEdits && <span class="ve-edited-pill">Edited</span>}
         </div>
 
         <button
+          type="button"
           class="ve-close-btn"
           onClick={() => state.setActiveElement(null)}
+          aria-label="Deselect element"
           title="Deselect (Esc)"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -253,26 +277,57 @@ export function FloatingToolbar() {
       {/* Tabs Bar */}
       <div
         class="ve-toolbar-tabs"
+        role="tablist"
+        aria-label="Inspector sections"
+        onKeyDown={(e) => {
+          const tabBtns = Array.from(
+            (e.currentTarget as HTMLElement).querySelectorAll('[role="tab"]')
+          ) as HTMLElement[];
+          handleRovingArrowKey(e, tabBtns, {
+            orientation: 'horizontal',
+            loop: true,
+            onFocusChange: (_btn, nextIdx) => {
+              const nextTab = TOOLBAR_TABS[nextIdx];
+              if (nextTab) {
+                setActiveTab(nextTab.id);
+              }
+            },
+          });
+        }}
         style={{
-          '--ve-tab-index': String(Math.max(0, TOOLBAR_TABS.findIndex((t) => t.id === activeTab))),
+          '--ve-tab-index': String(activeTabIndex),
           '--ve-tab-count': String(TOOLBAR_TABS.length),
         }}
       >
         <span class={`ve-tab-indicator ${isTabGliding ? 'is-gliding' : ''}`} aria-hidden="true" />
-        {TOOLBAR_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            class={`ve-tab-btn ${activeTab === tab.id ? 've-active' : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-            title={tab.title}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TOOLBAR_TABS.map((tab) => {
+          const isSelected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              id={`ve-tab-${tab.id}`}
+              role="tab"
+              aria-selected={isSelected}
+              aria-controls={`ve-tabpanel-${tab.id}`}
+              tabIndex={isSelected ? 0 : -1}
+              class={`ve-tab-btn ${isSelected ? 've-active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+              title={tab.title}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab Content */}
-      <div class="ve-toolbar-content">
+      <div
+        class="ve-toolbar-content"
+        id={`ve-tabpanel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`ve-tab-${activeTab}`}
+      >
         {activeTab === 'quick' && (
           <div class="ve-toolbar-stack ve-toolbar-stack--lg">
             {/* Quick Text / Heading Options */}
@@ -302,22 +357,32 @@ export function FloatingToolbar() {
                 {/* Weight Chips with Deselect Toggle */}
                 <div class="ve-row">
                   <span class="ve-label">Weight</span>
-                  <div class="ve-btn-group">
+                  <div
+                    class="ve-btn-group"
+                    role="group"
+                    aria-label="Font weight"
+                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                  >
                     {[
                       { val: '400', label: 'Reg' },
                       { val: '500', label: 'Med' },
                       { val: '600', label: 'Semi' },
                       { val: '700', label: 'Bold' },
-                    ].map((w) => (
-                      <button
-                        key={w.val}
-                        class={`ve-mini-btn ${(el.style.fontWeight || computed.fontWeight) === w.val ? 've-active' : ''}`}
-                        onClick={() => toggleStyle('font-weight', w.val)}
-                        title="Click to apply, click again to reset"
-                      >
-                        {w.label}
-                      </button>
-                    ))}
+                    ].map((w) => {
+                      const isActive = (el.style.fontWeight || computed.fontWeight) === w.val;
+                      return (
+                        <button
+                          key={w.val}
+                          type="button"
+                          class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          aria-pressed={isActive}
+                          onClick={() => toggleStyle('font-weight', w.val)}
+                          title="Click to apply, click again to reset"
+                        >
+                          {w.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -338,6 +403,7 @@ export function FloatingToolbar() {
                   <span class="ve-label">Label</span>
                   <input
                     class="ve-input"
+                    aria-label="Button label"
                     key={sourceLoc.selector || el.tagName}
                     defaultValue={getElementCleanText(el)}
                     onInput={(e) => state.updateElementText((e.target as HTMLInputElement).value)}
@@ -346,7 +412,12 @@ export function FloatingToolbar() {
 
                 <div class="ve-row">
                   <span class="ve-label">Shape</span>
-                  <div class="ve-btn-group">
+                  <div
+                    class="ve-btn-group"
+                    role="group"
+                    aria-label="Border radius shape"
+                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                  >
                     {[
                       { val: '0px', label: 'Square' },
                       { val: '8px', label: 'Rounded' },
@@ -365,7 +436,9 @@ export function FloatingToolbar() {
                       return (
                         <button
                           key={r.val}
+                          type="button"
                           class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          aria-pressed={isActive}
                           onClick={() => {
                             if (isActive) {
                               state.resetElementProperty(el, 'border-radius');
@@ -384,21 +457,31 @@ export function FloatingToolbar() {
 
                 <div class="ve-row">
                   <span class="ve-label">Padding</span>
-                  <div class="ve-btn-group">
+                  <div
+                    class="ve-btn-group"
+                    role="group"
+                    aria-label="Padding presets"
+                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                  >
                     {[
                       { pt: '4px 10px', label: 'Compact' },
                       { pt: '8px 16px', label: 'Default' },
                       { pt: '14px 24px', label: 'Large' },
-                    ].map((pad) => (
-                      <button
-                        key={pad.label}
-                        class={`ve-mini-btn ${el.style.padding === pad.pt ? 've-active' : ''}`}
-                        onClick={() => toggleStyle('padding', pad.pt)}
-                        title="Click to apply, click again to reset"
-                      >
-                        {pad.label}
-                      </button>
-                    ))}
+                    ].map((pad) => {
+                      const isActive = el.style.padding === pad.pt;
+                      return (
+                        <button
+                          key={pad.label}
+                          type="button"
+                          class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          aria-pressed={isActive}
+                          onClick={() => toggleStyle('padding', pad.pt)}
+                          title="Click to apply, click again to reset"
+                        >
+                          {pad.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -420,6 +503,7 @@ export function FloatingToolbar() {
                     <span class="ve-label">Source</span>
                     <input
                       class="ve-input"
+                      aria-label="Image source URL"
                       value={(el as HTMLImageElement).src || ''}
                       onChange={(e) => {
                         const val = (e.target as HTMLInputElement).value;
@@ -433,37 +517,57 @@ export function FloatingToolbar() {
 
                 <div class="ve-row">
                   <span class="ve-label">Shape</span>
-                  <div class="ve-btn-group">
+                  <div
+                    class="ve-btn-group"
+                    role="group"
+                    aria-label="Image shape"
+                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                  >
                     {[
                       { val: '0px', label: 'Square' },
                       { val: '12px', label: 'Rounded' },
                       { val: '50%', label: 'Circle' },
-                    ].map((r) => (
-                      <button
-                        key={r.val}
-                        class={`ve-mini-btn ${computed.borderRadius === r.val ? 've-active' : ''}`}
-                        onClick={() => toggleStyle('border-radius', r.val)}
-                        title="Click to toggle"
-                      >
-                        {r.label}
-                      </button>
-                    ))}
+                    ].map((r) => {
+                      const isActive = computed.borderRadius === r.val;
+                      return (
+                        <button
+                          key={r.val}
+                          type="button"
+                          class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          aria-pressed={isActive}
+                          onClick={() => toggleStyle('border-radius', r.val)}
+                          title="Click to toggle"
+                        >
+                          {r.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 <div class="ve-row">
                   <span class="ve-label">Fit</span>
-                  <div class="ve-btn-group">
-                    {['cover', 'contain', 'fill'].map((fit) => (
-                      <button
-                        key={fit}
-                        class={`ve-mini-btn ${computed.objectFit === fit ? 've-active' : ''}`}
-                        onClick={() => toggleStyle('object-fit', fit)}
-                        title="Click to toggle"
-                      >
-                        {fit}
-                      </button>
-                    ))}
+                  <div
+                    class="ve-btn-group"
+                    role="group"
+                    aria-label="Image fit"
+                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                  >
+                    {['cover', 'contain', 'fill'].map((fit) => {
+                      const isActive = computed.objectFit === fit;
+                      return (
+                        <button
+                          key={fit}
+                          type="button"
+                          class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          aria-pressed={isActive}
+                          onClick={() => toggleStyle('object-fit', fit)}
+                          title="Click to toggle"
+                        >
+                          {fit}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -474,38 +578,58 @@ export function FloatingToolbar() {
               <div class="ve-toolbar-stack">
                 <div class="ve-row">
                   <span class="ve-label">Display</span>
-                  <div class="ve-btn-group">
+                  <div
+                    class="ve-btn-group"
+                    role="group"
+                    aria-label="Display mode"
+                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                  >
                     {[
                       { d: 'flex', label: 'Flex' },
                       { d: 'grid', label: 'Grid' },
                       { d: 'block', label: 'Block' },
-                    ].map((mode) => (
-                      <button
-                        key={mode.d}
-                        class={`ve-mini-btn ${computed.display === mode.d ? 've-active' : ''}`}
-                        onClick={() => toggleStyle('display', mode.d)}
-                        title="Click to toggle display"
-                      >
-                        {mode.label}
-                      </button>
-                    ))}
+                    ].map((mode) => {
+                      const isActive = computed.display === mode.d;
+                      return (
+                        <button
+                          key={mode.d}
+                          type="button"
+                          class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                          aria-pressed={isActive}
+                          onClick={() => toggleStyle('display', mode.d)}
+                          title="Click to toggle display"
+                        >
+                          {mode.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {computed.display === 'flex' && (
                   <div class="ve-row">
                     <span class="ve-label">Direction</span>
-                    <div class="ve-btn-group">
-                      {['row', 'column'].map((dir) => (
-                        <button
-                          key={dir}
-                          class={`ve-mini-btn ${computed.flexDirection === dir ? 've-active' : ''}`}
-                          onClick={() => toggleStyle('flex-direction', dir)}
-                          title="Click to toggle direction"
-                        >
-                          {dir}
-                        </button>
-                      ))}
+                    <div
+                      class="ve-btn-group"
+                      role="group"
+                      aria-label="Flex direction"
+                      onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+                    >
+                      {['row', 'column'].map((dir) => {
+                        const isActive = computed.flexDirection === dir;
+                        return (
+                          <button
+                            key={dir}
+                            type="button"
+                            class={`ve-mini-btn ${isActive ? 've-active' : ''}`}
+                            aria-pressed={isActive}
+                            onClick={() => toggleStyle('flex-direction', dir)}
+                            title="Click to toggle direction"
+                          >
+                            {dir}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -537,59 +661,74 @@ export function FloatingToolbar() {
             )}
 
             {/* Quick Action Ribbon with Clean Vector SVG Icons & Tooltips */}
-            <div class="ve-action-ribbon">
+            <div
+              class="ve-action-ribbon"
+              role="toolbar"
+              aria-label="Quick element actions"
+              onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
+            >
               <button
+                type="button"
                 class="ve-mini-btn ve-icon-btn"
                 onClick={() => state.moveElement('up')}
+                aria-label="Move element up"
                 title="Move element up (↑)"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="12" y1="19" x2="12" y2="5" />
                   <polyline points="5 12 12 5 19 12" />
                 </svg>
               </button>
 
               <button
+                type="button"
                 class="ve-mini-btn ve-icon-btn"
                 onClick={() => state.moveElement('down')}
+                aria-label="Move element down"
                 title="Move element down (↓)"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <polyline points="19 12 12 19 5 12" />
                 </svg>
               </button>
 
               <button
+                type="button"
                 class="ve-mini-btn ve-icon-btn"
                 onClick={() => state.duplicateElement()}
+                aria-label="Duplicate element"
                 title="Duplicate this element"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               </button>
 
               <button
+                type="button"
                 class="ve-mini-btn ve-icon-btn ve-icon-btn--accent"
                 onClick={() => {
                   state.setCommentTarget(el);
                   state.setActiveElement(null);
                 }}
+                aria-label="Drop a comment pin on element"
                 title="Drop a comment pin on this element"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
               </button>
 
               <button
+                type="button"
                 class="ve-mini-btn ve-icon-btn ve-icon-btn--danger"
                 onClick={() => state.deleteElement()}
+                aria-label="Delete element"
                 title="Delete this element"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="3 6 5 6 21 6" />
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>

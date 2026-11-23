@@ -10,6 +10,7 @@ import {
   VisualEditBatch,
   VoiceReviewWalkthrough,
 } from '@visual-edit/core';
+import { mergeHotkeys, OverlayHotkeys } from './hotkeys.js';
 
 export interface LoadedPersistedState {
   reviewMode?: ReviewMode;
@@ -22,14 +23,20 @@ export interface LoadedPersistedState {
   userPrompt?: string;
   dockPosition?: DockPosition;
   commentDraftText?: string;
+  hotkeys?: OverlayHotkeys;
 }
 
 interface LuxAppWindow extends Window {
   __LUX_APP_ID__?: string;
+  __LUX_HOTKEYS__?: Partial<Record<string, unknown>>;
 }
 
 function getLuxAppId(): string | undefined {
   return typeof window !== 'undefined' ? (window as LuxAppWindow).__LUX_APP_ID__ : undefined;
+}
+
+function getWindowHotkeys(): Partial<Record<string, unknown>> | undefined {
+  return typeof window !== 'undefined' ? (window as LuxAppWindow).__LUX_HOTKEYS__ : undefined;
 }
 
 function safeGetStorage(area: 'local' | 'session', key: string): string | null {
@@ -142,6 +149,20 @@ export function loadPersistedState(): LoadedPersistedState {
     result.commentDraftText = savedDraft;
   }
 
+  try {
+    const savedHotkeys = safeGetStorage('local', STORAGE_KEYS.HOTKEYS);
+    if (savedHotkeys) {
+      result.hotkeys = mergeHotkeys(JSON.parse(savedHotkeys) as Partial<Record<string, unknown>>);
+    } else {
+      const windowHotkeys = getWindowHotkeys();
+      if (windowHotkeys) {
+        result.hotkeys = mergeHotkeys(windowHotkeys);
+      }
+    }
+  } catch (err) {
+    console.debug('[lux] Failed to parse persisted hotkeys:', err);
+  }
+
   return result;
 }
 
@@ -169,6 +190,14 @@ export function saveReviewMode(mode: ReviewMode): void {
 
 export function saveDockPosition(pos: DockPosition): void {
   safeSetStorage('local', STORAGE_KEYS.DOCK_POSITION, JSON.stringify(pos));
+}
+
+export function saveHotkeys(hotkeys: OverlayHotkeys): void {
+  safeSetStorage('local', STORAGE_KEYS.HOTKEYS, JSON.stringify(hotkeys));
+}
+
+export function clearHotkeys(): void {
+  safeRemoveStorage('local', STORAGE_KEYS.HOTKEYS);
 }
 
 export function saveComposerDraft(text: string): void {

@@ -52,7 +52,13 @@ export function MutationCard({
           </span>
           {m.pathname && <RouteBadge pathname={m.pathname} currentPath={currentPath} prefix="Modified on" />}
         </div>
-        <button class="ve-card-link ve-card-link--danger" onClick={() => onRevert(m.id)} title="Revert this visual change">
+        <button
+          type="button"
+          class="ve-card-link ve-card-link--danger"
+          onClick={() => onRevert(m.id)}
+          aria-label={`Revert edit on ${m.sourceLocation?.componentName ? `<${m.sourceLocation.componentName}>` : m.targetSelector}`}
+          title="Revert this visual change"
+        >
           Revert
         </button>
       </div>
@@ -124,7 +130,7 @@ export function AnnotationCard({
         <span class="ve-mut-target ve-card-target-wrap">
           {isVoice ? (
             <span class="ve-card-type-label ve-card-type-label--voice">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                 <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               </svg>
@@ -133,7 +139,7 @@ export function AnnotationCard({
             </span>
           ) : isScreenshot ? (
             <span class="ve-card-type-label ve-card-type-label--screenshot">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
@@ -149,11 +155,21 @@ export function AnnotationCard({
         </span>
         <div class="ve-card-actions">
           {!isEditing && (
-            <button class="ve-card-link" onClick={onStartEdit}>
+            <button
+              type="button"
+              class="ve-card-link"
+              onClick={onStartEdit}
+              aria-label={`Edit comment ${idx + 1}`}
+            >
               Edit
             </button>
           )}
-          <button class="ve-card-link ve-card-link--danger" onClick={onDelete}>
+          <button
+            type="button"
+            class="ve-card-link ve-card-link--danger"
+            onClick={onDelete}
+            aria-label={`Delete comment ${idx + 1}`}
+          >
             Delete
           </button>
         </div>
@@ -180,6 +196,7 @@ export function AnnotationCard({
         <div class="ve-card-edit-box">
           <textarea
             class="ve-card-edit-textarea"
+            aria-label="Edit comment text"
             value={editingText}
             onInput={(e) => onChangeEditingText((e.target as HTMLTextAreaElement).value)}
             onKeyDown={(e) => {
@@ -193,10 +210,10 @@ export function AnnotationCard({
             autoFocus
           />
           <div class="ve-card-edit-actions">
-            <button class="ve-card-link" onClick={onCancelEdit}>
+            <button type="button" class="ve-card-link" onClick={onCancelEdit} aria-label="Cancel comment edit">
               Cancel
             </button>
-            <button class="ve-card-save-btn" onClick={onSaveEdit}>
+            <button type="button" class="ve-card-save-btn" onClick={onSaveEdit} aria-label="Save comment edit">
               Save
             </button>
           </div>
@@ -222,15 +239,21 @@ export function AnnotationCard({
 
       {ann.screenshot && (
         <div class="ve-card-screenshot-wrap">
-          <img
-            src={ann.screenshot}
-            alt="Visual capture"
-            class="ve-card-screenshot-img"
+          <button
+            type="button"
+            class="ve-card-screenshot-btn"
             onClick={() => {
               window.open(ann.screenshot, '_blank');
             }}
+            aria-label="Open full screenshot in new tab"
             title="Click to view full screenshot"
-          />
+          >
+            <img
+              src={ann.screenshot}
+              alt="Visual capture"
+              class="ve-card-screenshot-img"
+            />
+          </button>
         </div>
       )}
     </div>
@@ -244,11 +267,18 @@ export function VariantProposalCard({
   variantSet: ElementVariantSet;
   onDismiss: (id: string) => void;
 }) {
+  const proposalTarget = set.label || set.targetSelector;
   return (
     <div class="ve-mutation-card ve-card--proposal">
       <div class="ve-card-top ve-card-top--center">
-        <span class="ve-mut-target">{set.label || set.targetSelector}</span>
-        <button class="ve-card-link ve-card-link--muted" onClick={() => onDismiss(set.id)} title="Dismiss proposal">
+        <span class="ve-mut-target">{proposalTarget}</span>
+        <button
+          type="button"
+          class="ve-card-link ve-card-link--muted"
+          onClick={() => onDismiss(set.id)}
+          aria-label={`Dismiss proposal for ${proposalTarget}`}
+          title="Dismiss proposal"
+        >
           Dismiss
         </button>
       </div>
@@ -256,8 +286,10 @@ export function VariantProposalCard({
       <div class="ve-proposal-meta">
         <span>{set.variants.length} options proposed</span>
         <button
+          type="button"
           class="ve-card-pill-btn ve-card-pill-btn--accent"
           onClick={() => scrollToSelector(set.targetSelector)}
+          aria-label={`Preview options on page for ${proposalTarget}`}
           title="Scroll to element to preview and pick options"
         >
           Preview on Page
@@ -282,19 +314,23 @@ export function VariantDecisionCard({
         <div class="ve-mut-target ve-card-target-ellipsis">{vd.targetSelector}</div>
         <div class="ve-card-actions">
           <button
+            type="button"
             class="ve-card-pill-btn ve-card-pill-btn--blue"
             onClick={() => {
               onChangeOption(vd.setId);
               scrollToSelector(vd.targetSelector);
             }}
+            aria-label={`Change variant option for ${vd.targetSelector}`}
             title="Revert to test different options"
           >
             Change Option
           </button>
           <button
+            type="button"
             class="ve-card-pill-btn ve-card-pill-btn--danger"
             onClick={() => onDelete(vd.setId)}
-            title="Delete variant decision and restore original styles"
+            aria-label={`Delete variant selection for ${vd.targetSelector}`}
+            title="Delete selection and restore original styles"
           >
             Delete
           </button>

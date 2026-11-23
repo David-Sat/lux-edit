@@ -3,6 +3,8 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'preac
 import { OverlayStateManager } from './state.js';
 import { VoiceRecorder } from './voice-recorder.js';
 import { createLiquidDragDeformer, prefersReducedMotion } from './liquid-glass.js';
+import { formatAriaKeyShortcuts, formatHotkeyLabel } from './hotkeys.js';
+import { handleRovingArrowKey } from './keyboard-nav.js';
 
 type DockSurfaceAnim = 'idle' | 'morph' | 'settle';
 type OrbSurfaceAnim = 'idle' | 'morph' | 'settle';
@@ -179,6 +181,9 @@ export function DockMenu() {
   const prevFocusKeyRef = useRef<DockFocusKey | null>(null);
   const focusGlideTimerRef = useRef<number | null>(null);
   const prevWasLauncherRef = useRef(isLauncherView);
+  const launcherRef = useRef<HTMLButtonElement | null>(null);
+  const dockToolbarRef = useRef<HTMLDivElement | null>(null);
+  const focusIntentRef = useRef<'dock' | 'launcher' | null>(null);
 
   const handleDragStart = useCallback(() => {
     setDockAnim('idle');
@@ -232,6 +237,19 @@ export function DockMenu() {
       setDockAnim('idle');
     }
   }, [isLauncherView]);
+
+  useEffect(() => {
+    const intent = focusIntentRef.current;
+    if (!intent) return;
+    if (intent === 'dock' && !isLauncherView && state.activeTool !== 'voice') {
+      focusIntentRef.current = null;
+      const firstItem = dockToolbarRef.current?.querySelector('.ve-dock-item:not(:disabled)') as HTMLElement | null;
+      firstItem?.focus({ preventScroll: true });
+    } else if (intent === 'launcher' && isLauncherView) {
+      focusIntentRef.current = null;
+      launcherRef.current?.focus({ preventScroll: true });
+    }
+  }, [isLauncherView, state.activeTool]);
 
   useLayoutEffect(() => {
     if (isLauncherView || state.activeTool === 'voice') {
@@ -305,6 +323,9 @@ export function DockMenu() {
     state.annotations.length +
     state.voiceReviews.length +
     state.variantDecisions.length;
+  const formatSuffix = (binding: string) => (binding ? ` (${formatHotkeyLabel(binding)})` : '');
+  const voiceShortcutKey = formatAriaKeyShortcuts(state.hotkeys.voice);
+
   if (state.activeTool === 'voice') {
     const minutes = Math.floor(voiceState.durationMs / 60000);
     const seconds = Math.floor((voiceState.durationMs % 60000) / 1000);
@@ -313,9 +334,16 @@ export function DockMenu() {
 
     return (
       <div
+        role="toolbar"
+        aria-label="Voice walkthrough recording controls"
+        aria-orientation="horizontal"
         class={`ve-dock-menu ve-voice-recording-dock ${voiceState.isReady ? 'is-ready' : ''} ${isDragging ? 've-dragging' : ''} ${hasActiveOption ? 've-has-selection' : ''}`}
         data-ve-anim={dockAnim}
         onAnimationEnd={handleDockAnimationEnd}
+        onKeyDown={(e) => {
+          const items = Array.from((e.currentTarget as HTMLElement).querySelectorAll('button')) as HTMLElement[];
+          handleRovingArrowKey(e, items, { orientation: 'horizontal', loop: true });
+        }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={
@@ -336,6 +364,7 @@ export function DockMenu() {
         <span class="ve-glass-bevel" aria-hidden="true" />
         <div
           class="ve-dock-drag-handle"
+          aria-hidden="true"
           title="Drag to reposition (snaps to edge)"
           onPointerDown={(e) => {
             e.stopPropagation();
@@ -343,7 +372,7 @@ export function DockMenu() {
             if (dockEl) startDrag(e, dockEl);
           }}
         >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg">
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg" aria-hidden="true">
             <circle cx="3" cy="3" r="1.5" />
             <circle cx="7" cy="3" r="1.5" />
             <circle cx="3" cy="7" r="1.5" />
@@ -352,12 +381,13 @@ export function DockMenu() {
             <circle cx="7" cy="11" r="1.5" />
           </svg>
         </div>
-        <span class={`ve-voice-status-dot ${voiceState.isReady ? 'is-ready' : ''}`} />
+        <span class={`ve-voice-status-dot ${voiceState.isReady ? 'is-ready' : ''}`} aria-hidden="true" />
         <span class="ve-voice-timer">
           {voiceState.isReady ? timeStr : '00:00'}
         </span>
         <span
           class={`ve-voice-transcript-preview ${voiceState.isReady ? 'is-ready' : ''} ${voiceState.isReady && liveText ? 'is-live-text' : ''}`}
+          aria-live="polite"
         >
           {!voiceState.isReady
             ? 'Connecting mic...'
@@ -376,14 +406,17 @@ export function DockMenu() {
           </span>
         )}
         <button
+          type="button"
           class={`ve-voice-done-btn ${state.isStoppingVoice ? 've-finishing' : ''}`}
           onClick={() => state.stopVoiceRecording()}
           disabled={state.isStoppingVoice}
-          title="Finish Recording (R / Esc)"
+          aria-label={state.isStoppingVoice ? 'Finishing voice recording' : 'Finish voice recording'}
+          aria-keyshortcuts={voiceShortcutKey ? `${voiceShortcutKey} Escape` : 'Escape'}
+          title={`Finish Recording (${state.hotkeys.voice ? `${formatHotkeyLabel(state.hotkeys.voice)} / ` : ''}Esc)`}
         >
           {state.isStoppingVoice ? (
             <>
-              <svg class="ve-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <svg class="ve-spin" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-opacity="0.25" />
                 <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" />
               </svg>
@@ -391,7 +424,7 @@ export function DockMenu() {
             </>
           ) : (
             <>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <rect x="5" y="5" width="14" height="14" rx="2" />
               </svg>
               <span>Done</span>
@@ -399,11 +432,13 @@ export function DockMenu() {
           )}
         </button>
         <button
+          type="button"
           class="ve-voice-cancel-btn"
           onClick={() => state.cancelVoiceRecording()}
+          aria-label="Cancel voice recording"
           title="Cancel Recording"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -415,6 +450,8 @@ export function DockMenu() {
   if (isLauncherView) {
     return (
       <button
+        ref={launcherRef}
+        type="button"
         class={`ve-launcher-btn ${isDragging ? 've-dragging' : ''}`}
         data-ve-anim={orbAnim}
         onAnimationEnd={handleOrbAnimationEnd}
@@ -431,33 +468,46 @@ export function DockMenu() {
               }
             : undefined
         }
+        aria-label={totalCount > 0 ? `Open LUX Tools (${totalCount} pending items)` : 'Open LUX Tools'}
+        aria-expanded={false}
         title="Open LUX Tools (drag to reposition)"
         onPointerDown={(e) => startDrag(e, e.currentTarget as HTMLElement)}
-        onClick={() => {
+        onClick={(e) => {
           if (wasDraggingRef.current) {
             wasDraggingRef.current = false;
             return;
+          }
+          if (e.detail === 0) {
+            focusIntentRef.current = 'dock';
           }
           state.setDockMenuOpen(true);
         }}
       >
         <span class="ve-glass-surface" aria-hidden="true" />
         <span class="ve-glass-bevel" aria-hidden="true" />
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polygon points="12 2 2 7 12 12 22 7 12 2" />
           <polyline points="2 17 12 22 22 17" />
           <polyline points="2 12 12 17 22 12" />
         </svg>
-        {totalCount > 0 && <span class="ve-launcher-badge">{totalCount}</span>}
+        {totalCount > 0 && <span class="ve-launcher-badge" aria-hidden="true">{totalCount}</span>}
       </button>
     );
   }
 
   return (
     <div
+      ref={dockToolbarRef}
+      role="toolbar"
+      aria-label="LUX Visual Edit Tools"
+      aria-orientation="horizontal"
       class={`ve-dock-menu ${isDragging ? 've-dragging' : ''} ${hasActiveOption ? 've-has-selection' : ''}`}
       data-ve-anim={dockAnim}
       onAnimationEnd={handleDockAnimationEnd}
+      onKeyDown={(e) => {
+        const items = Array.from((e.currentTarget as HTMLElement).querySelectorAll('.ve-dock-item')) as HTMLElement[];
+        handleRovingArrowKey(e, items, { orientation: 'horizontal', loop: true });
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       style={
@@ -491,6 +541,7 @@ export function DockMenu() {
       />
       <div
         class="ve-dock-drag-handle"
+        aria-hidden="true"
         title="Drag to reposition (snaps to edge)"
         onPointerDown={(e) => {
           e.stopPropagation();
@@ -498,7 +549,7 @@ export function DockMenu() {
           if (dockEl) startDrag(e, dockEl);
         }}
       >
-        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg">
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg" aria-hidden="true">
           <circle cx="3" cy="3" r="1.5" />
           <circle cx="7" cy="3" r="1.5" />
           <circle cx="3" cy="7" r="1.5" />
@@ -508,26 +559,33 @@ export function DockMenu() {
         </svg>
       </div>
       <button
+        type="button"
         class={`ve-dock-item ve-mode-pill ${isLive ? 've-active' : ''}`}
         onClick={() => state.setReviewMode(isLive ? 'batch' : 'live')}
+        aria-label={isLive ? 'Review mode: Live (switch to Batch)' : 'Review mode: Batch (switch to Live)'}
+        aria-pressed={isLive}
         title={
           isLive
             ? 'Live Mode Active: Feedback streams immediately to agent (Click to switch to Batch Mode)'
             : 'Batch Mode Active: Hold changes until Submit Review (Click to switch to Live Mode)'
         }
       >
-        {isLive && <span class="ve-mode-live-dot" />}
+        {isLive && <span class="ve-mode-live-dot" aria-hidden="true" />}
         <span>{isLive ? 'Live' : 'Batch'}</span>
       </button>
       <button
         ref={(el) => {
           itemRefs.current.edit = el;
         }}
+        type="button"
         class={`ve-dock-item ${state.activeTool === 'edit' ? 've-active' : ''} ${focusKey === 'edit' ? 've-focus-target' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'edit' ? 'none' : 'edit')}
-        title="Visual Edit Mode (V)"
+        aria-label={`Visual Edit Mode${formatSuffix(state.hotkeys.edit)}`}
+        aria-pressed={state.activeTool === 'edit'}
+        aria-keyshortcuts={formatAriaKeyShortcuts(state.hotkeys.edit)}
+        title={`Visual Edit Mode${formatSuffix(state.hotkeys.edit)}`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
@@ -536,20 +594,28 @@ export function DockMenu() {
         ref={(el) => {
           itemRefs.current.comment = el;
         }}
+        type="button"
         class={`ve-dock-item ${state.activeTool === 'comment' ? 've-active' : ''} ${focusKey === 'comment' ? 've-focus-target' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'comment' ? 'none' : 'comment')}
-        title="Comment Pin Mode (C)"
+        aria-label={`Comment Pin Mode${formatSuffix(state.hotkeys.comment)}`}
+        aria-pressed={state.activeTool === 'comment'}
+        aria-keyshortcuts={formatAriaKeyShortcuts(state.hotkeys.comment)}
+        title={`Comment Pin Mode${formatSuffix(state.hotkeys.comment)}`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
       </button>
       <button
+        type="button"
         class="ve-dock-item"
         onClick={() => state.setTool('voice')}
-        title="Voice Walkthrough (R)"
+        aria-label={`Voice Walkthrough${formatSuffix(state.hotkeys.voice)}`}
+        aria-pressed={false}
+        aria-keyshortcuts={formatAriaKeyShortcuts(state.hotkeys.voice)}
+        title={`Voice Walkthrough${formatSuffix(state.hotkeys.voice)}`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
           <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
           <line x1="12" y1="19" x2="12" y2="22" />
@@ -559,11 +625,15 @@ export function DockMenu() {
         ref={(el) => {
           itemRefs.current.screenshot = el;
         }}
+        type="button"
         class={`ve-dock-item ${state.activeTool === 'screenshot' ? 've-active' : ''} ${focusKey === 'screenshot' ? 've-focus-target' : ''}`}
         onClick={() => state.setTool(state.activeTool === 'screenshot' ? 'none' : 'screenshot')}
-        title="Capture Visual Screenshot (S)"
+        aria-label={`Capture Visual Screenshot${formatSuffix(state.hotkeys.screenshot)}`}
+        aria-pressed={state.activeTool === 'screenshot'}
+        aria-keyshortcuts={formatAriaKeyShortcuts(state.hotkeys.screenshot)}
+        title={`Capture Visual Screenshot${formatSuffix(state.hotkeys.screenshot)}`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
           <circle cx="12" cy="13" r="4" />
         </svg>
@@ -572,11 +642,15 @@ export function DockMenu() {
         ref={(el) => {
           itemRefs.current.drawer = el;
         }}
+        type="button"
         class={`ve-dock-item ve-dock-item--relative ${state.isDrawerOpen ? 've-active' : ''} ${focusKey === 'drawer' ? 've-focus-target' : ''}`}
         onClick={() => state.setDrawerOpen(!state.isDrawerOpen)}
-        title={`Review Changes (${totalCount})`}
+        aria-label={`Review Changes (${totalCount})${formatSuffix(state.hotkeys.drawer)}`}
+        aria-pressed={state.isDrawerOpen}
+        aria-keyshortcuts={formatAriaKeyShortcuts(state.hotkeys.drawer)}
+        title={`Review Changes (${totalCount})${formatSuffix(state.hotkeys.drawer)}`}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="8" y1="6" x2="21" y2="6" />
           <line x1="8" y1="12" x2="21" y2="12" />
           <line x1="8" y1="18" x2="21" y2="18" />
@@ -584,18 +658,23 @@ export function DockMenu() {
           <line x1="3" y1="12" x2="3.01" y2="12" />
           <line x1="3" y1="18" x2="3.01" y2="18" />
         </svg>
-        {totalCount > 0 && <span class="ve-dock-badge">{totalCount}</span>}
+        {totalCount > 0 && <span class="ve-dock-badge" aria-hidden="true">{totalCount}</span>}
       </button>
       <button
+        type="button"
         class="ve-dock-item ve-dock-close"
-        onClick={() => {
+        onClick={(e) => {
+          if (e.detail === 0) {
+            focusIntentRef.current = 'launcher';
+          }
           state.setTool('none');
           state.setDockMenuOpen(false);
           state.setDrawerOpen(false);
         }}
+        aria-label="Minimize LUX tools"
         title="Minimize (Esc)"
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>

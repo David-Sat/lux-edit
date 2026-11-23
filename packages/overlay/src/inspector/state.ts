@@ -22,17 +22,25 @@ import {
   GlassMaterialMode,
   LiquidGlassTuning,
 } from './liquid-glass.js';
+import {
+  DEFAULT_OVERLAY_HOTKEYS,
+  OverlayHotkeyAction,
+  OverlayHotkeys,
+  normalizeHotkey,
+} from './hotkeys.js';
 import { VariantManager } from './variant-manager.js';
 import { VoiceReviewManager } from './voice-review-manager.js';
 import { AnnotationManager } from './annotation-manager.js';
 import { buildBatchSnapshot } from './batch-builder.js';
 import {
+  clearHotkeys,
   clearPersistedDraft,
   clearVerificationTargets,
   consumeVerificationTargets,
   loadPersistedState,
   persistVerificationTargets,
   saveDockPosition,
+  saveHotkeys,
   savePersistedDraft,
   saveReviewMode,
 } from './storage.js';
@@ -80,8 +88,10 @@ export class OverlayStateManager {
   public activeTool: ActiveTool = 'none';
   public isDockMenuOpen = false;
   public isDrawerOpen = false;
+  public isShortcutsPanelOpen = false;
   public glassMode: GlassMaterialMode = 'svg-refract';
   public glassTuning: LiquidGlassTuning = { ...DEFAULT_LIQUID_GLASS_TUNING };
+  public hotkeys: OverlayHotkeys = { ...DEFAULT_OVERLAY_HOTKEYS };
   public dockPosition: DockPosition = {
     side: 'right',
     verticalAnchor: 'bottom',
@@ -501,6 +511,7 @@ export class OverlayStateManager {
     if (loaded.userPrompt !== undefined) this.userPrompt = loaded.userPrompt;
     if (loaded.dockPosition) this.dockPosition = loaded.dockPosition;
     if (loaded.commentDraftText !== undefined) this.commentDraftText = loaded.commentDraftText;
+    if (loaded.hotkeys) this.hotkeys = loaded.hotkeys;
   }
 
   private saveToStorage(): void {
@@ -560,6 +571,8 @@ export class OverlayStateManager {
     this.activeTool = 'none';
     this.isDockMenuOpen = false;
     this.isDrawerOpen = false;
+    this.isShortcutsPanelOpen = false;
+    this.hotkeys = { ...DEFAULT_OVERLAY_HOTKEYS };
     this.dockPosition = {
       side: 'right',
       verticalAnchor: 'bottom',
@@ -831,6 +844,48 @@ export class OverlayStateManager {
   public setDrawerOpen(val: boolean): void {
     this.isDrawerOpen = val;
     this.notify();
+  }
+
+  public setShortcutsPanelOpen(open: boolean): void {
+    if (this.isShortcutsPanelOpen === open && (!open || (this.isDrawerOpen && this.isDockMenuOpen))) {
+      return;
+    }
+    this.isShortcutsPanelOpen = open;
+    if (open) {
+      this.isDrawerOpen = true;
+      this.isDockMenuOpen = true;
+    }
+    this.notify({ skipSync: true });
+  }
+
+  public setHotkey(action: OverlayHotkeyAction, binding: string): void {
+    const normalized = binding === '' ? '' : normalizeHotkey(binding);
+    if (binding !== '' && !normalized) {
+      return;
+    }
+
+    const next: OverlayHotkeys = { ...this.hotkeys, [action]: normalized };
+    if (normalized) {
+      (Object.keys(next) as OverlayHotkeyAction[]).forEach((otherAction) => {
+        if (otherAction !== action && next[otherAction] === normalized) {
+          next[otherAction] = '';
+        }
+      });
+    }
+
+    this.hotkeys = next;
+    if (!OverlayStateManager.workbenchMode) {
+      saveHotkeys(next);
+    }
+    this.notify({ skipSync: true });
+  }
+
+  public resetHotkeys(): void {
+    this.hotkeys = { ...DEFAULT_OVERLAY_HOTKEYS };
+    if (!OverlayStateManager.workbenchMode) {
+      clearHotkeys();
+    }
+    this.notify({ skipSync: true });
   }
 
   public getSnapshotForElement(el: HTMLElement): ElementSnapshot | undefined {

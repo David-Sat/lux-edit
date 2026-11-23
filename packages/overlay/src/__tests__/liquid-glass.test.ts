@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { h, render } from 'preact';
+import { act } from 'preact/test-utils';
 import {
   DEFAULT_LIQUID_GLASS_TUNING,
   buildLiquidGlassFilterConfig,
@@ -10,7 +12,10 @@ import {
   computeSphericalLensProfile,
   createLiquidDragDeformer,
   generateLiquidGlassMaps,
+  useLiquidGlassMotion,
 } from '../inspector/liquid-glass.js';
+import { LiquidGlassDefs } from '../inspector/liquid-glass-defs.js';
+import { OverlayRoot } from '../overlay-root.js';
 import { OverlayStateManager } from '../inspector/state.js';
 import { LIQUID_GLASS_CSS } from '../inspector/styles/liquid-glass.css.js';
 
@@ -312,5 +317,272 @@ describe('OverlayStateManager liquid glass state', () => {
     expect(el.style.getPropertyValue('--ve-drag-sx')).toBe('');
     expect(el.style.getPropertyValue('--ve-drag-sy')).toBe('');
     expect(el.style.getPropertyValue('--ve-drag-rot')).toBe('');
+  });
+});
+
+describe('liquid-glass performance optimizations', () => {
+  let hostEl: HTMLElement | null = null;
+  let shadowRoot: ShadowRoot | null = null;
+
+  beforeEach(() => {
+    clearLiquidGlassMapCache();
+    document.body.innerHTML = '';
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => {
+      return {
+        createImageData: (w: number, h: number) => ({
+          width: w,
+          height: h,
+          data: new Uint8ClampedArray(w * h * 4),
+        }),
+        putImageData: vi.fn(),
+      } as unknown as CanvasRenderingContext2D;
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(
+      () => 'data:image/png;base64,MOCKPNG'
+    );
+  });
+
+  afterEach(async () => {
+    if (shadowRoot) {
+      const root = shadowRoot;
+      await act(() => {
+        render(null, root);
+      });
+      shadowRoot = null;
+    }
+    if (hostEl) {
+      hostEl.remove();
+      hostEl = null;
+    }
+    clearLiquidGlassMapCache();
+    vi.restoreAllMocks();
+    document.body.innerHTML = '';
+  });
+
+  it('skips specular & caustic canvases for spherical lens maps and caches separately from bezel maps', () => {
+    const createElSpy = vi.spyOn(document, 'createElement');
+
+    const lensResult = generateLiquidGlassMaps({
+      width: 30,
+      height: 30,
+      radius: 15,
+      shapeProfile: 'lens',
+      tuning: DEFAULT_LIQUID_GLASS_TUNING,
+      exact: true,
+    });
+
+    const lensCanvasCalls = createElSpy.mock.calls.filter(([tag]) => tag === 'canvas').length;
+    expect(lensCanvasCalls).toBe(1);
+    expect(lensResult).not.toBeNull();
+    expect(lensResult!.displacementUrl).toBe('data:image/png;base64,MOCKPNG');
+    expect(lensResult!.specularUrl).toBe('');
+    expect(lensResult!.causticMaskUrl).toBe('');
+
+    createElSpy.mockClear();
+
+    const bezelResult = generateLiquidGlassMaps({
+      width: 30,
+      height: 30,
+      radius: 15,
+      shapeProfile: 'bezel',
+      tuning: DEFAULT_LIQUID_GLASS_TUNING,
+      exact: true,
+    });
+
+    const bezelCanvasCalls = createElSpy.mock.calls.filter(([tag]) => tag === 'canvas').length;
+    expect(bezelCanvasCalls).toBe(3);
+    expect(bezelResult).not.toBeNull();
+    expect(bezelResult!.specularUrl).toBe('data:image/png;base64,MOCKPNG');
+    expect(bezelResult!.causticMaskUrl).toBe('data:image/png;base64,MOCKPNG');
+  });
+
+  it('LiquidGlassDefs only mounts active surface filters synchronously, disables pin dispersion, and warms others on idle', async () => {
+    const idleCallbacks: Array<() => void> = [];
+    const origRequestIdle = (window as unknown as { requestIdleCallback?: unknown }).requestIdleCallback;
+    const origCancelIdle = (window as unknown as { cancelIdleCallback?: unknown }).cancelIdleCallback;
+
+    Object.defineProperty(window, 'requestIdleCallback', {
+      value: (cb: IdleRequestCallback) => {
+        idleCallbacks.push(() => cb({ didTimeout: false, timeRemaining: () => 50 }));
+        return idleCallbacks.length;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(window, 'cancelIdleCallback', {
+      value: () => {},
+      configurable: true,
+    });
+
+    try {
+      hostEl = document.createElement('div');
+      shadowRoot = hostEl.attachShadow({ mode: 'open' });
+      document.body.appendChild(hostEl);
+
+      await act(() => {
+        render(
+          h(LiquidGlassDefs, {
+            shadowRoot: shadowRoot!,
+            tuning: DEFAULT_LIQUID_GLASS_TUNING,
+            enabled: true,
+            activeSurfaces: {
+              launcher: true,
+              dock: false,
+              pins: false,
+              voicePins: false,
+              drawer: false,
+              toolbar: false,
+              composer: false,
+              switcher: false,
+            },
+          }),
+          shadowRoot!
+        );
+      });
+
+      const initialFilters = Array.from(shadowRoot!.querySelectorAll('filter')).map((f) => f.id);
+      expect(initialFilters).toEqual(['lux-glass-launcher']);
+
+      // Activating comment pins immediately mounts #lux-glass-pin with 4 primitives (single-pass displacement)
+      await act(() => {
+        render(
+          h(LiquidGlassDefs, {
+            shadowRoot: shadowRoot!,
+            tuning: DEFAULT_LIQUID_GLASS_TUNING,
+            enabled: true,
+            activeSurfaces: {
+              launcher: true,
+              dock: false,
+              pins: true,
+              voicePins: false,
+              drawer: false,
+              toolbar: false,
+              composer: false,
+              switcher: false,
+            },
+          }),
+          shadowRoot!
+        );
+      });
+
+      const pinFilter = shadowRoot!.querySelector('#lux-glass-pin');
+      expect(pinFilter).not.toBeNull();
+      expect(pinFilter!.querySelectorAll('feDisplacementMap').length).toBe(1);
+      expect(pinFilter!.querySelectorAll('feImage[result="causticMask"]').length).toBe(0);
+      expect(pinFilter!.querySelectorAll('feImage[result="specRaw"]').length).toBe(0);
+      expect(pinFilter!.children.length).toBe(4);
+
+      // Flush progressive idle warming stages and verify deferred panels warm without blocking mount
+      for (let step = 0; step < 6; step += 1) {
+        const nextCb = idleCallbacks.shift();
+        if (!nextCb) break;
+        await act(() => {
+          nextCb();
+        });
+      }
+
+      const warmedIds = Array.from(shadowRoot!.querySelectorAll('filter')).map((f) => f.id);
+      expect(warmedIds).toContain('lux-glass-dock');
+      expect(warmedIds).toContain('lux-glass-toolbar');
+      expect(warmedIds).toContain('lux-glass-drawer');
+    } finally {
+      Object.defineProperty(window, 'requestIdleCallback', {
+        value: origRequestIdle,
+        configurable: true,
+      });
+      Object.defineProperty(window, 'cancelIdleCallback', {
+        value: origCancelIdle,
+        configurable: true,
+      });
+    }
+  });
+
+  it('useLiquidGlassMotion defers getBoundingClientRect into rAF and triggers pointerdown pulse without OverlayRoot re-renders', async () => {
+    const rafQueue: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    hostEl = document.createElement('div');
+    shadowRoot = hostEl.attachShadow({ mode: 'open' });
+    document.body.appendChild(hostEl);
+
+    function MotionHarness() {
+      useLiquidGlassMotion(shadowRoot, true);
+      return h('button', { type: 'button', class: 've-launcher-btn' }, 'Open');
+    }
+
+    await act(() => {
+      render(h(MotionHarness, {}), shadowRoot!);
+    });
+
+    const btn = shadowRoot!.querySelector('.ve-launcher-btn') as HTMLElement;
+    const rectSpy = vi.fn(
+      () => ({ left: 100, top: 100, width: 52, height: 52, right: 152, bottom: 152, x: 100, y: 100, toJSON: () => {} } as DOMRect)
+    );
+    btn.getBoundingClientRect = rectSpy;
+
+    // 4 rapid pointermove events before the animation frame should not call getBoundingClientRect
+    for (let i = 0; i < 4; i += 1) {
+      btn.dispatchEvent(
+        new PointerEvent('pointermove', { bubbles: true, clientX: 110 + i * 5, clientY: 120 })
+      );
+    }
+    expect(rectSpy).not.toHaveBeenCalled();
+    expect(rafQueue.length).toBe(1);
+
+    // Flushing rAF executes 1 layout read and updates glint coordinates from the latest pointer position
+    rafQueue.shift()!(16);
+    expect(rectSpy).toHaveBeenCalledTimes(1);
+    expect(btn.dataset.veGlint).toBe('true');
+    expect(btn.style.getPropertyValue('--ve-gx')).toBe('48.1%');
+
+    // OverlayRoot does not schedule rAF filter-pulse loops or re-render on pointerdown even in SVG Refract mode
+    const origChrome = (window as unknown as { chrome?: unknown }).chrome;
+    const origCssSupports = typeof CSS !== 'undefined' ? CSS.supports : undefined;
+    Object.defineProperty(window, 'chrome', { value: {}, configurable: true });
+    if (typeof CSS !== 'undefined') {
+      CSS.supports = () => true;
+    }
+
+    try {
+      await act(() => {
+        render(null, shadowRoot!);
+      });
+      OverlayStateManager.resetInstance();
+      OverlayStateManager.setWorkbenchMode(true);
+      let rootCommits = 0;
+      function OverlayRenderProbe() {
+        rootCommits += 1;
+        return h(OverlayRoot, { shadowRoot: shadowRoot! });
+      }
+      await act(() => {
+        render(h(OverlayRenderProbe, {}), shadowRoot!);
+      });
+      const baselineCommits = rootCommits;
+      rafQueue.length = 0;
+
+      const liveLauncher = shadowRoot!.querySelector('.ve-launcher-btn') as HTMLElement;
+      expect(liveLauncher).not.toBeNull();
+      liveLauncher.getBoundingClientRect = rectSpy;
+
+      await act(() => {
+        liveLauncher.dispatchEvent(
+          new PointerEvent('pointerdown', { bubbles: true, clientX: 126, clientY: 126 })
+        );
+      });
+
+      expect(liveLauncher.dataset.vePulse).toBe('true');
+      expect(rootCommits).toBe(baselineCommits);
+      expect(rafQueue.length).toBe(0);
+    } finally {
+      Object.defineProperty(window, 'chrome', { value: origChrome, configurable: true });
+      if (typeof CSS !== 'undefined' && origCssSupports) {
+        CSS.supports = origCssSupports;
+      }
+      OverlayStateManager.resetInstance();
+      OverlayStateManager.setWorkbenchMode(false);
+    }
   });
 });
