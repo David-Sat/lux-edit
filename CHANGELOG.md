@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.18.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.17.0...lux-edit-v0.18.0) (2026-11-23)
+
+
+### Features
+
+* **overlay:** add liquid glass refraction, animations, and draggable lens pins ([#82](https://github.com/David-Sat/lux-edit/issues/82)) ([4ff96e3](https://github.com/David-Sat/lux-edit/commit/4ff96e397a7fe72b8856d55de023bf8a99522e31))
+
+
+### Bug Fixes
+
+* **overlay,mcp:** wrap long variant switcher options and prevent overflow ([#79](https://github.com/David-Sat/lux-edit/issues/79)) ([5405645](https://github.com/David-Sat/lux-edit/commit/5405645719b9a811233ac2fecd71fa2f951bcb19))
+* **overlay:** block host page keyboard shortcuts while typing in overlay inputs ([#80](https://github.com/David-Sat/lux-edit/issues/80)) ([a2c0d1c](https://github.com/David-Sat/lux-edit/commit/a2c0d1cd19005ea6f02394b1c57c5a6dc334f873))
+
 ## [0.17.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.16.2...lux-edit-v0.17.0) (2026-11-20)
 
 
