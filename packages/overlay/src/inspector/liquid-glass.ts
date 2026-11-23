@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 
 export type GlassMaterialMode = 'svg-refract' | 'css-liquid';
 export type LiquidGlassRecipeId = 'apple-clear' | 'crystal-drop' | 'dark-obsidian';
@@ -96,6 +96,8 @@ export interface LiquidGlassMapRequest {
   radius: number;
   tuning: LiquidGlassTuning;
   shapeProfile?: LiquidGlassShapeProfile;
+  includeSpecular?: boolean;
+  includeCaustic?: boolean;
   dpr?: number;
   exact?: boolean;
   quantizeStep?: number;
@@ -305,6 +307,8 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
   const height = normalizeDimension(request.height, useExact, quantizeStep);
   const radius = Math.max(0, Math.min(Math.round(request.radius), width / 2, height / 2));
   const shapeProfile: LiquidGlassShapeProfile = request.shapeProfile ?? 'bezel';
+  const includeSpecular = request.includeSpecular ?? shapeProfile !== 'lens';
+  const includeCaustic = request.includeCaustic ?? shapeProfile !== 'lens';
   const { tuning } = request;
   const rawDpr = request.dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
   const scaleFactor = Math.max(1, Math.min(2, rawDpr >= 1.5 ? 2 : 1));
@@ -314,6 +318,8 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
     height,
     radius,
     shapeProfile,
+    includeSpecular ? 1 : 0,
+    includeCaustic ? 1 : 0,
     tuning.ior.toFixed(2),
     tuning.bezelWidth.toFixed(1),
     tuning.thickness.toFixed(1),
@@ -337,26 +343,30 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
     dispCanvas.height = canvasH;
     const dispCtx = dispCanvas.getContext('2d');
 
-    const specCanvas = document.createElement('canvas');
-    specCanvas.width = canvasW;
-    specCanvas.height = canvasH;
-    const specCtx = specCanvas.getContext('2d');
+    const specCanvas = includeSpecular ? document.createElement('canvas') : null;
+    if (specCanvas) {
+      specCanvas.width = canvasW;
+      specCanvas.height = canvasH;
+    }
+    const specCtx = specCanvas?.getContext('2d') ?? null;
 
-    const causticCanvas = document.createElement('canvas');
-    causticCanvas.width = canvasW;
-    causticCanvas.height = canvasH;
-    const causticCtx = causticCanvas.getContext('2d');
+    const causticCanvas = includeCaustic ? document.createElement('canvas') : null;
+    if (causticCanvas) {
+      causticCanvas.width = canvasW;
+      causticCanvas.height = canvasH;
+    }
+    const causticCtx = causticCanvas?.getContext('2d') ?? null;
 
-    if (!dispCtx || !specCtx || !causticCtx) {
+    if (!dispCtx || (includeSpecular && !specCtx) || (includeCaustic && !causticCtx)) {
       return null;
     }
 
     const dispImage = dispCtx.createImageData(canvasW, canvasH);
-    const specImage = specCtx.createImageData(canvasW, canvasH);
-    const causticImage = causticCtx.createImageData(canvasW, canvasH);
+    const specImage = specCtx ? specCtx.createImageData(canvasW, canvasH) : null;
+    const causticImage = causticCtx ? causticCtx.createImageData(canvasW, canvasH) : null;
     const dispData = dispImage.data;
-    const specData = specImage.data;
-    const causticData = causticImage.data;
+    const specData = specImage ? specImage.data : null;
+    const causticData = causticImage ? causticImage.data : null;
 
     const cx = width / 2;
     const cy = height / 2;
@@ -397,16 +407,6 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
             dispData[offset + 2] = 128;
             dispData[offset + 3] = 255;
           }
-
-          causticData[offset] = 0;
-          causticData[offset + 1] = 0;
-          causticData[offset + 2] = 0;
-          causticData[offset + 3] = 0;
-
-          specData[offset] = 0;
-          specData[offset + 1] = 0;
-          specData[offset + 2] = 0;
-          specData[offset + 3] = 0;
         }
       }
     } else {
@@ -469,58 +469,60 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
             dispData[offset + 2] = 128;
             dispData[offset + 3] = 255;
 
-            // Rim caustic band alpha for kube.io saturated edge glow.
-            const causticAlpha = Math.exp(-Math.pow(t / 0.48, 2.1));
-            causticData[offset] = 255;
-            causticData[offset + 1] = 255;
-            causticData[offset + 2] = 255;
-            causticData[offset + 3] = clampByte(causticAlpha * 255);
+            if (causticData) {
+              // Rim caustic band alpha for kube.io saturated edge glow.
+              const causticAlpha = Math.exp(-Math.pow(t / 0.48, 2.1));
+              causticData[offset] = 255;
+              causticData[offset + 1] = 255;
+              causticData[offset + 2] = 255;
+              causticData[offset + 3] = clampByte(causticAlpha * 255);
+            }
 
-            // Razor-sharp outer bevel rim + thicker inner glass wall halo across opposing arcs.
-            const sharpRim = Math.exp(-Math.pow((t - 0.06) / 0.075, 2));
-            const innerHalo = 0.44 * Math.exp(-Math.pow((t - 0.22) / 0.2, 2));
-            const d1 = Math.max(0, nx * -0.68 + ny * -0.73);
-            const d2 = Math.max(0, nx * 0.68 + ny * 0.73);
-            const lobe = 0.24 + 0.76 * Math.pow(d1, 1.8) + 0.68 * Math.pow(d2, 2.0);
-            const alpha = Math.min(1, (sharpRim + innerHalo) * lobe);
+            if (specData) {
+              // Razor-sharp outer bevel rim + thicker inner glass wall halo across opposing arcs.
+              const sharpRim = Math.exp(-Math.pow((t - 0.06) / 0.075, 2));
+              const innerHalo = 0.44 * Math.exp(-Math.pow((t - 0.22) / 0.2, 2));
+              const d1 = Math.max(0, nx * -0.68 + ny * -0.73);
+              const d2 = Math.max(0, nx * 0.68 + ny * 0.73);
+              const lobe = 0.24 + 0.76 * Math.pow(d1, 1.8) + 0.68 * Math.pow(d2, 2.0);
+              const alpha = Math.min(1, (sharpRim + innerHalo) * lobe);
 
-            const coolBias = Math.pow(d1, 1.5) * dispersionAmt;
-            const warmBias = Math.pow(d2, 1.8) * dispersionAmt;
-            specData[offset] = clampByte(255 - coolBias * 26);
-            specData[offset + 1] = clampByte(255 - warmBias * 22);
-            specData[offset + 2] = clampByte(255 - warmBias * 8);
-            specData[offset + 3] = clampByte(alpha * 255);
+              const coolBias = Math.pow(d1, 1.5) * dispersionAmt;
+              const warmBias = Math.pow(d2, 1.8) * dispersionAmt;
+              specData[offset] = clampByte(255 - coolBias * 26);
+              specData[offset + 1] = clampByte(255 - warmBias * 22);
+              specData[offset + 2] = clampByte(255 - warmBias * 8);
+              specData[offset + 3] = clampByte(alpha * 255);
+            }
           } else {
             dispData[offset] = 128;
             dispData[offset + 1] = 128;
             dispData[offset + 2] = 128;
             dispData[offset + 3] = 255;
-
-            causticData[offset] = 0;
-            causticData[offset + 1] = 0;
-            causticData[offset + 2] = 0;
-            causticData[offset + 3] = 0;
-
-            specData[offset] = 0;
-            specData[offset + 1] = 0;
-            specData[offset + 2] = 0;
-            specData[offset + 3] = 0;
           }
         }
       }
     }
 
     dispCtx.putImageData(dispImage, 0, 0);
-    specCtx.putImageData(specImage, 0, 0);
-    causticCtx.putImageData(causticImage, 0, 0);
+    let specularUrl = '';
+    if (specCtx && specImage && specCanvas) {
+      specCtx.putImageData(specImage, 0, 0);
+      specularUrl = specCanvas.toDataURL('image/png');
+    }
+    let causticMaskUrl = '';
+    if (causticCtx && causticImage && causticCanvas) {
+      causticCtx.putImageData(causticImage, 0, 0);
+      causticMaskUrl = causticCanvas.toDataURL('image/png');
+    }
 
     const result: LiquidGlassMapResult = {
       width,
       height,
       radius,
       displacementUrl: dispCanvas.toDataURL('image/png'),
-      specularUrl: specCanvas.toDataURL('image/png'),
-      causticMaskUrl: causticCanvas.toDataURL('image/png'),
+      specularUrl,
+      causticMaskUrl,
       maxDisplacement: resolvedMaxDisplacement,
     };
 
@@ -725,23 +727,28 @@ export function computeLiquidRimAngle(xPct: number, yPct: number): number {
 
 /**
  * Delegated Shadow DOM controller driving pointer-tracked specular glints, dynamic Fresnel rim
- * orientation, touch-point illumination ripples, and optional SVG refraction press swells.
+ * orientation, and CSS touch-point illumination ripples without causing component re-renders.
  */
 export function useLiquidGlassMotion(
   shadowRoot: ShadowRoot | null,
-  enabled: boolean,
-  onInteractionPulse?: () => void
+  enabled: boolean
 ): void {
-  const pulseCallbackRef = useRef<(() => void) | undefined>(onInteractionPulse);
-  pulseCallbackRef.current = onInteractionPulse;
-
   useEffect(() => {
     if (!shadowRoot) return;
 
     let rafId: number | null = null;
     let activeSurface: HTMLElement | null = null;
-    let pendingPoint: { el: HTMLElement; xPct: number; yPct: number } | null = null;
+    let pendingPoint: { el: HTMLElement; clientX: number; clientY: number } | null = null;
     const pulseTimers = new Map<HTMLElement, number>();
+    let reducedMotion = prefersReducedMotion();
+    const motionQuery =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null;
+    const handleMotionChange = (ev: MediaQueryListEvent) => {
+      reducedMotion = ev.matches;
+    };
+    motionQuery?.addEventListener?.('change', handleMotionChange);
 
     const clearGlint = (el: HTMLElement | null) => {
       if (el) {
@@ -759,6 +766,7 @@ export function useLiquidGlassMotion(
 
     if (!enabled) {
       return () => {
+        motionQuery?.removeEventListener?.('change', handleMotionChange);
         clearAllPulses();
       };
     }
@@ -775,28 +783,27 @@ export function useLiquidGlassMotion(
         return;
       }
 
-      const rect = surface.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-
-      const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-      const yPct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-
       if (activeSurface && activeSurface !== surface) {
         clearGlint(activeSurface);
       }
       activeSurface = surface;
-      pendingPoint = { el: surface, xPct, yPct };
+      pendingPoint = { el: surface, clientX: e.clientX, clientY: e.clientY };
 
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
         const point = pendingPoint;
-        if (!point) return;
-        const { el, xPct: px, yPct: py } = point;
-        el.style.setProperty('--ve-gx', `${px.toFixed(1)}%`);
-        el.style.setProperty('--ve-gy', `${py.toFixed(1)}%`);
-        if (!prefersReducedMotion()) {
-          el.style.setProperty('--ve-rim-angle', `${computeLiquidRimAngle(px, py)}deg`);
+        if (!point || !point.el.isConnected) return;
+        const { el, clientX, clientY } = point;
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const xPct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+        const yPct = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
+        el.style.setProperty('--ve-gx', `${xPct.toFixed(1)}%`);
+        el.style.setProperty('--ve-gy', `${yPct.toFixed(1)}%`);
+        if (!reducedMotion) {
+          el.style.setProperty('--ve-rim-angle', `${computeLiquidRimAngle(xPct, yPct)}deg`);
         }
         el.dataset.veGlint = 'true';
       });
@@ -813,7 +820,7 @@ export function useLiquidGlassMotion(
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      if (prefersReducedMotion()) return;
+      if (reducedMotion) return;
       const target = e.target as HTMLElement | null;
       const control = target?.closest?.(INTERACTIVE_GLASS_SELECTOR) as HTMLElement | null;
       if (!control) return;
@@ -838,8 +845,6 @@ export function useLiquidGlassMotion(
         delete control.dataset.vePulse;
       }, 420);
       pulseTimers.set(control, timerId);
-
-      pulseCallbackRef.current?.();
     };
 
     shadowRoot.addEventListener('pointermove', onPointerMove as EventListener, { passive: true });
@@ -850,6 +855,7 @@ export function useLiquidGlassMotion(
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
+      motionQuery?.removeEventListener?.('change', handleMotionChange);
       shadowRoot.removeEventListener('pointermove', onPointerMove as EventListener);
       shadowRoot.removeEventListener('pointerleave', onPointerLeave as EventListener);
       shadowRoot.removeEventListener('pointerdown', onPointerDown as EventListener);
@@ -857,76 +863,4 @@ export function useLiquidGlassMotion(
       clearAllPulses();
     };
   }, [shadowRoot, enabled]);
-}
-
-/**
- * Attaches a rAF-throttled pointer-tracking specular glint to compact floating surfaces
- * via CSS variables `--ve-gx` / `--ve-gy` without triggering Preact re-renders.
- */
-export function usePointerGlint(enabled: boolean) {
-  const rafIdRef = useRef<number | null>(null);
-  const activeElRef = useRef<HTMLElement | null>(null);
-  const pendingCoordsRef = useRef<{ xPct: number; yPct: number } | null>(null);
-
-  const clearActiveGlint = useCallback(() => {
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-    pendingCoordsRef.current = null;
-    if (activeElRef.current) {
-      delete activeElRef.current.dataset.veGlint;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!enabled) {
-      clearActiveGlint();
-    }
-    return () => {
-      clearActiveGlint();
-    };
-  }, [enabled, clearActiveGlint]);
-
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      if (!enabled) return;
-      const el = e.currentTarget as HTMLElement | null;
-      if (!el) return;
-
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-
-      const xPct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-      const yPct = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
-
-      activeElRef.current = el;
-      pendingCoordsRef.current = { xPct, yPct };
-
-      if (rafIdRef.current !== null) return;
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = null;
-        const target = activeElRef.current;
-        const coords = pendingCoordsRef.current;
-        if (!target || !coords) return;
-        target.style.setProperty('--ve-gx', `${coords.xPct.toFixed(1)}%`);
-        target.style.setProperty('--ve-gy', `${coords.yPct.toFixed(1)}%`);
-        target.dataset.veGlint = 'true';
-      });
-    },
-    [enabled]
-  );
-
-  const onPointerLeave = useCallback(
-    (e: PointerEvent) => {
-      const el = e.currentTarget as HTMLElement | null;
-      if (el) {
-        delete el.dataset.veGlint;
-      }
-      clearActiveGlint();
-    },
-    [clearActiveGlint]
-  );
-
-  return { onPointerMove, onPointerLeave };
 }

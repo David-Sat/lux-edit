@@ -303,6 +303,15 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
   transform: scale(0.96);
 }
 
+.ve-root.ve-glass-liquid .ve-dock-item:focus-visible,
+.ve-root.ve-glass-liquid .ve-launcher-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 4px rgba(56, 189, 248, 0.45),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
 /* Sliding Liquid Glass Focus Pill inside .ve-dock-menu */
 .ve-root.ve-glass-liquid .ve-dock-focus-pill {
   display: block;
@@ -552,6 +561,14 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
   transform: translate(-50%, -50%) scale(0.95);
 }
 
+.ve-root.ve-glass-liquid .ve-pin:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 2px rgba(14, 165, 233, 0.9),
+    0 0 18px rgba(56, 189, 248, 0.65);
+}
+
 .ve-root.ve-glass-liquid .ve-pin.ve-dragging,
 .ve-root.ve-glass-liquid .ve-pin.ve-dragging:hover,
 .ve-root.ve-glass-liquid .ve-pin.ve-dragging:active,
@@ -641,6 +658,14 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 
 .ve-root.ve-glass-liquid .ve-voice-pin:active {
   transform: scale(0.97);
+}
+
+.ve-root.ve-glass-liquid .ve-voice-pin:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 2px rgba(239, 68, 68, 0.9),
+    0 0 18px rgba(248, 113, 113, 0.65);
 }
 
 .ve-root.ve-glass-liquid .ve-voice-pin.ve-dragging,

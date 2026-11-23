@@ -131,6 +131,27 @@ export const BASE_CSS = `
   }
 }
 
+/* Unified High-Contrast Keyboard Focus Rings (Never Shown on Mouse Click) */
+.ve-root button:focus:not(:focus-visible),
+.ve-root [role="button"]:focus:not(:focus-visible),
+.ve-root [tabindex]:focus:not(:focus-visible),
+.ve-root input[type="color"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.ve-root button:focus-visible,
+.ve-root [role="button"]:focus-visible,
+.ve-root [tabindex]:focus-visible,
+.ve-root input[type="color"]:focus-visible {
+  outline: 2px solid var(--ve-accent, #38bdf8);
+  outline-offset: 2px;
+}
+
+.ve-pin-tooltip textarea:focus-visible {
+  border-color: var(--ve-accent, #38bdf8) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+}
+
 /* Unified Modern Scrollbars */
 .ve-comment-textarea,
 .ve-textarea-adaptive,
@@ -205,14 +226,23 @@ export const BASE_CSS = `
 }
 
 /* Canvas Highlight Overlays & Target Badges */
+.ve-selection-layer {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 0;
+  block-size: 0;
+  pointer-events: none;
+}
+
 .ve-highlight-box {
-  position: fixed;
+  position: absolute;
   pointer-events: none;
   border: 1.5px solid rgba(56, 189, 248, 0.85);
   background-color: rgba(56, 189, 248, 0.08);
   box-shadow: 0 0 16px rgba(56, 189, 248, 0.3);
   border-radius: 6px;
-  transition: all 0.06s var(--ve-ease-spring);
+  transition: border-color 0.08s ease, background-color 0.08s ease, box-shadow 0.08s ease;
   z-index: var(--ve-z-highlight);
 
   &.ve-comment-mode {

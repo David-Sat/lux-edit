@@ -4,6 +4,7 @@ import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { captureVisualSnapshot } from './visual-capture.js';
+import { handleContainerTabLoop } from './keyboard-nav.js';
 
 export function CommentComposer() {
   const state = OverlayStateManager.getInstance();
@@ -100,12 +101,28 @@ export function CommentComposer() {
   useEffect(() => {
     if (!target || !popoverRef.current) return;
 
+    let rafId = 0;
+    const schedulePos = () => {
+      if (typeof window.requestAnimationFrame !== 'function') {
+        updatePos();
+        return;
+      }
+      if (rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        updatePos();
+      });
+    };
+
     updatePos();
-    window.addEventListener('scroll', updatePos, { passive: true });
-    window.addEventListener('resize', updatePos);
+    window.addEventListener('scroll', schedulePos, { passive: true });
+    window.addEventListener('resize', schedulePos);
     return () => {
-      window.removeEventListener('scroll', updatePos);
-      window.removeEventListener('resize', updatePos);
+      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      window.removeEventListener('scroll', schedulePos);
+      window.removeEventListener('resize', schedulePos);
     };
   }, [target, commentTargetBounds, hasScreenshot, isMulti, commentText, updatePos]);
 
@@ -135,7 +152,19 @@ export function CommentComposer() {
   return (
     <div
       ref={popoverRef}
+      role="dialog"
+      aria-modal="false"
+      aria-label="Add comment pin"
       class="ve-comment-popover"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          state.setCommentTarget(null);
+          return;
+        }
+        handleContainerTabLoop(e, popoverRef.current);
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -146,7 +175,7 @@ export function CommentComposer() {
           <span class="ve-comment-header-label">
             {hasScreenshot ? (
               <span class="ve-comment-screenshot-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                   <circle cx="12" cy="13" r="4" />
                 </svg>
@@ -154,21 +183,21 @@ export function CommentComposer() {
               </span>
             ) : isMulti ? (
               <span class="ve-comment-multi-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
                 Comment on <strong class="ve-comment-accent-strong">{targets.length} elements</strong>
               </span>
             ) : selectedText ? (
               <span class="ve-comment-selected-title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
                 Comment on <strong class="ve-comment-selected-strong">"{selectedText.length > 28 ? selectedText.slice(0, 28) + '…' : selectedText}"</strong>
               </span>
             ) : (
               <span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
                 Comment on <strong class="ve-comment-accent-strong">{tagLabel}</strong>
@@ -176,11 +205,13 @@ export function CommentComposer() {
             )}
           </span>
           <button
+            type="button"
             class="ve-close-btn ve-close-btn--compact"
             onClick={() => state.setCommentTarget(null)}
+            aria-label="Cancel comment"
             title="Cancel (Esc)"
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
@@ -196,7 +227,9 @@ export function CommentComposer() {
                 <span key={loc.selector} class="ve-comment-target-chip" title={label}>
                   <span class="ve-comment-chip-label">{label}</span>
                   <button
+                    type="button"
                     class="ve-chip-remove"
+                    aria-label={`Remove ${label} from linked targets`}
                     title="Remove from linked elements"
                     onClick={() => state.removeCommentTarget(tEl)}
                   >
@@ -221,6 +254,7 @@ export function CommentComposer() {
             type="button"
             class="ve-composer-screenshot-detach"
             onClick={() => state.setPendingScreenshot(undefined)}
+            aria-label="Detach captured screenshot"
             title="Detach screenshot"
           >
             ×
@@ -231,6 +265,7 @@ export function CommentComposer() {
       <textarea
         ref={textareaRef}
         class="ve-comment-textarea"
+        aria-label={hasScreenshot ? 'Comment about captured screenshot' : 'Comment feedback text'}
         placeholder={
           hasScreenshot
             ? 'Describe what to change, fix, or note about this screenshot...'
@@ -253,6 +288,7 @@ export function CommentComposer() {
               type="button"
               class="ve-composer-snap-btn"
               disabled={isSnapping}
+              aria-label={isSnapping ? 'Capturing element screenshot' : 'Attach screenshot of element'}
               onClick={async () => {
                 if (isSnapping) return;
                 setIsSnapping(true);
@@ -275,7 +311,7 @@ export function CommentComposer() {
               }}
               title="Attach screenshot of element"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
@@ -295,6 +331,7 @@ export function CommentComposer() {
           </span>
         </div>
         <button
+          type="button"
           class="ve-btn primary ve-composer-submit-btn"
           onClick={handleSave}
           disabled={!commentText.trim() && !hasScreenshot}

@@ -23,6 +23,7 @@ export const STORAGE_KEYS = {
   DOCK_POSITION: 'lux_dock_position',
   COMPOSER_DRAFT: 'lux_composer_draft',
   REVIEW_MODE: 'lux_review_mode',
+  HOTKEYS: 'lux_hotkeys',
   VERIFY_TARGETS: 'lux_verify_targets',
   LEGACY_ACTIVE_DRAFT: 'visual_edit_active_draft',
   LEGACY_APP_DRAFT_PREFIX: 'visual_edit_draft_',

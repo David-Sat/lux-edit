@@ -12,6 +12,13 @@ export interface PinRect {
   height: number;
 }
 
+export interface ElementRectPosition {
+  fixed: boolean;
+  dynamicScroll: boolean;
+  rect: PinRect;
+  viewportRect: PinRect;
+}
+
 export interface PinTargetPosition {
   found: boolean;
   fixed: boolean;
@@ -144,6 +151,45 @@ function resolveTargetElement(
 }
 
 /**
+ * Measures an element's layout bounding box in document-anchor (or viewport if fixed) coordinates
+ * so highlight boxes, verification halos, and variant bounds scroll in lockstep with page content.
+ */
+export function locateElementRect(
+  el: HTMLElement,
+  anchor: PinAnchorOrigin
+): ElementRectPosition {
+  const r = el.getBoundingClientRect();
+  const { fixed, dynamicScroll } = inspectElementScrollContext(el);
+  const viewportRect: PinRect = {
+    top: r.top,
+    left: r.left,
+    width: r.width,
+    height: r.height,
+  };
+
+  if (fixed) {
+    return {
+      fixed: true,
+      dynamicScroll: false,
+      rect: { ...viewportRect },
+      viewportRect,
+    };
+  }
+
+  return {
+    fixed: false,
+    dynamicScroll,
+    rect: {
+      top: r.top - anchor.top,
+      left: r.left - anchor.left,
+      width: r.width,
+      height: r.height,
+    },
+    viewportRect,
+  };
+}
+
+/**
  * Resolves a pin's anchor-relative (or viewport-relative if fixed) position without
  * clamping at the viewport top edge so pins scroll in exact lockstep with page content.
  */
@@ -157,46 +203,20 @@ export function locatePinTarget({
 }: LocatePinTargetOptions): PinTargetPosition {
   const el = resolveTargetElement(targetSelector, sourceLoc);
   if (el) {
-    const r = el.getBoundingClientRect();
-    const { fixed, dynamicScroll } = inspectElementScrollContext(el);
-    const viewportX = r.left + offsetX;
-    const viewportY = r.top + offsetY;
-    const viewportRect: PinRect = {
-      top: r.top,
-      left: r.left,
-      width: r.width,
-      height: r.height,
-    };
-
-    if (fixed) {
-      return {
-        found: true,
-        fixed: true,
-        dynamicScroll: false,
-        x: viewportX,
-        y: viewportY,
-        viewportX,
-        viewportY,
-        rect: { ...viewportRect },
-        viewportRect,
-      };
-    }
+    const pos = locateElementRect(el, anchor);
+    const viewportX = pos.viewportRect.left + offsetX;
+    const viewportY = pos.viewportRect.top + offsetY;
 
     return {
       found: true,
-      fixed: false,
-      dynamicScroll,
-      x: viewportX - anchor.left,
-      y: viewportY - anchor.top,
+      fixed: pos.fixed,
+      dynamicScroll: pos.dynamicScroll,
+      x: pos.rect.left + offsetX,
+      y: pos.rect.top + offsetY,
       viewportX,
       viewportY,
-      rect: {
-        top: r.top - anchor.top,
-        left: r.left - anchor.left,
-        width: r.width,
-        height: r.height,
-      },
-      viewportRect,
+      rect: pos.rect,
+      viewportRect: pos.viewportRect,
     };
   }
 

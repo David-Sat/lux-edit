@@ -673,6 +673,160 @@ export const DRAWER_CSS = `
   margin-bottom: 4px;
 }
 
+.ve-card-screenshot-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.ve-shortcuts-btn {
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--ve-text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ve-shortcuts-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.ve-shortcuts-btn.is-active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #7dd3fc;
+}
+
+.ve-shortcuts-panel {
+  background: rgba(8, 13, 24, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ve-shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ve-shortcuts-reset-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--ve-text-secondary);
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ve-shortcuts-reset-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.ve-shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ve-hotkey-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ve-hotkey-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ve-hotkey-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ve-text-primary);
+}
+
+.ve-hotkey-desc {
+  font-size: 10px;
+  color: var(--ve-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes veHotkeyCapturePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.85);
+  }
+}
+
+.ve-hotkey-btn {
+  min-inline-size: 68px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.ve-hotkey-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.ve-hotkey-btn.is-unbound {
+  color: var(--ve-text-muted);
+  border-style: dashed;
+}
+
+.ve-hotkey-btn.is-capturing {
+  background: rgba(14, 165, 233, 0.24);
+  border-color: #38bdf8;
+  color: #bae6fd;
+  animation: veHotkeyCapturePulse 1.1s ease-in-out infinite;
+}
+
+.ve-shortcuts-hint {
+  font-size: 10px;
+  color: var(--ve-text-muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 6px;
+}
+
 .ve-card-screenshot-img {
   width: 100%;
   max-height: 140px;
@@ -700,17 +854,17 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-switcher-layer {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 0;
+  height: 0;
   pointer-events: none;
-  z-index: var(--ve-z-toolbar, 999999);
+  z-index: var(--ve-z-toolbar, 2147483645);
 }
 
 .ve-variant-bounds {
-  position: fixed;
+  position: absolute;
   pointer-events: none;
   box-sizing: border-box;
 }
@@ -909,6 +1063,7 @@ export const DRAWER_CSS = `
   min-width: 0;
   max-height: 156px;
   overflow-y: auto;
+  padding: 3px;
 }
 
 .ve-variant-option-btn {
@@ -1007,23 +1162,23 @@ export const DRAWER_CSS = `
 }
 
 .ve-verification-halo-layer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: 0;
+  block-size: 0;
   pointer-events: none;
-  z-index: var(--ve-z-overlay, 999998);
+  z-index: var(--ve-z-highlight, 2147483640);
 }
 
 .ve-verification-halo-box {
-  position: fixed;
+  position: absolute;
   border: 2px solid #10b981;
   border-radius: 8px;
   box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.28), 0 0 24px rgba(16, 185, 129, 0.45);
   background: rgba(16, 185, 129, 0.06);
   pointer-events: none;
-  transition: all 0.25s ease;
+  transition: opacity 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .ve-verification-halo-box--fetched {

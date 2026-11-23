@@ -10,6 +10,7 @@ import {
   locatePinTarget,
 } from './pin-position.js';
 import { usePinPeekDrag } from './pin-drag.js';
+import { handleRovingArrowKey } from './keyboard-nav.js';
 
 export function VoicePins() {
   const state = OverlayStateManager.getInstance();
@@ -158,6 +159,10 @@ export function VoicePins() {
         return (
           <div
             key={pin.id}
+            role="button"
+            tabIndex={0}
+            aria-label={`Voice walkthrough target ${pin.order}: ${targetLabel}`}
+            aria-expanded={isHovered && !isDragging}
             class={[
               've-voice-pin',
               isHovered && !isDragging ? 've-hovered' : '',
@@ -175,6 +180,31 @@ export function VoicePins() {
               startPinDrag(e, {
                 pinKey: pin.id,
                 pinEl: e.currentTarget as HTMLElement,
+              });
+            }}
+            onFocus={() => {
+              if (!activeDragKey) setHoveredPinId(pin.id);
+            }}
+            onBlur={() => {
+              if (!activeDragKey) setHoveredPinId((prev) => (prev === pin.id ? null : prev));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setHoveredPinId(null);
+                return;
+              }
+              const pins = anchorRef.current
+                ? (Array.from(anchorRef.current.querySelectorAll('.ve-voice-pin')) as HTMLElement[])
+                : [];
+              handleRovingArrowKey(e, pins, {
+                orientation: 'both',
+                loop: true,
+                currentEl: e.currentTarget as HTMLElement,
+                onFocusChange: (nextEl) => {
+                  nextEl.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                },
               });
             }}
             onMouseEnter={() => {
@@ -196,6 +226,7 @@ export function VoicePins() {
               stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
+              aria-hidden="true"
             >
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
@@ -203,7 +234,7 @@ export function VoicePins() {
             <span>Target {pin.order}</span>
 
             {isHovered && !isDragging && (
-              <div class="ve-voice-pin-tooltip">
+              <div class="ve-voice-pin-tooltip" role="tooltip">
                 <span class="ve-glass-surface" aria-hidden="true" />
                 <span class="ve-glass-bevel" aria-hidden="true" />
                 <span>{targetLabel}</span>

@@ -1,6 +1,12 @@
 import { h } from 'preact';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
+import { PinAnchorOrigin, getPinAnchorOrigin, locateElementRect } from './pin-position.js';
+import {
+  handleRovingArrowKey,
+  isEditableTargetInPath,
+  isHotkeyCaptureTarget,
+} from './keyboard-nav.js';
 
 const REDUNDANT_OPTION_PREFIX_RE =
   /^(?:option\s+[a-z0-9]+\s*[:.\-–—]\s*|\d+(?:\s*[.):]\s+|\s+[-–—]\s+))/i;
@@ -45,6 +51,8 @@ export function VariantSwitcher() {
   const [dragPositions, setDragPositions] = useState<Record<string, { left: number; top: number }>>({});
   const [measuredSizes, setMeasuredSizes] = useState<Record<string, { width: number; height: number }>>({});
   const barRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
   const dragRef = useRef<{
     setId: string;
     startX: number;
@@ -56,13 +64,31 @@ export function VariantSwitcher() {
   } | null>(null);
 
   useEffect(() => {
+    let rafId = 0;
     const handleUpdate = () => setTick((t) => t + 1);
-    window.addEventListener('scroll', handleUpdate, { passive: true });
-    window.addEventListener('resize', handleUpdate);
+    const scheduleSync = () => {
+      if (typeof window.requestAnimationFrame !== 'function') {
+        handleUpdate();
+        return;
+      }
+      if (rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        handleUpdate();
+      });
+    };
+
+    window.addEventListener('scroll', scheduleSync, { passive: true });
+    document.addEventListener('scroll', scheduleSync, { capture: true, passive: true });
+    window.addEventListener('resize', scheduleSync);
     const unsub = state.subscribe(handleUpdate);
     return () => {
-      window.removeEventListener('scroll', handleUpdate);
-      window.removeEventListener('resize', handleUpdate);
+      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      window.removeEventListener('scroll', scheduleSync);
+      document.removeEventListener('scroll', scheduleSync, { capture: true });
+      window.removeEventListener('resize', scheduleSync);
       unsub();
     };
   }, [state]);
@@ -149,17 +175,33 @@ export function VariantSwitcher() {
     });
   }, [setsLayoutKey, tick, setsToRender]);
 
+  useLayoutEffect(() => {
+    if (!anchorRef.current) return;
+    const measured = getPinAnchorOrigin(anchorRef.current);
+    if (
+      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
+      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
+    ) {
+      setTick((t) => t + 1);
+    }
+  }, [setsLayoutKey]);
+
   // Keyboard navigation: use Alt + Left/Right arrows or focus switcher to switch options, Enter to Pick & Apply
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || isHotkeyCaptureTarget(e) || isEditableTargetInPath(e)) {
+        return;
+      }
       const activeTag = (document.activeElement?.tagName || '').toLowerCase();
       if (activeTag === 'input' || activeTag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) {
         return;
       }
 
       // Only handle arrows/enter if Alt/Option is pressed, or if focus/target is inside the variant switcher
-      const targetEl = e.target as HTMLElement | null;
-      const isInsideSwitcher = Boolean(targetEl?.closest?.('.ve-variant-switcher-bar'));
+      const path = e.composedPath ? e.composedPath() : e.target ? [e.target] : [];
+      const isInsideSwitcher = path.some(
+        (node) => node instanceof HTMLElement && node.classList?.contains('ve-variant-switcher-bar')
+      );
       const shouldHandle = e.altKey || isInsideSwitcher;
       if (!shouldHandle) return;
 
@@ -195,16 +237,34 @@ export function VariantSwitcher() {
 
   const vw = window.innerWidth || document.documentElement.clientWidth || 1000;
   const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+  const anchor = getPinAnchorOrigin(anchorRef.current);
+  anchorOriginRef.current = anchor;
 
   return (
-    <div class="ve-variant-switcher-layer">
+    <div class="ve-variant-switcher-layer" ref={anchorRef}>
       {setsToRender.map((set) => {
-        let rect = { left: 24, top: 72, bottom: 132, width: 260, height: 60 };
+        let viewportRect = { left: 24, top: 72, bottom: 132, width: 260, height: 60 };
+        let boundsRect = {
+          left: viewportRect.left - anchor.left,
+          top: viewportRect.top - anchor.top,
+          width: viewportRect.width,
+          height: viewportRect.height,
+        };
+        let boundsFixed = false;
+
         try {
           const el = document.querySelector(set.targetSelector) as HTMLElement | null;
           if (el) {
-            const r = el.getBoundingClientRect();
-            rect = { left: r.left, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+            const measuredPos = locateElementRect(el, anchor);
+            boundsFixed = measuredPos.fixed;
+            boundsRect = measuredPos.rect;
+            viewportRect = {
+              left: measuredPos.viewportRect.left,
+              top: measuredPos.viewportRect.top,
+              bottom: measuredPos.viewportRect.top + measuredPos.viewportRect.height,
+              width: measuredPos.viewportRect.width,
+              height: measuredPos.viewportRect.height,
+            };
           }
         } catch {
           // Fall back to default coordinates if targetSelector cannot be queried.
@@ -224,7 +284,7 @@ export function VariantSwitcher() {
 
         const customPos = dragPositions[set.id];
         const computed = computeVariantSwitcherPosition({
-          rect,
+          rect: viewportRect,
           barWidth,
           barHeight,
           viewportWidth: vw,
@@ -239,11 +299,13 @@ export function VariantSwitcher() {
             {/* Minimal corner brackets offset by 6px so the component boundary is completely visible */}
             <div
               class="ve-variant-bounds"
+              aria-hidden="true"
               style={{
-                left: `${rect.left - 6}px`,
-                top: `${rect.top - 6}px`,
-                width: `${rect.width + 12}px`,
-                height: `${rect.height + 12}px`,
+                position: boundsFixed ? 'fixed' : undefined,
+                left: `${boundsRect.left - 6}px`,
+                top: `${boundsRect.top - 6}px`,
+                width: `${boundsRect.width + 12}px`,
+                height: `${boundsRect.height + 12}px`,
               }}
             >
               <div class="ve-variant-corner ve-variant-corner--tl" />
@@ -257,6 +319,8 @@ export function VariantSwitcher() {
               ref={(el) => {
                 barRefs.current[set.id] = el;
               }}
+              role="region"
+              aria-label={`Variant options for ${set.label}`}
               class="ve-variant-switcher-bar"
               tabIndex={0}
               onMouseDown={(e) => e.stopPropagation()}
@@ -288,7 +352,7 @@ export function VariantSwitcher() {
                   }}
                   title="Drag to reposition variant switcher"
                 >
-                  <svg width="10" height="14" viewBox="0 0 10 14" fill="#64748b" class="ve-variant-drag-icon">
+                  <svg width="10" height="14" viewBox="0 0 10 14" fill="#64748b" class="ve-variant-drag-icon" aria-hidden="true">
                     <circle cx="3" cy="3" r="1.5" />
                     <circle cx="7" cy="3" r="1.5" />
                     <circle cx="3" cy="7" r="1.5" />
@@ -301,11 +365,13 @@ export function VariantSwitcher() {
 
                 <div class="ve-variant-header-actions">
                   <button
+                    type="button"
                     class="ve-variant-close-btn"
                     onClick={() => state.dismissVariantSet(set.id)}
+                    aria-label={`Dismiss variant switcher for ${set.label}`}
                     title="Dismiss variant switcher"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
                       <line x1="18" y1="6" x2="6" y2="18" />
                       <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
@@ -327,15 +393,19 @@ export function VariantSwitcher() {
 
                   <div class="ve-variant-decided-actions">
                     <button
+                      type="button"
                       class="ve-variant-change-btn"
                       onClick={() => state.revertVariantDecision(set.id)}
+                      aria-label={`Change selected variant for ${set.label}`}
                       title="Revert to test different options"
                     >
                       Change Option
                     </button>
                     <button
+                      type="button"
                       class="ve-variant-delete-btn"
                       onClick={() => state.deleteVariantDecision(set.id)}
+                      aria-label={`Delete variant selection for ${set.label}`}
                       title="Delete selection and restore original styles"
                     >
                       Delete
@@ -345,8 +415,35 @@ export function VariantSwitcher() {
               ) : (
                 <>
                   {/* Row 2: Options to pick from (multi-line flex-wrap pills with clamped labels) */}
-                  <div class="ve-variant-options-row">
+                  <div
+                    class="ve-variant-options-row"
+                    role="radiogroup"
+                    aria-label="Variant options"
+                    onKeyDown={(e) => {
+                      const optionBtns = Array.from(
+                        (e.currentTarget as HTMLElement).querySelectorAll('.ve-variant-option-btn')
+                      ) as HTMLElement[];
+                      const optionIds: (string | null)[] = [null, ...set.variants.map((v) => v.id)];
+                      const handled = handleRovingArrowKey(e, optionBtns, {
+                        orientation: 'both',
+                        loop: true,
+                        onFocusChange: (_btn, nextIdx) => {
+                          if (nextIdx >= 0 && nextIdx < optionIds.length) {
+                            state.previewVariant(set.id, optionIds[nextIdx]);
+                          }
+                        },
+                      });
+                      if (!handled && e.key === 'Enter' && activeVarId !== null) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        state.decideVariant(set.id, activeVarId);
+                      }
+                    }}
+                  >
                     <button
+                      type="button"
+                      role="radio"
+                      aria-checked={activeVarId === null}
                       class={`ve-variant-option-btn${activeVarId === null ? ' is-selected' : ''}`}
                       onClick={() => state.previewVariant(set.id, null)}
                       title="Original component styles"
@@ -356,10 +453,14 @@ export function VariantSwitcher() {
                     {set.variants.map((v, idx) => {
                       const optionLabel = formatVariantOptionLabel(v.name, idx);
                       const optionTooltip = v.rationale ? `${optionLabel} — ${v.rationale}` : optionLabel;
+                      const isOptionSelected = activeVarId === v.id;
                       return (
                         <button
                           key={v.id}
-                          class={`ve-variant-option-btn${activeVarId === v.id ? ' is-selected' : ''}`}
+                          type="button"
+                          role="radio"
+                          aria-checked={isOptionSelected}
+                          class={`ve-variant-option-btn${isOptionSelected ? ' is-selected' : ''}`}
                           onClick={() => state.previewVariant(set.id, v.id)}
                           title={optionTooltip}
                         >
@@ -380,8 +481,10 @@ export function VariantSwitcher() {
 
                     {activeVariant ? (
                       <button
+                        type="button"
                         class="ve-variant-apply-btn"
                         onClick={() => state.decideVariant(set.id, activeVariant.id)}
+                        aria-label={`Apply variant ${activeVariant.name}`}
                         title="Approve this variant (Enter)"
                       >
                         Pick & Apply

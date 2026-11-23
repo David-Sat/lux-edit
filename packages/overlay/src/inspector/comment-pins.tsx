@@ -10,6 +10,7 @@ import {
   locatePinTarget,
 } from './pin-position.js';
 import { usePinPeekDrag } from './pin-drag.js';
+import { handleRovingArrowKey } from './keyboard-nav.js';
 
 function EditCommentTextarea({
   value,
@@ -37,6 +38,7 @@ function EditCommentTextarea({
   return (
     <textarea
       ref={textareaRef}
+      aria-label="Edit comment text"
       style={{
         background: 'rgba(0, 0, 0, 0.45)',
         color: '#f8fafc',
@@ -77,6 +79,8 @@ export function CommentPins() {
   const anchorRef = useRef<HTMLDivElement>(null);
   const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
   const needsDocScrollSyncRef = useRef(false);
+  const pinRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const suppressFocusTooltipRef = useRef<string | null>(null);
 
   const { activeDragKey, snappingKey, startPinDrag, consumeSuppressedClick } = usePinPeekDrag({
     onDragStart: () => {
@@ -433,10 +437,34 @@ export function CommentPins() {
           right: isNearRight ? '-8px' : 'auto',
           transform: isNearLeft || isNearRight ? 'none' : 'translateX(-50%)',
         };
+        const commentPreview = ann.comment
+          ? `: ${ann.comment.slice(0, 60)}${ann.comment.length > 60 ? '…' : ''}`
+          : '';
+        const pinAriaLabel = isMulti
+          ? `Pin ${subLabel}, linked to ${multiTotal} elements${commentPreview}`
+          : `Comment pin ${subLabel}${commentPreview}`;
+
+        const closeTooltipAndRestorePinFocus = (saveCurrent: boolean) => {
+          if (editingPinId === ann.id && saveCurrent) {
+            state.updateAnnotation(ann.id, editText);
+          }
+          setEditingPinId(null);
+          setHoveredPinId(null);
+          setHoveredPinKey(null);
+          suppressFocusTooltipRef.current = pinKey;
+          pinRefs.current[pinKey]?.focus({ preventScroll: true });
+        };
 
         return (
           <div
             key={pinKey}
+            ref={(el) => {
+              pinRefs.current[pinKey] = el;
+            }}
+            role="button"
+            tabIndex={0}
+            aria-expanded={showTooltip}
+            aria-label={pinAriaLabel}
             class={[
               've-pin',
               isMulti ? 've-pin-multi' : '',
@@ -454,6 +482,66 @@ export function CommentPins() {
               startPinDrag(e, {
                 pinKey,
                 pinEl: e.currentTarget as HTMLElement,
+              });
+            }}
+            onFocus={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (suppressFocusTooltipRef.current === pinKey) {
+                suppressFocusTooltipRef.current = null;
+                return;
+              }
+              if (!activeDragKey && !editingPinId) {
+                setHoveredPinId(ann.id);
+                setHoveredPinKey(pinKey);
+              }
+            }}
+            onBlur={(e) => {
+              const nextFocused = e.relatedTarget as Node | null;
+              if (nextFocused && e.currentTarget.contains(nextFocused)) {
+                return;
+              }
+              if (!activeDragKey && !editingPinId) {
+                setHoveredPinId((prev) => (prev === ann.id ? null : prev));
+                setHoveredPinKey((prev) => (prev === pinKey ? null : prev));
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (editingPinId === ann.id) {
+                  state.updateAnnotation(ann.id, editText);
+                  setEditingPinId(null);
+                } else {
+                  if (editingPinId) {
+                    state.updateAnnotation(editingPinId, editText);
+                  }
+                  setHoveredPinId(ann.id);
+                  setHoveredPinKey(pinKey);
+                  setEditingPinId(ann.id);
+                  setEditText(ann.comment);
+                }
+                return;
+              }
+              if (e.key === 'Escape') {
+                if (isHovered || isEditing) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  closeTooltipAndRestorePinFocus(false);
+                }
+                return;
+              }
+              const pins = anchorRef.current
+                ? (Array.from(anchorRef.current.querySelectorAll('.ve-pin')) as HTMLElement[])
+                : [];
+              handleRovingArrowKey(e, pins, {
+                orientation: 'both',
+                loop: true,
+                currentEl: e.currentTarget as HTMLElement,
+                onFocusChange: (nextEl) => {
+                  nextEl.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                },
               });
             }}
             onMouseEnter={() => {
@@ -497,8 +585,8 @@ export function CommentPins() {
             <span class="ve-glass-bevel" aria-hidden="true" />
             <span class="ve-pin-label">{subLabel}</span>
             {isMulti && (
-              <span class="ve-pin-link-badge" title={`Linked to ${multiTotal} elements`}>
-                <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+              <span class="ve-pin-link-badge" title={`Linked to ${multiTotal} elements`} aria-hidden="true">
+                <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
                 </svg>
@@ -506,8 +594,17 @@ export function CommentPins() {
             )}
             {showTooltip && (
               <div
+                role="dialog"
+                aria-label={`Comment pin ${subLabel}`}
                 class={`ve-pin-tooltip ${isNearTop ? 've-pin-tooltip-below' : 've-pin-tooltip-above'}`}
                 style={tooltipPositionStyle}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closeTooltipAndRestorePinFocus(true);
+                  }
+                }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
@@ -522,7 +619,9 @@ export function CommentPins() {
                   <div class="ve-pin-tooltip-actions">
                     {!isEditing && (
                       <button
+                        type="button"
                         class="ve-pin-tooltip-edit-btn"
+                        aria-label={`Edit comment pin ${subLabel}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingPinId(ann.id);
@@ -534,7 +633,9 @@ export function CommentPins() {
                       </button>
                     )}
                     <button
+                      type="button"
                       class="ve-pin-tooltip-resolve-btn"
+                      aria-label={`Resolve comment pin ${subLabel}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         state.deleteAnnotation(ann.id);
@@ -542,7 +643,7 @@ export function CommentPins() {
                       }}
                       title="Dismiss and resolve this comment"
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                       <span>Resolve</span>
@@ -564,27 +665,37 @@ export function CommentPins() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault();
+                          e.stopPropagation();
                           state.updateAnnotation(ann.id, editText);
                           setEditingPinId(null);
+                          pinRefs.current[pinKey]?.focus({ preventScroll: true });
                         } else if (e.key === 'Escape') {
                           e.preventDefault();
-                          state.updateAnnotation(ann.id, editText);
-                          setEditingPinId(null);
+                          e.stopPropagation();
+                          closeTooltipAndRestorePinFocus(true);
                         }
                       }}
                     />
                     <div class="ve-pin-edit-actions">
                       <button
+                        type="button"
                         class="ve-pin-edit-cancel-btn"
-                        onClick={() => setEditingPinId(null)}
+                        aria-label="Cancel comment edit"
+                        onClick={() => {
+                          setEditingPinId(null);
+                          pinRefs.current[pinKey]?.focus({ preventScroll: true });
+                        }}
                       >
                         Cancel
                       </button>
                       <button
+                        type="button"
                         class="ve-pin-edit-save-btn"
+                        aria-label="Save comment edit"
                         onClick={() => {
                           state.updateAnnotation(ann.id, editText);
                           setEditingPinId(null);
+                          pinRefs.current[pinKey]?.focus({ preventScroll: true });
                         }}
                       >
                         Save
