@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.19.0...lux-edit-v0.19.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **overlay:** switch panels to monochrome contrast and icon-only action buttons ([#86](https://github.com/David-Sat/lux-edit/issues/86)) ([c664c28](https://github.com/David-Sat/lux-edit/commit/c664c283876a5ac7e4cb3297e1614b93986ff1ae))
+
 ## [0.19.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.18.0...lux-edit-v0.19.0) (2026-11-23)
 
 
