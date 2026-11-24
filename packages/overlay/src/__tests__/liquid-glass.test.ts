@@ -221,8 +221,7 @@ describe('OverlayStateManager liquid glass state', () => {
       'veLiquidPopIn',
       'veLiquidPinDrop',
       'veLiquidTooltipBloom',
-      'veLiquidTabGlide',
-      'veLiquidFocusGlide',
+      'veLiquidGlide',
     ];
 
     for (const name of entranceKeyframes) {

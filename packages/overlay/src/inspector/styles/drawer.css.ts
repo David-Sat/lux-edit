@@ -11,7 +11,6 @@ export const DRAWER_CSS = `
   z-index: var(--ve-z-panel);
   display: flex;
   flex-direction: column;
-  animation: veSlideUp 0.16s ease-out;
   transition:
     inset-inline-start 0.28s var(--ve-ease-spring),
     inset-inline-end 0.28s var(--ve-ease-spring),
@@ -68,22 +67,6 @@ export const DRAWER_CSS = `
   gap: 8px;
 }
 
-.ve-status-tag {
-  font-size: 10px;
-  text-transform: uppercase;
-  padding-block: 2px;
-  padding-inline: 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  background: #334155;
-  color: var(--ve-text-muted);
-
-  &.draft { background: #3b82f6; color: #ffffff; }
-  &.submitted { background: #eab308; color: #000000; }
-  &.in_progress { background: #a855f7; color: #ffffff; }
-  &.implemented { background: #22c55e; color: #ffffff; }
-}
-
 .ve-drawer-body {
   padding: 16px;
   overflow-y: auto;
@@ -127,12 +110,6 @@ export const DRAWER_CSS = `
   font-weight: 600;
 }
 
-.ve-prompt-box {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .ve-textarea {
   padding-block: 8px;
   padding-inline: 10px;
@@ -163,8 +140,6 @@ export const DRAWER_CSS = `
   font-weight: 600;
   cursor: pointer;
   transition: all var(--ve-transition-smooth);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 
   &:hover {
     background: rgba(255, 255, 255, 0.16);
@@ -913,13 +888,9 @@ export const DRAWER_CSS = `
 .ve-variant-switcher-bar {
   position: fixed;
   pointer-events: auto;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid transparent;
   border-radius: 12px;
   padding: 8px 12px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1191,13 +1162,11 @@ export const DRAWER_CSS = `
   position: absolute;
   top: -24px;
   left: 0;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
   white-space: nowrap;
   display: inline-flex;
   align-items: center;

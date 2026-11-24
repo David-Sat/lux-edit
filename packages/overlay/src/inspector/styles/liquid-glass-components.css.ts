@@ -356,7 +356,7 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 }
 
 .ve-root.ve-glass-liquid .ve-dock-focus-pill.is-gliding {
-  animation: veLiquidFocusGlide 0.26s ease-out;
+  animation: veLiquidGlide 0.26s ease-out;
 }
 
 /* Raised Convex Optical Meniscus on Selected Options (Subtle Glass Rim, Zero Harsh White Ring) */
@@ -452,7 +452,7 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 }
 
 .ve-root.ve-glass-liquid .ve-tab-indicator.is-gliding {
-  animation: veLiquidTabGlide 0.26s ease-out;
+  animation: veLiquidGlide 0.26s ease-out;
 }
 
 .ve-root.ve-glass-liquid .ve-tab-btn {

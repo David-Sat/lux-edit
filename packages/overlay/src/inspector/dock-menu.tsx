@@ -3,12 +3,48 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'preac
 import { OverlayStateManager } from './state.js';
 import { VoiceRecorder } from './voice-recorder.js';
 import { createLiquidDragDeformer, prefersReducedMotion } from './liquid-glass.js';
+import { GlassChrome } from './liquid-glass-defs.js';
 import { formatAriaKeyShortcuts, formatHotkeyLabel } from './hotkeys.js';
 import { handleRovingArrowKey } from './keyboard-nav.js';
 
 type DockSurfaceAnim = 'idle' | 'morph' | 'settle';
 type OrbSurfaceAnim = 'idle' | 'morph' | 'settle';
 type DockFocusKey = 'edit' | 'comment' | 'screenshot' | 'drawer';
+
+function DockDragHandle({
+  onStartDrag,
+}: {
+  onStartDrag: (e: PointerEvent, dockEl: HTMLElement) => void;
+}) {
+  return (
+    <div
+      class="ve-dock-drag-handle"
+      aria-hidden="true"
+      title="Drag to reposition (snaps to edge)"
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
+        if (dockEl) onStartDrag(e, dockEl);
+      }}
+    >
+      <svg
+        width="10"
+        height="14"
+        viewBox="0 0 10 14"
+        fill="currentColor"
+        class="ve-dock-grip-svg"
+        aria-hidden="true"
+      >
+        <circle cx="3" cy="3" r="1.5" />
+        <circle cx="7" cy="3" r="1.5" />
+        <circle cx="3" cy="7" r="1.5" />
+        <circle cx="7" cy="7" r="1.5" />
+        <circle cx="3" cy="11" r="1.5" />
+        <circle cx="7" cy="11" r="1.5" />
+      </svg>
+    </div>
+  );
+}
 
 function useDraggableDock(callbacks?: { onDragStart?: () => void; onDropSettle?: () => void }) {
   const state = OverlayStateManager.getInstance();
@@ -325,6 +361,18 @@ export function DockMenu() {
     state.variantDecisions.length;
   const formatSuffix = (binding: string) => (binding ? ` (${formatHotkeyLabel(binding)})` : '');
   const voiceShortcutKey = formatAriaKeyShortcuts(state.hotkeys.voice);
+  const dragStyle =
+    isDragging && dragPos
+      ? {
+          position: 'fixed',
+          left: `${dragPos.x}px`,
+          top: `${dragPos.y}px`,
+          right: 'auto',
+          bottom: 'auto',
+          transition: 'none',
+          zIndex: 2147483647,
+        }
+      : undefined;
 
   if (state.activeTool === 'voice') {
     const minutes = Math.floor(voiceState.durationMs / 60000);
@@ -346,41 +394,10 @@ export function DockMenu() {
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        style={
-          isDragging && dragPos
-            ? {
-                position: 'fixed',
-                left: `${dragPos.x}px`,
-                top: `${dragPos.y}px`,
-                right: 'auto',
-                bottom: 'auto',
-                transition: 'none',
-                zIndex: 2147483647,
-              }
-            : undefined
-        }
+        style={dragStyle}
       >
-        <span class="ve-glass-surface" aria-hidden="true" />
-        <span class="ve-glass-bevel" aria-hidden="true" />
-        <div
-          class="ve-dock-drag-handle"
-          aria-hidden="true"
-          title="Drag to reposition (snaps to edge)"
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
-            if (dockEl) startDrag(e, dockEl);
-          }}
-        >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg" aria-hidden="true">
-            <circle cx="3" cy="3" r="1.5" />
-            <circle cx="7" cy="3" r="1.5" />
-            <circle cx="3" cy="7" r="1.5" />
-            <circle cx="7" cy="7" r="1.5" />
-            <circle cx="3" cy="11" r="1.5" />
-            <circle cx="7" cy="11" r="1.5" />
-          </svg>
-        </div>
+        <GlassChrome />
+        <DockDragHandle onStartDrag={startDrag} />
         <span class={`ve-voice-status-dot ${voiceState.isReady ? 'is-ready' : ''}`} aria-hidden="true" />
         <span class="ve-voice-timer">
           {voiceState.isReady ? timeStr : '00:00'}
@@ -455,19 +472,7 @@ export function DockMenu() {
         class={`ve-launcher-btn ${isDragging ? 've-dragging' : ''}`}
         data-ve-anim={orbAnim}
         onAnimationEnd={handleOrbAnimationEnd}
-        style={
-          isDragging && dragPos
-            ? {
-                position: 'fixed',
-                left: `${dragPos.x}px`,
-                top: `${dragPos.y}px`,
-                right: 'auto',
-                bottom: 'auto',
-                transition: 'none',
-                zIndex: 2147483647,
-              }
-            : undefined
-        }
+        style={dragStyle}
         aria-label={totalCount > 0 ? `Open LUX Tools (${totalCount} pending items)` : 'Open LUX Tools'}
         aria-expanded={false}
         title="Open LUX Tools (drag to reposition)"
@@ -483,8 +488,7 @@ export function DockMenu() {
           state.setDockMenuOpen(true);
         }}
       >
-        <span class="ve-glass-surface" aria-hidden="true" />
-        <span class="ve-glass-bevel" aria-hidden="true" />
+        <GlassChrome />
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polygon points="12 2 2 7 12 12 22 7 12 2" />
           <polyline points="2 17 12 22 22 17" />
@@ -510,22 +514,9 @@ export function DockMenu() {
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      style={
-        isDragging && dragPos
-          ? {
-              position: 'fixed',
-              left: `${dragPos.x}px`,
-              top: `${dragPos.y}px`,
-              right: 'auto',
-              bottom: 'auto',
-              transition: 'none',
-              zIndex: 2147483647,
-            }
-          : undefined
-      }
+      style={dragStyle}
     >
-      <span class="ve-glass-surface" aria-hidden="true" />
-      <span class="ve-glass-bevel" aria-hidden="true" />
+      <GlassChrome />
       <span
         class={`ve-dock-focus-pill ${focusKey ? 'is-visible' : ''} ${focusSliding ? 'is-sliding' : ''} ${isFocusGliding ? 'is-gliding' : ''}`}
         aria-hidden="true"
@@ -539,25 +530,7 @@ export function DockMenu() {
             : undefined
         }
       />
-      <div
-        class="ve-dock-drag-handle"
-        aria-hidden="true"
-        title="Drag to reposition (snaps to edge)"
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          const dockEl = (e.currentTarget as HTMLElement).closest('.ve-dock-menu') as HTMLElement;
-          if (dockEl) startDrag(e, dockEl);
-        }}
-      >
-        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-dock-grip-svg" aria-hidden="true">
-          <circle cx="3" cy="3" r="1.5" />
-          <circle cx="7" cy="3" r="1.5" />
-          <circle cx="3" cy="7" r="1.5" />
-          <circle cx="7" cy="7" r="1.5" />
-          <circle cx="3" cy="11" r="1.5" />
-          <circle cx="7" cy="11" r="1.5" />
-        </svg>
-      </div>
+      <DockDragHandle onStartDrag={startDrag} />
       <button
         type="button"
         class={`ve-dock-item ve-mode-pill ${isLive ? 've-active' : ''}`}

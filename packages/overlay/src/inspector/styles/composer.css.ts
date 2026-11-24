@@ -10,7 +10,6 @@ export const COMPOSER_CSS = `
   display: flex;
   flex-direction: column;
   gap: 10px;
-  animation: vePopIn 0.12s ease-out;
 }
 
 .ve-comment-header {
@@ -19,12 +18,6 @@ export const COMPOSER_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.ve-comment-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ve-text-primary);
 }
 
 .ve-comment-textarea {
@@ -46,6 +39,7 @@ export const COMPOSER_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .ve-comment-targets-list {
@@ -122,51 +116,19 @@ export const COMPOSER_CSS = `
 /* Comment Pins on Canvas */
 .ve-pin {
   position: absolute;
-  inline-size: 26px;
-  block-size: 26px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-  border: 2px solid #ffffff;
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow:
-    0 3px 10px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(0, 0, 0, 0.3),
-    inset 0 1px 1.5px rgba(255, 255, 255, 0.4);
   cursor: pointer;
   touch-action: none;
   pointer-events: auto;
   z-index: var(--ve-z-pin);
   transform: translate(-50%, -50%);
   transition: transform var(--ve-transition-smooth), box-shadow var(--ve-transition-fast), background var(--ve-transition-fast);
-
-  &:hover {
-    transform: translate(-50%, -50%) scale(1.15);
-    background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
-    box-shadow:
-      0 5px 16px rgba(2, 132, 199, 0.6),
-      0 0 0 1px rgba(0, 0, 0, 0.35);
-  }
-
-  &.ve-pin-multi {
-    background: linear-gradient(135deg, #0284c7 0%, #4338ca 100%);
-    border: 2px solid #38bdf8;
-    box-shadow:
-      0 3px 12px rgba(56, 189, 248, 0.45),
-      0 0 0 1px rgba(0, 0, 0, 0.3),
-      inset 0 1px 1.5px rgba(255, 255, 255, 0.5);
-
-    &:hover {
-      background: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
-      box-shadow:
-        0 6px 18px rgba(56, 189, 248, 0.7),
-        0 0 0 1px rgba(0, 0, 0, 0.35);
-    }
-  }
 }
 
 .ve-pin-link-badge {
@@ -199,8 +161,7 @@ export const COMPOSER_CSS = `
 
 .ve-pin-tooltip {
   position: absolute;
-  background: rgba(12, 18, 32, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid transparent;
   color: var(--ve-text-primary);
   padding-block: 10px;
   padding-inline: 14px;
@@ -209,9 +170,6 @@ export const COMPOSER_CSS = `
   min-inline-size: 240px;
   max-inline-size: 360px;
   white-space: normal;
-  box-shadow: inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.35), 0 16px 40px rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
   pointer-events: auto;
   cursor: default;
   z-index: var(--ve-z-tooltip);
@@ -344,10 +302,6 @@ export const COMPOSER_CSS = `
   line-height: 1;
 }
 
-.ve-comment-footer {
-  gap: 8px;
-}
-
 .ve-comment-footer-left {
   display: flex;
   align-items: center;
@@ -420,7 +374,6 @@ export const COMPOSER_CSS = `
   font-size: 10px;
   cursor: pointer;
   font-weight: 600;
-  backdrop-filter: blur(8px);
   display: inline-flex;
   align-items: center;
   white-space: nowrap;

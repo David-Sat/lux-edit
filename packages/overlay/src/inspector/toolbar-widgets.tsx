@@ -214,7 +214,6 @@ export function ColorSwatchesRow({
         class="ve-swatch-row"
         role="group"
         aria-label={`${label} swatches`}
-        onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
       >
         {appColors.map((color) => (
           <button

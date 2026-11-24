@@ -4,6 +4,7 @@ import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import { captureVisualSnapshot } from './visual-capture.js';
+import { GlassChrome } from './liquid-glass-defs.js';
 import { handleContainerTabLoop } from './keyboard-nav.js';
 
 export function CommentComposer() {
@@ -168,8 +169,7 @@ export function CommentComposer() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <span class="ve-glass-surface" aria-hidden="true" />
-      <span class="ve-glass-bevel" aria-hidden="true" />
+      <GlassChrome />
       <div class={`ve-comment-header ${isMulti ? 'is-multi' : ''}`}>
         <div class="ve-comment-header-row">
           <span class="ve-comment-header-label">

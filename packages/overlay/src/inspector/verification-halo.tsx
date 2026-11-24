@@ -1,77 +1,25 @@
 import { h } from 'preact';
-import { useState, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import {
   ElementRectPosition,
-  PinAnchorOrigin,
-  getPinAnchorOrigin,
-  isDocumentScrollTarget,
   locateElementRect,
   locatePinTarget,
+  useAnchoredOverlaySync,
 } from './pin-position.js';
 
 export function VerificationHalo() {
   const state = OverlayStateManager.getInstance();
-  const [, setTick] = useState(0);
-
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
-  const needsDocScrollSyncRef = useRef(false);
-
-  useEffect(() => {
-    let rafId = 0;
-    const handleUpdate = () => setTick((t) => t + 1);
-    const scheduleSync = () => {
-      if (typeof window.requestAnimationFrame !== 'function') {
-        handleUpdate();
-        return;
-      }
-      if (rafId !== 0) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = 0;
-        handleUpdate();
-      });
-    };
-
-    const handleScroll = (e: Event) => {
-      if (isDocumentScrollTarget(e.target) && !needsDocScrollSyncRef.current) {
-        return;
-      }
-      scheduleSync();
-    };
-
-    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
-    window.addEventListener('resize', scheduleSync);
-    const unsub = state.subscribe(handleUpdate);
-
-    return () => {
-      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(rafId);
-      }
-      document.removeEventListener('scroll', handleScroll, { capture: true });
-      window.removeEventListener('resize', scheduleSync);
-      unsub();
-    };
-  }, [state]);
-
-  useLayoutEffect(() => {
-    if (!anchorRef.current) return;
-    const measured = getPinAnchorOrigin(anchorRef.current);
-    if (
-      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
-      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
-    ) {
-      setTick((t) => t + 1);
-    }
-  }, [state.verificationTargets.length]);
+  const { anchorRef, needsDocScrollSyncRef, measureAnchor } = useAnchoredOverlaySync({
+    state,
+    anchorKey: state.verificationTargets.length,
+  });
 
   if (!state.verificationTargets || state.verificationTargets.length === 0) {
     needsDocScrollSyncRef.current = false;
     return null;
   }
 
-  const anchor = getPinAnchorOrigin(anchorRef.current);
-  anchorOriginRef.current = anchor;
+  const anchor = measureAnchor();
 
   let hasDynamicScrollTarget = false;
   const resolvedTargets = state.verificationTargets

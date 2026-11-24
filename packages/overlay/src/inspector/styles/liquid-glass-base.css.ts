@@ -92,19 +92,7 @@ export const LIQUID_GLASS_BASE_CSS = `
   }
 }
 
-@keyframes veLiquidTabGlide {
-  0% {
-    scale: 1 1;
-  }
-  45% {
-    scale: 1.06 0.98;
-  }
-  100% {
-    scale: 1 1;
-  }
-}
-
-@keyframes veLiquidFocusGlide {
+@keyframes veLiquidGlide {
   0% {
     scale: 1 1;
   }
@@ -143,7 +131,6 @@ export const LIQUID_GLASS_BASE_CSS = `
 
 /* Liquid Glass Material Tokens & Tiered Surfaces */
 .ve-root.ve-glass-liquid {
-  --ve-text-muted: #d1d9e6;
   --ve-glass-border: transparent;
   --ve-glass-backdrop:
     blur(calc(var(--ve-lg-panel-blur, 10px) * 0.6))
@@ -430,13 +417,6 @@ export const LIQUID_GLASS_BASE_CSS = `
 .ve-root.ve-glass-liquid .ve-card--screenshot {
   background: linear-gradient(180deg, rgba(245, 158, 11, 0.18), rgba(20, 16, 10, 0.54));
   border-color: rgba(251, 191, 36, 0.34);
-}
-
-/* Remove redundant nested compositor backdrop passes inside blurred glass panels */
-.ve-root.ve-glass-liquid .ve-btn,
-.ve-root.ve-glass-liquid .ve-pin-tooltip-edit-btn {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 /* Opposing Double-Arc Pure White Fresnel Specular Rim via CSS Mask */

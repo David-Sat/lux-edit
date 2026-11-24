@@ -45,11 +45,9 @@ export const TOOLBAR_CSS = `
 }
 
 .ve-toolbar-tabs {
-  display: flex;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.25);
   padding: 3px 4px;
-  gap: 2px;
 }
 
 .ve-tab-btn {
@@ -72,9 +70,6 @@ export const TOOLBAR_CSS = `
   }
 
   &.ve-active {
-    color: var(--ve-accent-text, #38bdf8);
-    background: rgba(255, 255, 255, 0.14);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     font-weight: 600;
   }
 

@@ -1,6 +1,5 @@
 import { h } from 'preact';
 import { OverlayStateManager } from './state.js';
-import { handleControlGroupArrowKey } from './toolbar-widgets.js';
 
 export type ToolbarTabId = 'quick' | 'spacing' | 'type' | 'layout' | 'style' | 'class' | 'actions';
 
@@ -77,7 +76,6 @@ export function TypographyTab({ el, computed, toggleStyle, handleStyleChange }: 
           class="ve-btn-group"
           role="group"
           aria-label="Font weight"
-          onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
         >
           {['400', '500', '600', '700'].map((w) => (
             <button
@@ -114,7 +112,6 @@ export function TypographyTab({ el, computed, toggleStyle, handleStyleChange }: 
           class="ve-btn-group"
           role="group"
           aria-label="Text alignment"
-          onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
         >
           {['left', 'center', 'right'].map((al) => (
             <button
@@ -146,7 +143,6 @@ export function LayoutTab({ el, computed, toggleStyle, handleStyleChange }: Tool
           class="ve-btn-group"
           role="group"
           aria-label="Display mode"
-          onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
         >
           {['block', 'flex', 'grid', 'inline-block'].map((d) => (
             <button
@@ -167,7 +163,6 @@ export function LayoutTab({ el, computed, toggleStyle, handleStyleChange }: Tool
           class="ve-btn-group"
           role="group"
           aria-label="Flex direction"
-          onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
         >
           {['row', 'column'].map((dir) => (
             <button
@@ -197,7 +192,6 @@ export function LayoutTab({ el, computed, toggleStyle, handleStyleChange }: Tool
           class="ve-btn-group"
           role="group"
           aria-label="Justify content"
-          onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
         >
           {['flex-start', 'center', 'space-between'].map((j) => (
             <button
@@ -325,7 +319,6 @@ export function DomActionsTab({ state }: { state: OverlayStateManager }) {
         role="group"
         aria-label="Reorder element"
         style={{ gap: '6px' }}
-        onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
       >
         <button
           type="button"
@@ -351,7 +344,6 @@ export function DomActionsTab({ state }: { state: OverlayStateManager }) {
         role="group"
         aria-label="Element actions"
         style={{ gap: '6px' }}
-        onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
       >
         <button
           type="button"
