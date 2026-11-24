@@ -36,7 +36,8 @@ export const TOOLBAR_CSS = `
 }
 
 .ve-target-tag {
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   font-family: ui-monospace, monospace;
   max-inline-size: 200px;
   overflow: hidden;
@@ -74,7 +75,7 @@ export const TOOLBAR_CSS = `
   }
 
   &:focus-visible {
-    outline: 2px solid #7dd3fc;
+    outline: 2px solid #ffffff;
     outline-offset: -2px;
   }
 }
@@ -100,7 +101,8 @@ export const TOOLBAR_CSS = `
 
 .ve-label {
   font-size: 11px;
-  color: var(--ve-text-muted);
+  color: #f1f5f9;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   font-weight: 500;
   min-inline-size: 60px;
   flex-shrink: 0;
@@ -156,9 +158,10 @@ export const TOOLBAR_CSS = `
 }
 
 .ve-mini-btn {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--ve-text-secondary);
+  background: rgba(12, 18, 32, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f1f5f9;
+  text-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.45);
   font-size: 11px;
   padding-block: 4px;
   padding-inline: 8px;
@@ -170,14 +173,16 @@ export const TOOLBAR_CSS = `
   transition: all var(--ve-transition-fast);
 
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.14);
     color: #ffffff;
   }
 
   &.ve-active {
-    background: #0284c7;
-    border-color: #38bdf8;
-    color: #ffffff;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(226, 232, 240, 0.8) 100%);
+    border-color: rgba(255, 255, 255, 0.95);
+    color: #0f172a;
+    font-weight: 600;
+    text-shadow: none;
   }
 }
 
@@ -256,7 +261,7 @@ export const TOOLBAR_CSS = `
   inline-size: 100%;
   block-size: 6px;
   border-radius: 3px;
-  background: #334155;
+  background: rgba(255, 255, 255, 0.24);
   outline: none;
   cursor: pointer;
   margin: 0;
@@ -268,8 +273,8 @@ export const TOOLBAR_CSS = `
     inline-size: 14px;
     block-size: 14px;
     border-radius: 50%;
-    background: #38bdf8;
-    border: 2px solid #0f172a;
+    background: #ffffff;
+    border: 2px solid rgba(15, 23, 42, 0.72);
     cursor: pointer;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
     transition: transform 0.1s ease;
@@ -280,7 +285,7 @@ export const TOOLBAR_CSS = `
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px #0f172a, 0 0 0 4px rgba(56, 189, 248, 0.9);
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.7), 0 0 0 4px rgba(255, 255, 255, 0.9);
   }
 
   &:focus-visible::-webkit-slider-thumb {
@@ -292,19 +297,20 @@ export const TOOLBAR_CSS = `
 .ve-slider-val {
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, monospace;
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
   font-weight: 600;
   min-inline-size: 38px;
   text-align: right;
   cursor: pointer;
   flex-shrink: 0;
   padding-block: 2px;
-  padding-inline: 4px;
+  padding-inline: 5px;
   border-radius: 4px;
-  background: rgba(30, 41, 59, 0.6);
+  background: rgba(12, 18, 32, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 
   &:hover {
-    background: #334155;
+    background: rgba(12, 18, 32, 0.75);
   }
 }
 
@@ -314,7 +320,7 @@ export const TOOLBAR_CSS = `
   transform: translateY(-50%);
   inline-size: 3px;
   block-size: 10px;
-  background: var(--ve-accent, #38bdf8);
+  background: rgba(255, 255, 255, 0.88);
   border-radius: 1px;
   pointer-events: none;
   opacity: 0.85;
@@ -340,8 +346,9 @@ export const TOOLBAR_CSS = `
 
 .ve-edited-pill {
   font-size: 9px;
-  background: #3b82f6;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  color: #ffffff;
   padding: 1px 5px;
   border-radius: 4px;
   font-weight: 700;
@@ -375,7 +382,8 @@ export const TOOLBAR_CSS = `
 }
 
 .ve-swatch.is-active {
-  border: 2px solid #38bdf8;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.65);
 }
 
 .ve-color-picker {
@@ -393,7 +401,7 @@ export const TOOLBAR_CSS = `
 }
 
 .ve-action-ribbon {
-  border-top: 1px solid #334155;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
   padding-top: 8px;
   display: flex;
   gap: 6px;
@@ -408,11 +416,11 @@ export const TOOLBAR_CSS = `
 }
 
 .ve-icon-btn--accent {
-  color: var(--ve-accent-text, #0284c7);
+  color: #f8fafc;
 }
 
 .ve-icon-btn--danger {
-  color: #f43f5e;
+  color: #f8fafc;
 }
 
 .ve-class-list {
@@ -424,8 +432,9 @@ export const TOOLBAR_CSS = `
 
 .ve-class-chip {
   font-size: 11px;
-  background: #1e293b;
-  border: 1px solid #475569;
+  background: rgba(12, 18, 32, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #f8fafc;
   padding: 2px 6px;
   border-radius: 4px;
   display: flex;
@@ -436,9 +445,13 @@ export const TOOLBAR_CSS = `
 .ve-class-chip-remove {
   background: none;
   border: none;
-  color: #f43f5e;
+  color: rgba(248, 250, 252, 0.72);
   cursor: pointer;
   font-size: 11px;
   padding: 0;
+}
+
+.ve-class-chip-remove:hover {
+  color: #ffffff;
 }
 `;

@@ -44,22 +44,9 @@ export const LIQUID_GLASS_SVG_CSS = `
     );
 }
 
-.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock > .ve-glass-surface {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(245, 158, 11, 0.14) 0%,
-      rgba(36, 40, 54, calc(0.26 + var(--ve-lg-tint, 0.35) * 0.65)) 100%
-    );
-}
-
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock > .ve-glass-surface,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock.is-ready > .ve-glass-surface {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(239, 68, 68, 0.15) 0%,
-      rgba(36, 40, 54, calc(0.26 + var(--ve-lg-tint, 0.35) * 0.65)) 100%
-    );
+  background: var(--ve-glass-bg);
 }
 
 /* High-Refraction Active Option Lens Bubbles & Pin Droplets */
@@ -108,8 +95,8 @@ export const LIQUID_GLASS_SVG_CSS = `
   -webkit-backdrop-filter: url(#lux-glass-pill-active);
   background: linear-gradient(
     180deg,
-    rgba(52, 211, 153, 0.32) 0%,
-    rgba(16, 185, 129, 0.18) 100%
+    rgba(255, 255, 255, 0.28) 0%,
+    rgba(255, 255, 255, 0.12) 100%
   );
 }
 
@@ -189,13 +176,10 @@ export const LIQUID_GLASS_SVG_CSS = `
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-card-save-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-card-pill-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-composer-snap-btn,
-.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-tooltip-edit-btn,
-.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-tooltip-resolve-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-edit-save-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-option-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-apply-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-change-btn,
-.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-delete-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-done-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-mode-pill:not(.ve-active) {
   backdrop-filter: url(#lux-glass-btn);
@@ -204,6 +188,10 @@ export const LIQUID_GLASS_SVG_CSS = `
 
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-close-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-shortcuts-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-card-icon-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-tooltip-edit-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-tooltip-resolve-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-delete-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-close-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-cancel-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-composer-screenshot-detach,

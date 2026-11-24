@@ -15,6 +15,7 @@ import {
   useLiquidGlassMotion,
 } from '../inspector/liquid-glass.js';
 import { LiquidGlassDefs } from '../inspector/liquid-glass-defs.js';
+import { EditReviewDrawer } from '../drawer/edit-review-drawer.js';
 import { OverlayRoot } from '../overlay-root.js';
 import { OverlayStateManager } from '../inspector/state.js';
 import { LIQUID_GLASS_BASE_CSS } from '../inspector/styles/liquid-glass-base.css.js';
@@ -660,19 +661,20 @@ describe('liquid-glass performance optimizations', () => {
         '.ve-card-save-btn',
         '.ve-card-pill-btn',
         '.ve-composer-snap-btn',
-        '.ve-pin-tooltip-edit-btn',
-        '.ve-pin-tooltip-resolve-btn',
         '.ve-pin-edit-save-btn',
         '.ve-variant-option-btn',
         '.ve-variant-apply-btn',
         '.ve-variant-change-btn',
-        '.ve-variant-delete-btn',
         '.ve-voice-done-btn',
         '.ve-mode-pill:not(.ve-active)',
       ].map((suffix) => ({ suffix, filterId: 'lux-glass-btn' })),
       ...[
         '.ve-close-btn',
         '.ve-shortcuts-btn',
+        '.ve-card-icon-btn',
+        '.ve-pin-tooltip-edit-btn',
+        '.ve-pin-tooltip-resolve-btn',
+        '.ve-variant-delete-btn',
         '.ve-variant-close-btn',
         '.ve-voice-cancel-btn',
         '.ve-composer-screenshot-detach',
@@ -694,6 +696,86 @@ describe('liquid-glass performance optimizations', () => {
         minSvgSpec,
         `${suffix} SVG rule specificity (${minSvgSpec}) must be >= fallback blur specificity (${maxEarlierSpec})`
       ).toBeGreaterThanOrEqual(maxEarlierSpec);
+    }
+  });
+
+  it('EditReviewDrawer renders card edit, delete, revert, and dismiss controls as accessible icon-only glass buttons', async () => {
+    OverlayStateManager.resetInstance();
+    hostEl = document.createElement('div');
+    shadowRoot = hostEl.attachShadow({ mode: 'open' });
+    const heading = document.createElement('h1');
+    heading.id = 'glass-card-heading';
+    heading.textContent = 'Original Title';
+    const cardTarget = document.createElement('div');
+    cardTarget.id = 'glass-card-proposal';
+    const decidedTarget = document.createElement('div');
+    decidedTarget.id = 'glass-card-decided';
+    document.body.append(hostEl, heading, cardTarget, decidedTarget);
+
+    try {
+      const state = OverlayStateManager.getInstance();
+      state.setActiveElement(heading);
+      state.updateElementText('Refined Title');
+      state.addComment('Tighten vertical rhythm', heading);
+      state.variantSets = [
+        {
+          id: 'set_pending',
+          targetSelector: '#glass-card-proposal',
+          label: 'Proposal Card',
+          status: 'pending',
+          createdAt: Date.now(),
+          variants: [
+            {
+              id: 'v1',
+              name: 'Clean Glass',
+              styles: { borderRadius: '12px' },
+              rationale: 'Sharp',
+            },
+          ],
+        },
+        {
+          id: 'set_decided',
+          targetSelector: '#glass-card-decided',
+          label: 'Decided Card',
+          status: 'pending',
+          createdAt: Date.now(),
+          variants: [
+            {
+              id: 'v2',
+              name: 'High Contrast',
+              styles: { opacity: '1' },
+              rationale: 'Clear',
+            },
+          ],
+        },
+      ];
+      state.decideVariant('set_decided', 'v2');
+      state.setDrawerOpen(true);
+
+      await act(() => {
+        render(h(EditReviewDrawer, {}), shadowRoot!);
+      });
+
+      const iconButtons = Array.from(shadowRoot!.querySelectorAll('.ve-card-icon-btn'));
+      expect(iconButtons.length).toBe(6);
+
+      for (const btn of iconButtons) {
+        expect(btn.querySelector('svg')).not.toBeNull();
+        expect(btn.textContent?.trim()).toBe('');
+        expect(btn.getAttribute('aria-label')?.trim().length).toBeGreaterThan(0);
+      }
+
+      const labels = iconButtons.map((btn) => btn.getAttribute('aria-label'));
+      expect(labels).toEqual([
+        expect.stringContaining('Revert edit'),
+        'Edit comment 1',
+        'Delete comment 1',
+        'Dismiss proposal for Proposal Card',
+        'Change variant option for #glass-card-decided',
+        'Delete variant selection for #glass-card-decided',
+      ]);
+    } finally {
+      OverlayStateManager.resetInstance();
     }
   });
 });

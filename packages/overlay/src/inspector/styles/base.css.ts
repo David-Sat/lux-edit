@@ -2,18 +2,18 @@ export const BASE_CSS = `
 /* Design Tokens & CSS Variables */
 :host, .ve-root {
   /* Color Palette */
-  --ve-accent: #38bdf8;
-  --ve-accent-hover: #0284c7;
-  --ve-accent-text: #38bdf8;
-  --ve-amber-text: #fbbf24;
-  --ve-green-text: #4ade80;
+  --ve-accent: #ffffff;
+  --ve-accent-hover: #e2e8f0;
+  --ve-accent-text: #ffffff;
+  --ve-amber-text: #f1f5f9;
+  --ve-green-text: #ffffff;
   --ve-danger: #ef4444;
   --ve-danger-hover: #dc2626;
 
   /* Typography & Contrast Colors */
-  --ve-text-primary: #f8fafc;
-  --ve-text-secondary: #cbd5e1;
-  --ve-text-muted: #d1d9e6;
+  --ve-text-primary: #ffffff;
+  --ve-text-secondary: #f1f5f9;
+  --ve-text-muted: rgba(241, 245, 249, 0.78);
 
   /* Card Substrates */
   --ve-card-bg: rgba(255, 255, 255, 0.07);
@@ -129,13 +129,13 @@ export const BASE_CSS = `
 .ve-root [role="button"]:focus-visible,
 .ve-root [tabindex]:focus-visible,
 .ve-root input[type="color"]:focus-visible {
-  outline: 2px solid var(--ve-accent, #38bdf8);
+  outline: 2px solid var(--ve-accent, #ffffff);
   outline-offset: 2px;
 }
 
 .ve-pin-tooltip textarea:focus-visible {
-  border-color: var(--ve-accent, #38bdf8) !important;
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35);
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
 /* Unified Modern Scrollbars */
@@ -232,7 +232,8 @@ export const BASE_CSS = `
   position: absolute;
   inset-block-start: -26px;
   inset-inline-start: -2px;
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   border: 1px solid transparent;
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -253,7 +254,7 @@ export const BASE_CSS = `
 }
 
 .ve-badge-dim {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(241, 245, 249, 0.78);
   font-weight: normal;
   margin-inline-start: 4px;
 }
@@ -558,7 +559,7 @@ export const BASE_CSS = `
 
 .ve-voice-transcript-preview {
   font-size: 11px;
-  color: #fcd34d;
+  color: #f8fafc;
   max-width: 200px;
   white-space: nowrap;
   overflow: hidden;
@@ -568,7 +569,7 @@ export const BASE_CSS = `
 }
 
 .ve-voice-transcript-preview.is-ready {
-  color: #cbd5e1;
+  color: #f1f5f9;
   font-weight: 400;
 }
 
@@ -579,11 +580,11 @@ export const BASE_CSS = `
 .ve-voice-pin-badge {
   font-size: 10px;
   font-weight: 600;
-  background: rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
   padding: 2px 7px;
   border-radius: 10px;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   flex-shrink: 0;
 }
 
@@ -599,7 +600,7 @@ export const BASE_CSS = `
   gap: 4px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #cbd5e1;
+  color: #f1f5f9;
 }
 
 .ve-mode-live-dot {
