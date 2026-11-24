@@ -98,7 +98,8 @@ describe('liquid-glass refraction math & filter config', () => {
 
     expect(DEFAULT_LIQUID_GLASS_TUNING.refractionStrength).toBeGreaterThan(1);
     expect(DEFAULT_LIQUID_GLASS_TUNING.thickness).toBeGreaterThanOrEqual(56);
-    expect(DEFAULT_LIQUID_GLASS_TUNING.panelBlurPx).toBeLessThanOrEqual(12);
+    expect(DEFAULT_LIQUID_GLASS_TUNING.heroBlurPx).toBe(1.5);
+    expect(DEFAULT_LIQUID_GLASS_TUNING.panelBlurPx).toBe(5);
 
     const boosted = buildLiquidGlassFilterConfig(mockMap, DEFAULT_LIQUID_GLASS_TUNING, {
       blurOverridePx: 1.5,
@@ -473,6 +474,21 @@ describe('liquid-glass performance optimizations', () => {
       expect(pinFilter!.querySelectorAll('feImage[result="specRaw"]').length).toBe(0);
       expect(pinFilter!.children.length).toBe(4);
 
+      for (const btnId of ['#lux-glass-btn', '#lux-glass-btn-icon']) {
+        const btnFilter = shadowRoot!.querySelector(btnId);
+        expect(btnFilter, `expected ${btnId} filter when panel/pin surface activates`).not.toBeNull();
+        expect(btnFilter!.getAttribute('filterUnits')).toBe('objectBoundingBox');
+        expect(btnFilter!.getAttribute('width')).toBe('100%');
+        expect(btnFilter!.getAttribute('height')).toBe('100%');
+        expect(btnFilter!.querySelectorAll('feDisplacementMap').length).toBe(1);
+        expect(btnFilter!.querySelectorAll('feGaussianBlur').length).toBe(0);
+        const dispImage = btnFilter!.querySelector('feImage[result="dispMap"]');
+        expect(dispImage).not.toBeNull();
+        expect(dispImage!.getAttribute('preserveAspectRatio')).toBe('none');
+        expect(dispImage!.getAttribute('width')).toBeNull();
+        expect(dispImage!.getAttribute('height')).toBeNull();
+      }
+
       // Flush progressive idle warming stages and verify deferred panels warm without blocking mount
       for (let step = 0; step < 6; step += 1) {
         const nextCb = idleCallbacks.shift();
@@ -635,6 +651,33 @@ describe('liquid-glass performance optimizations', () => {
       { suffix: '.ve-dock-item.ve-active', filterId: 'lux-glass-bubble' },
       { suffix: '.ve-mode-pill.ve-active', filterId: 'lux-glass-pill-active' },
       { suffix: '.ve-tab-indicator', filterId: 'lux-glass-tab-pill' },
+      ...[
+        '.ve-btn',
+        '.ve-mini-btn',
+        '.ve-hotkey-btn',
+        '.ve-shortcuts-reset-btn',
+        '.ve-update-pill',
+        '.ve-card-save-btn',
+        '.ve-card-pill-btn',
+        '.ve-composer-snap-btn',
+        '.ve-pin-tooltip-edit-btn',
+        '.ve-pin-tooltip-resolve-btn',
+        '.ve-pin-edit-save-btn',
+        '.ve-variant-option-btn',
+        '.ve-variant-apply-btn',
+        '.ve-variant-change-btn',
+        '.ve-variant-delete-btn',
+        '.ve-voice-done-btn',
+        '.ve-mode-pill:not(.ve-active)',
+      ].map((suffix) => ({ suffix, filterId: 'lux-glass-btn' })),
+      ...[
+        '.ve-close-btn',
+        '.ve-shortcuts-btn',
+        '.ve-variant-close-btn',
+        '.ve-voice-cancel-btn',
+        '.ve-composer-screenshot-detach',
+        '.ve-mini-btn.ve-icon-btn',
+      ].map((suffix) => ({ suffix, filterId: 'lux-glass-btn-icon' })),
     ];
 
     for (const { suffix, filterId } of targets) {

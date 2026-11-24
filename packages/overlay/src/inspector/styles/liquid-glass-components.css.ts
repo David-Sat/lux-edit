@@ -27,12 +27,12 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
       rgba(36, 43, 56, calc(0.22 + var(--ve-lg-tint, 0.35) * 0.76)) 100%
     );
   backdrop-filter:
-    blur(calc(var(--ve-lg-hero-blur, 3.5px) * 0.35))
+    blur(calc(var(--ve-lg-hero-blur, 1.5px) * 0.35))
     saturate(calc(var(--ve-lg-sat, 180%) * 1.15))
     contrast(110%)
     brightness(105%);
   -webkit-backdrop-filter:
-    blur(calc(var(--ve-lg-hero-blur, 3.5px) * 0.35))
+    blur(calc(var(--ve-lg-hero-blur, 1.5px) * 0.35))
     saturate(calc(var(--ve-lg-sat, 180%) * 1.15))
     contrast(110%)
     brightness(105%);
@@ -66,12 +66,12 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
       rgba(8, 13, 24, calc(0.26 + var(--ve-lg-tint, 0.56) * 0.85)) 100%
     );
   backdrop-filter:
-    blur(calc(var(--ve-lg-hero-blur, 4px) * 0.35))
+    blur(calc(var(--ve-lg-hero-blur, 1.5px) * 0.35))
     saturate(calc(var(--ve-lg-sat, 180%) * 1.15))
     contrast(110%)
     brightness(105%);
   -webkit-backdrop-filter:
-    blur(calc(var(--ve-lg-hero-blur, 4px) * 0.35))
+    blur(calc(var(--ve-lg-hero-blur, 1.5px) * 0.35))
     saturate(calc(var(--ve-lg-sat, 180%) * 1.15))
     contrast(110%)
     brightness(105%);
@@ -266,6 +266,17 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
   color: #f8fafc;
 }
 
+.ve-root.ve-glass-liquid.ve-glass-clear .ve-mode-pill.is-live,
+.ve-root.ve-glass-liquid.ve-glass-obsidian .ve-mode-pill.is-live {
+  background: linear-gradient(
+    180deg,
+    rgba(52, 211, 153, 0.34) 0%,
+    rgba(16, 185, 129, 0.22) 100%
+  );
+  border-color: rgba(110, 231, 183, 0.52);
+  color: #ecfdf5;
+}
+
 .ve-root.ve-glass-liquid .ve-mode-pill.ve-active {
   background: linear-gradient(
     180deg,
@@ -374,12 +385,6 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
     0 6px 14px rgba(0, 0, 0, 0.22);
   transform: scale(1.03);
   animation: veLiquidPop 0.2s var(--ve-ease-liquid);
-}
-
-.ve-root.ve-glass-liquid .ve-btn:active,
-.ve-root.ve-glass-liquid .ve-mini-btn:active,
-.ve-root.ve-glass-liquid .ve-variant-option-btn:active {
-  transform: scale(0.98);
 }
 
 .ve-root.ve-glass-liquid .ve-mini-btn.ve-active {
@@ -749,6 +754,143 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.55),
     0 4px 12px rgba(5, 150, 105, 0.36);
+}
+
+/* Interactive Panel & Control Buttons — Liquid Glass Fallback & Tactile Bevel */
+.ve-root.ve-glass-liquid .ve-btn,
+.ve-root.ve-glass-liquid .ve-mini-btn,
+.ve-root.ve-glass-liquid .ve-hotkey-btn,
+.ve-root.ve-glass-liquid .ve-shortcuts-reset-btn,
+.ve-root.ve-glass-liquid .ve-update-pill,
+.ve-root.ve-glass-liquid .ve-card-save-btn,
+.ve-root.ve-glass-liquid .ve-card-pill-btn,
+.ve-root.ve-glass-liquid .ve-composer-snap-btn,
+.ve-root.ve-glass-liquid .ve-pin-tooltip-edit-btn,
+.ve-root.ve-glass-liquid .ve-pin-tooltip-resolve-btn,
+.ve-root.ve-glass-liquid .ve-pin-edit-save-btn,
+.ve-root.ve-glass-liquid .ve-variant-option-btn,
+.ve-root.ve-glass-liquid .ve-variant-apply-btn,
+.ve-root.ve-glass-liquid .ve-variant-change-btn,
+.ve-root.ve-glass-liquid .ve-variant-delete-btn,
+.ve-root.ve-glass-liquid .ve-voice-done-btn,
+.ve-root.ve-glass-liquid .ve-mode-pill:not(.ve-active),
+.ve-root.ve-glass-liquid .ve-close-btn,
+.ve-root.ve-glass-liquid .ve-shortcuts-btn,
+.ve-root.ve-glass-liquid .ve-variant-close-btn,
+.ve-root.ve-glass-liquid .ve-voice-cancel-btn,
+.ve-root.ve-glass-liquid .ve-composer-screenshot-detach {
+  backdrop-filter: blur(2px) saturate(165%) brightness(104%);
+  -webkit-backdrop-filter: blur(2px) saturate(165%) brightness(104%);
+}
+
+.ve-root.ve-glass-liquid .ve-btn:active,
+.ve-root.ve-glass-liquid .ve-mini-btn:active,
+.ve-root.ve-glass-liquid .ve-hotkey-btn:active,
+.ve-root.ve-glass-liquid .ve-shortcuts-reset-btn:active,
+.ve-root.ve-glass-liquid .ve-update-pill:active,
+.ve-root.ve-glass-liquid .ve-card-save-btn:active,
+.ve-root.ve-glass-liquid .ve-card-pill-btn:active,
+.ve-root.ve-glass-liquid .ve-composer-snap-btn:active,
+.ve-root.ve-glass-liquid .ve-pin-tooltip-edit-btn:active,
+.ve-root.ve-glass-liquid .ve-pin-tooltip-resolve-btn:active,
+.ve-root.ve-glass-liquid .ve-pin-edit-save-btn:active,
+.ve-root.ve-glass-liquid .ve-variant-option-btn:active,
+.ve-root.ve-glass-liquid .ve-variant-apply-btn:active,
+.ve-root.ve-glass-liquid .ve-variant-change-btn:active,
+.ve-root.ve-glass-liquid .ve-variant-delete-btn:active,
+.ve-root.ve-glass-liquid .ve-voice-done-btn:not(:disabled):not(.ve-finishing):active,
+.ve-root.ve-glass-liquid .ve-mode-pill:active,
+.ve-root.ve-glass-liquid .ve-close-btn:active,
+.ve-root.ve-glass-liquid .ve-shortcuts-btn:active,
+.ve-root.ve-glass-liquid .ve-variant-close-btn:active,
+.ve-root.ve-glass-liquid .ve-voice-cancel-btn:active,
+.ve-root.ve-glass-liquid .ve-composer-screenshot-detach:active {
+  transform: scale(0.97);
+}
+
+.ve-root.ve-glass-liquid .ve-btn {
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.38),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.ve-root.ve-glass-liquid .ve-btn.danger {
+  background: linear-gradient(
+    180deg,
+    rgba(239, 68, 68, 0.56) 0%,
+    rgba(185, 28, 28, 0.72) 100%
+  );
+  border-color: rgba(252, 165, 165, 0.55);
+}
+
+.ve-root.ve-glass-liquid .ve-btn.danger:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(239, 68, 68, 0.7) 0%,
+    rgba(185, 28, 28, 0.85) 100%
+  );
+}
+
+.ve-root.ve-glass-liquid .ve-voice-done-btn {
+  background: linear-gradient(
+    180deg,
+    rgba(248, 113, 113, 0.56) 0%,
+    rgba(220, 38, 38, 0.72) 100%
+  );
+  border-color: rgba(254, 202, 202, 0.45);
+}
+
+.ve-root.ve-glass-liquid .ve-voice-done-btn:hover:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    rgba(248, 113, 113, 0.68) 0%,
+    rgba(220, 38, 38, 0.84) 100%
+  );
+}
+
+.ve-root.ve-glass-liquid .ve-mini-btn {
+  box-shadow:
+    inset 0 1px 0.75px rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0.75px rgba(255, 255, 255, 0.08),
+    0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.ve-root.ve-glass-liquid .ve-variant-option-btn {
+  background: rgba(12, 18, 32, 0.54);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.34),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.1),
+    0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.ve-root.ve-glass-liquid .ve-variant-option-btn:hover:not(.is-selected) {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+
+.ve-root.ve-glass-liquid .ve-close-btn,
+.ve-root.ve-glass-liquid .ve-shortcuts-btn,
+.ve-root.ve-glass-liquid .ve-variant-close-btn,
+.ve-root.ve-glass-liquid .ve-voice-cancel-btn,
+.ve-root.ve-glass-liquid .ve-composer-screenshot-detach {
+  box-shadow:
+    inset 0 1px 0.75px rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0.75px rgba(255, 255, 255, 0.1),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.ve-root.ve-glass-liquid .ve-variant-close-btn {
+  inline-size: 22px;
+  block-size: 22px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.ve-root.ve-glass-liquid .ve-voice-cancel-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 `;

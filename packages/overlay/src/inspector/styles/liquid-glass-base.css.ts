@@ -133,7 +133,7 @@ export const LIQUID_GLASS_BASE_CSS = `
 .ve-root.ve-glass-liquid {
   --ve-glass-border: transparent;
   --ve-glass-backdrop:
-    blur(calc(var(--ve-lg-panel-blur, 10px) * 0.6))
+    blur(calc(var(--ve-lg-panel-blur, 5px) * 0.6))
     saturate(var(--ve-lg-sat, 180%))
     brightness(102%)
     contrast(104%);

@@ -112,6 +112,19 @@ interface GlassFilterSpec {
   isNeeded: (ctx: FilterBuildContext) => boolean;
   buildRequest: (ctx: FilterBuildContext) => LiquidGlassMapRequest;
   buildFilterOptions: (ctx: FilterBuildContext) => LiquidGlassFilterConfigOptions;
+  stretchToBounds?: boolean;
+}
+
+function hasButtonSurfaces(ctx: FilterBuildContext): boolean {
+  return (
+    ctx.isSurfaceActive('drawer', 2) ||
+    ctx.isSurfaceActive('toolbar', 2) ||
+    ctx.isSurfaceActive('composer', 2) ||
+    ctx.isSurfaceActive('switcher', 2) ||
+    ctx.isSurfaceActive('pins', 2) ||
+    ctx.isSurfaceActive('voicePins', 2) ||
+    ctx.isSurfaceActive('dock', 2)
+  );
 }
 
 const GLASS_FILTER_SPECS: GlassFilterSpec[] = [
@@ -357,6 +370,58 @@ const GLASS_FILTER_SPECS: GlassFilterSpec[] = [
     }),
     buildFilterOptions: (ctx) => ctx.panelFilterOptions,
   },
+  {
+    id: 'lux-glass-btn',
+    isNeeded: hasButtonSurfaces,
+    stretchToBounds: true,
+    buildRequest: (ctx) => ({
+      width: 116,
+      height: 32,
+      radius: 10,
+      includeCaustic: false,
+      includeSpecular: true,
+      tuning: {
+        ...ctx.mapTuning,
+        ior: Math.max(1.54, ctx.tuning.ior + 0.04),
+        bezelWidth: 11,
+        thickness: Math.max(54, ctx.tuning.thickness * 1.1),
+      },
+      exact: true,
+    }),
+    buildFilterOptions: () => ({
+      blurOverridePx: 0,
+      scaleMultiplier: 1.85,
+      specularOpacityMultiplier: 0.78,
+      disableDispersion: true,
+      disableCausticRim: true,
+    }),
+  },
+  {
+    id: 'lux-glass-btn-icon',
+    isNeeded: hasButtonSurfaces,
+    stretchToBounds: true,
+    buildRequest: (ctx) => ({
+      width: 28,
+      height: 28,
+      radius: 8,
+      includeCaustic: false,
+      includeSpecular: true,
+      tuning: {
+        ...ctx.mapTuning,
+        ior: Math.max(1.55, ctx.tuning.ior + 0.05),
+        bezelWidth: 10,
+        thickness: Math.max(52, ctx.tuning.thickness * 1.05),
+      },
+      exact: true,
+    }),
+    buildFilterOptions: () => ({
+      blurOverridePx: 0,
+      scaleMultiplier: 1.9,
+      specularOpacityMultiplier: 0.8,
+      disableDispersion: true,
+      disableCausticRim: true,
+    }),
+  },
 ];
 
 function readMeasuredSize(el: HTMLElement | null, exact: boolean, step = 16): Size2D | null {
@@ -381,7 +446,8 @@ function renderGlassFilter(
   id: string,
   map: LiquidGlassMapResult | null,
   tuning: LiquidGlassTuning,
-  filterOptions?: LiquidGlassFilterConfigOptions
+  filterOptions?: LiquidGlassFilterConfigOptions,
+  stretchToBounds = false
 ) {
   if (!map) return null;
 
@@ -390,9 +456,26 @@ function renderGlassFilter(
   const includeCaustic = cfg.useCausticRim && Boolean(map.causticMaskUrl);
   const postCausticInput = includeCaustic ? 'withCaustic' : 'interior';
   const includeSpecular = cfg.specularOpacity > 0.005 && Boolean(map.specularUrl);
+  const feImageBounds = stretchToBounds
+    ? {}
+    : { x: '0', y: '0', width: map.width, height: map.height };
 
   return (
-    <filter key={id} id={id} color-interpolation-filters="sRGB">
+    <filter
+      key={id}
+      id={id}
+      {...(stretchToBounds
+        ? {
+            x: '0%',
+            y: '0%',
+            width: '100%',
+            height: '100%',
+            filterUnits: 'objectBoundingBox',
+            primitiveUnits: 'userSpaceOnUse',
+          }
+        : {})}
+      color-interpolation-filters="sRGB"
+    >
       {cfg.blurStdDev > 0.05 && (
         <feGaussianBlur
           in="SourceGraphic"
@@ -404,10 +487,7 @@ function renderGlassFilter(
 
       <feImage
         href={map.displacementUrl}
-        x="0"
-        y="0"
-        width={map.width}
-        height={map.height}
+        {...feImageBounds}
         preserveAspectRatio="none"
         result="dispMap"
       />
@@ -488,10 +568,7 @@ function renderGlassFilter(
 
           <feImage
             href={map.causticMaskUrl}
-            x="0"
-            y="0"
-            width={map.width}
-            height={map.height}
+            {...feImageBounds}
             preserveAspectRatio="none"
             result="causticMask"
           />
@@ -511,10 +588,7 @@ function renderGlassFilter(
         <Fragment>
           <feImage
             href={map.specularUrl}
-            x="0"
-            y="0"
-            width={map.width}
-            height={map.height}
+            {...feImageBounds}
             preserveAspectRatio="none"
             result="specRaw"
           />
@@ -850,7 +924,13 @@ export function LiquidGlassDefs({
     for (const spec of GLASS_FILTER_SPECS) {
       const map = generatedMaps.get(spec.id);
       if (map) {
-        const node = renderGlassFilter(spec.id, map, tuning, spec.buildFilterOptions(ctx));
+        const node = renderGlassFilter(
+          spec.id,
+          map,
+          tuning,
+          spec.buildFilterOptions(ctx),
+          Boolean(spec.stretchToBounds)
+        );
         if (node) filters.push(node);
       }
     }
