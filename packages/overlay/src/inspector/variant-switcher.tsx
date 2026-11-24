@@ -321,7 +321,7 @@ export function VariantSwitcher() {
                   }}
                   title="Drag to reposition variant switcher"
                 >
-                  <svg width="10" height="14" viewBox="0 0 10 14" fill="#64748b" class="ve-variant-drag-icon" aria-hidden="true">
+                  <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-variant-drag-icon" aria-hidden="true">
                     <circle cx="3" cy="3" r="1.5" />
                     <circle cx="7" cy="3" r="1.5" />
                     <circle cx="3" cy="7" r="1.5" />

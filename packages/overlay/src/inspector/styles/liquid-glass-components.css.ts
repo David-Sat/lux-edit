@@ -382,8 +382,7 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
   transform: scale(0.98);
 }
 
-.ve-root.ve-glass-liquid .ve-mini-btn.ve-active,
-.ve-root.ve-glass-liquid .ve-variant-option-btn.is-selected {
+.ve-root.ve-glass-liquid .ve-mini-btn.ve-active {
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.28) 0%,
@@ -394,6 +393,21 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
     inset 0 1px 1px rgba(255, 255, 255, 0.42),
     inset 0 -1px 1px rgba(56, 189, 248, 0.28),
     0 3px 10px rgba(0, 0, 0, 0.22);
+}
+
+.ve-root.ve-glass-liquid .ve-variant-option-btn.is-selected {
+  background: linear-gradient(
+    180deg,
+    rgba(56, 189, 248, 0.46) 0%,
+    rgba(2, 132, 199, 0.68) 100%
+  );
+  border-color: rgba(125, 211, 252, 0.8);
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(7, 24, 48, 0.65);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.52),
+    inset 0 -1px 1px rgba(14, 165, 233, 0.35),
+    0 4px 12px rgba(2, 132, 199, 0.34);
 }
 
 .ve-root.ve-glass-liquid .ve-launcher-btn:hover {
