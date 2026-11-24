@@ -1,4 +1,4 @@
-import { h } from 'preact';
+import { ComponentChildren, h } from 'preact';
 import {
   CommentAnnotation,
   ElementVariantSet,
@@ -6,6 +6,59 @@ import {
   VariantDecision,
 } from '@visual-edit/core';
 import { normalizeRoute } from '../inspector/route-utils.js';
+
+function CardActionSvg({ children }: { children: ComponentChildren }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.1"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+function IconUndo() {
+  return (
+    <CardActionSvg>
+      <path d="M3 7v6h6" />
+      <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+    </CardActionSvg>
+  );
+}
+
+function IconPencil() {
+  return (
+    <CardActionSvg>
+      <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </CardActionSvg>
+  );
+}
+
+function IconTrash() {
+  return (
+    <CardActionSvg>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </CardActionSvg>
+  );
+}
+
+function IconClose() {
+  return (
+    <CardActionSvg>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </CardActionSvg>
+  );
+}
 
 function scrollToSelector(selector: string): void {
   try {
@@ -54,12 +107,12 @@ export function MutationCard({
         </div>
         <button
           type="button"
-          class="ve-card-link ve-card-link--danger"
+          class="ve-card-icon-btn"
           onClick={() => onRevert(m.id)}
           aria-label={`Revert edit on ${m.sourceLocation?.componentName ? `<${m.sourceLocation.componentName}>` : m.targetSelector}`}
           title="Revert this visual change"
         >
-          Revert
+          <IconUndo />
         </button>
       </div>
 
@@ -157,20 +210,22 @@ export function AnnotationCard({
           {!isEditing && (
             <button
               type="button"
-              class="ve-card-link"
+              class="ve-card-icon-btn"
               onClick={onStartEdit}
               aria-label={`Edit comment ${idx + 1}`}
+              title="Edit comment"
             >
-              Edit
+              <IconPencil />
             </button>
           )}
           <button
             type="button"
-            class="ve-card-link ve-card-link--danger"
+            class="ve-card-icon-btn"
             onClick={onDelete}
             aria-label={`Delete comment ${idx + 1}`}
+            title="Delete comment"
           >
-            Delete
+            <IconTrash />
           </button>
         </div>
       </div>
@@ -274,12 +329,12 @@ export function VariantProposalCard({
         <span class="ve-mut-target">{proposalTarget}</span>
         <button
           type="button"
-          class="ve-card-link ve-card-link--muted"
+          class="ve-card-icon-btn"
           onClick={() => onDismiss(set.id)}
           aria-label={`Dismiss proposal for ${proposalTarget}`}
           title="Dismiss proposal"
         >
-          Dismiss
+          <IconClose />
         </button>
       </div>
 
@@ -315,24 +370,24 @@ export function VariantDecisionCard({
         <div class="ve-card-actions">
           <button
             type="button"
-            class="ve-card-pill-btn ve-card-pill-btn--blue"
+            class="ve-card-icon-btn"
             onClick={() => {
               onChangeOption(vd.setId);
               scrollToSelector(vd.targetSelector);
             }}
             aria-label={`Change variant option for ${vd.targetSelector}`}
-            title="Revert to test different options"
+            title="Change variant option"
           >
-            Change Option
+            <IconPencil />
           </button>
           <button
             type="button"
-            class="ve-card-pill-btn ve-card-pill-btn--danger"
+            class="ve-card-icon-btn"
             onClick={() => onDelete(vd.setId)}
             aria-label={`Delete variant selection for ${vd.targetSelector}`}
             title="Delete selection and restore original styles"
           >
-            Delete
+            <IconTrash />
           </button>
         </div>
       </div>

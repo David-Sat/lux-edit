@@ -579,9 +579,11 @@ export function CommentPins() {
                           setEditingPinId(ann.id);
                           setEditText(ann.comment);
                         }}
-                        title="Edit comment text"
+                        title="Edit comment"
                       >
-                        Edit
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                          <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                        </svg>
                       </button>
                     )}
                     <button
@@ -593,12 +595,11 @@ export function CommentPins() {
                         state.deleteAnnotation(ann.id);
                         if (editingPinId === ann.id) setEditingPinId(null);
                       }}
-                      title="Dismiss and resolve this comment"
+                      title="Resolve and delete comment"
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
-                      <span>Resolve</span>
                     </button>
                   </div>
                 </div>

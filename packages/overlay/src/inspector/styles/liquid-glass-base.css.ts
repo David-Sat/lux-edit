@@ -404,19 +404,11 @@ export const LIQUID_GLASS_BASE_CSS = `
 /* Preserve crisp contrast on inner drawer cards over bright host pages */
 .ve-root.ve-glass-liquid .ve-mutation-card,
 .ve-root.ve-glass-liquid .ve-reply-item,
-.ve-root.ve-glass-liquid .ve-card--proposal {
-  background: rgba(12, 18, 32, 0.5);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-.ve-root.ve-glass-liquid .ve-card--voice {
-  background: linear-gradient(180deg, rgba(239, 68, 68, 0.18), rgba(18, 12, 18, 0.54));
-  border-color: rgba(248, 113, 113, 0.34);
-}
-
+.ve-root.ve-glass-liquid .ve-card--proposal,
+.ve-root.ve-glass-liquid .ve-card--voice,
 .ve-root.ve-glass-liquid .ve-card--screenshot {
-  background: linear-gradient(180deg, rgba(245, 158, 11, 0.18), rgba(20, 16, 10, 0.54));
-  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(12, 18, 32, 0.56);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Opposing Double-Arc Pure White Fresnel Specular Rim via CSS Mask */

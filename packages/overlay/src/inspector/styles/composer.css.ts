@@ -18,6 +18,8 @@ export const COMPOSER_CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
+  color: #f8fafc;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.48);
 }
 
 .ve-comment-textarea {
@@ -53,9 +55,9 @@ export const COMPOSER_CSS = `
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(56, 189, 248, 0.15);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  color: var(--ve-accent-text, #38bdf8);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 500;
@@ -69,7 +71,7 @@ export const COMPOSER_CSS = `
 .ve-chip-remove {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.65);
   cursor: pointer;
   padding: 0;
   font-size: 12px;
@@ -80,7 +82,7 @@ export const COMPOSER_CSS = `
   transition: color var(--ve-transition-fast);
 
   &:hover {
-    color: #f43f5e;
+    color: #ffffff;
   }
 }
 
@@ -102,13 +104,14 @@ export const COMPOSER_CSS = `
 
 .ve-hint {
   font-size: 11px;
-  color: var(--ve-text-muted);
+  color: #f1f5f9;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.48);
   display: inline-flex;
   align-items: center;
   gap: 3px;
 
   & strong {
-    color: var(--ve-text-primary);
+    color: #ffffff;
     font-weight: 600;
   }
 }
@@ -228,7 +231,7 @@ export const COMPOSER_CSS = `
 }
 
 .ve-comment-screenshot-title {
-  color: #f59e0b;
+  color: #ffffff;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -236,16 +239,16 @@ export const COMPOSER_CSS = `
 }
 
 .ve-comment-screenshot-tag {
-  color: #fbbf24;
+  color: #ffffff;
 }
 
 .ve-comment-multi-title {
   font-weight: 600;
-  color: var(--ve-text-primary);
+  color: #ffffff;
 }
 
 .ve-comment-accent-strong {
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
 }
 
 .ve-comment-selected-title {
@@ -255,7 +258,7 @@ export const COMPOSER_CSS = `
 }
 
 .ve-comment-selected-strong {
-  color: var(--ve-amber-text, #d97706);
+  color: #ffffff;
 }
 
 .ve-close-btn--compact {
@@ -311,10 +314,10 @@ export const COMPOSER_CSS = `
 }
 
 .ve-composer-snap-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(12, 18, 32, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 6px;
-  color: var(--ve-text-secondary);
+  color: #f8fafc;
   font-size: 11px;
   padding: 3px 8px;
   cursor: pointer;
@@ -332,7 +335,7 @@ export const COMPOSER_CSS = `
 }
 
 .ve-composer-reload-ready {
-  color: #38bdf8;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -363,44 +366,34 @@ export const COMPOSER_CSS = `
   flex-shrink: 0;
 }
 
-.ve-pin-tooltip-edit-btn {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #ffffff;
-  border-radius: 4px;
-  padding: 0 6px;
-  height: 20px;
-  box-sizing: border-box;
-  font-size: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-}
-
+.ve-pin-tooltip-edit-btn,
 .ve-pin-tooltip-resolve-btn {
-  background: rgba(34, 197, 94, 0.2);
-  border: 1px solid rgba(34, 197, 94, 0.4);
-  color: #4ade80;
-  border-radius: 4px;
-  padding: 0 6px;
-  height: 20px;
-  box-sizing: border-box;
-  font-size: 10px;
-  cursor: pointer;
-  font-weight: 600;
+  inline-size: 22px;
+  block-size: 22px;
+  padding: 0;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  white-space: nowrap;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  color: #f8fafc;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.24);
+    border-color: rgba(255, 255, 255, 0.45);
+    color: #ffffff;
+  }
 }
 
 .ve-pin-tooltip-quote {
   font-size: 11px;
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.12);
-  border-left: 2px solid #fbbf24;
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.08);
+  border-left: 2px solid rgba(255, 255, 255, 0.55);
   padding: 3px 6px;
   border-radius: 2px;
   margin-bottom: 6px;
@@ -423,10 +416,14 @@ export const COMPOSER_CSS = `
 .ve-pin-edit-cancel-btn {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: rgba(241, 245, 249, 0.82);
   font-size: 10px;
   cursor: pointer;
   padding: 2px 6px;
+
+  &:hover {
+    color: #ffffff;
+  }
 }
 
 .ve-pin-edit-save-btn {

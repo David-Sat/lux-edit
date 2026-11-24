@@ -62,6 +62,7 @@ export const DRAWER_CSS = `
   font-size: 13px;
   font-weight: 700;
   color: var(--ve-text-primary);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.48);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -87,7 +88,9 @@ export const DRAWER_CSS = `
 }
 
 .ve-mut-target {
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   font-family: ui-monospace, monospace;
   font-size: 11px;
 }
@@ -96,17 +99,17 @@ export const DRAWER_CSS = `
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--ve-text-secondary, #cbd5e1);
+  color: #f1f5f9;
 }
 
 .ve-mut-before {
-  color: var(--ve-danger, #ef4444);
+  color: rgba(241, 245, 249, 0.68);
   text-decoration: line-through;
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .ve-mut-after {
-  color: #22c55e;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -190,16 +193,18 @@ export const DRAWER_CSS = `
 
 .ve-reply-author {
   font-weight: 700;
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
   margin-block-end: 2px;
 }
 
 /* Shared Drawer & Card Helpers */
 .ve-drawer-badge {
   font-size: 11px;
-  color: var(--ve-accent-text, #38bdf8);
+  color: #ffffff;
   font-weight: 600;
-  background: rgba(56, 189, 248, 0.12);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   padding: 1px 6px;
   border-radius: 10px;
 }
@@ -224,8 +229,8 @@ export const DRAWER_CSS = `
 }
 
 .ve-mode-pill.is-live {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .ve-status-dot {
@@ -243,18 +248,18 @@ export const DRAWER_CSS = `
 }
 
 .ve-status-dot--accent {
-  background-color: #38bdf8;
-  box-shadow: 0 0 6px #38bdf8;
+  background-color: #ffffff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
 }
 
 .ve-mode-label {
   font-size: 11px;
   font-weight: 600;
-  color: #cbd5e1;
+  color: #ffffff;
 }
 
 .ve-mode-label.is-live {
-  color: #6ee7b7;
+  color: #ffffff;
 }
 
 .ve-mode-track {
@@ -271,7 +276,7 @@ export const DRAWER_CSS = `
 }
 
 .ve-mode-track.is-live {
-  background: rgba(52, 211, 153, 0.35);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .ve-mode-thumb {
@@ -284,7 +289,7 @@ export const DRAWER_CSS = `
 }
 
 .ve-mode-thumb.is-live {
-  background: #34d399;
+  background: #ffffff;
   transform: translateX(9px);
 }
 
@@ -296,7 +301,8 @@ export const DRAWER_CSS = `
 .ve-drawer-empty-text {
   font-weight: 500;
   font-size: 13px;
-  color: var(--ve-text-muted, #94a3b8);
+  color: rgba(241, 245, 249, 0.84);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .ve-drawer-sections {
@@ -320,17 +326,18 @@ export const DRAWER_CSS = `
 .ve-drawer-section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--ve-text-primary, #f8fafc);
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .ve-drawer-section-title--accent {
-  color: var(--ve-accent-text, #38bdf8);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ve-drawer-section-title--green {
-  color: #10b981;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .ve-drawer-autosave-bar {
@@ -341,7 +348,8 @@ export const DRAWER_CSS = `
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: var(--ve-text-muted, #94a3b8);
+  color: rgba(241, 245, 249, 0.84);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   font-weight: 500;
   user-select: none;
 }
@@ -358,9 +366,9 @@ export const DRAWER_CSS = `
   gap: 5px;
   padding: 2px 8px;
   border-radius: 12px;
-  background: rgba(14, 165, 233, 0.15);
-  border: 1px solid rgba(14, 165, 233, 0.4);
-  color: #38bdf8;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
@@ -369,7 +377,8 @@ export const DRAWER_CSS = `
 
 .ve-drawer-version {
   font-size: 10px;
-  color: var(--ve-text-muted, #64748b);
+  color: rgba(241, 245, 249, 0.84);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   font-weight: 500;
 }
 
@@ -398,14 +407,16 @@ export const DRAWER_CSS = `
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ve-text-muted, #94a3b8);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(248, 250, 252, 0.84);
   font-family: monospace;
 }
 
 .ve-route-badge.is-current {
-  background: rgba(56, 189, 248, 0.15);
-  color: var(--ve-accent-text, #38bdf8);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #ffffff;
 }
 
 .ve-card-top {
@@ -436,27 +447,53 @@ export const DRAWER_CSS = `
 
 .ve-card-actions {
   display: flex;
-  gap: 8px;
+  gap: 5px;
   align-items: center;
   flex-shrink: 0;
+}
+
+.ve-card-icon-btn {
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(248, 250, 252, 0.88);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ve-card-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.38);
+  color: #ffffff;
 }
 
 .ve-card-link {
   background: none;
   border: none;
-  color: var(--ve-text-muted, #94a3b8);
+  color: rgba(241, 245, 249, 0.84);
   cursor: pointer;
   font-size: 11px;
   font-weight: 600;
   padding: 0 2px;
 }
 
+.ve-card-link:hover {
+  color: #ffffff;
+}
+
 .ve-card-link--danger {
-  color: #f43f5e;
+  color: rgba(241, 245, 249, 0.84);
 }
 
 .ve-card-link--muted {
-  color: #64748b;
+  color: rgba(241, 245, 249, 0.78);
 }
 
 .ve-card-pill-btn {
@@ -468,23 +505,12 @@ export const DRAWER_CSS = `
   transition: all 0.1s ease;
 }
 
-.ve-card-pill-btn--accent {
-  background: rgba(56, 189, 248, 0.16);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  color: #38bdf8;
-  padding: 2px 8px;
-}
-
-.ve-card-pill-btn--blue {
-  background: rgba(59, 130, 246, 0.18);
-  border: 1px solid rgba(96, 165, 250, 0.35);
-  color: #93c5fd;
-}
-
+.ve-card-pill-btn--accent,
+.ve-card-pill-btn--blue,
 .ve-card-pill-btn--danger {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(248, 113, 113, 0.3);
-  color: #fca5a5;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
 }
 
 .ve-mut-stack {
@@ -494,31 +520,37 @@ export const DRAWER_CSS = `
 }
 
 .ve-mut-added {
-  color: #22c55e;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .ve-mut-removed {
-  color: #ef4444;
+  color: rgba(241, 245, 249, 0.72);
 }
 
 .ve-mut-reordered {
-  color: var(--ve-accent-text, #0284c7);
+  color: #f1f5f9;
+  font-weight: 500;
 }
 
 .ve-mut-tw {
-  color: var(--ve-accent-text, #0284c7);
+  color: rgba(241, 245, 249, 0.86);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0 5px;
+  border-radius: 4px;
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .ve-card--voice {
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .ve-card--screenshot {
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .ve-card--proposal {
@@ -542,11 +574,11 @@ export const DRAWER_CSS = `
 }
 
 .ve-card-type-label--voice {
-  color: #fca5a5;
+  color: #ffffff;
 }
 
 .ve-card-type-label--screenshot {
-  color: #f59e0b;
+  color: #ffffff;
 }
 
 .ve-target-chips {
@@ -559,24 +591,24 @@ export const DRAWER_CSS = `
 .ve-target-chip {
   font-size: 10px;
   font-family: ui-monospace, monospace;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  color: var(--ve-accent-text, #38bdf8);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #f8fafc;
   padding: 1px 5px;
   border-radius: 4px;
 }
 
 .ve-target-chip--voice {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #fca5a5;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #f8fafc;
 }
 
 .ve-card-quote {
   font-size: 11px;
-  color: var(--ve-amber-text, #d97706);
-  background: rgba(251, 191, 36, 0.14);
-  border-left: 2px solid var(--ve-amber-text, #d97706);
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.08);
+  border-left: 2px solid rgba(255, 255, 255, 0.55);
   padding: 3px 6px;
   border-radius: 2px;
   margin-bottom: 4px;
@@ -632,7 +664,7 @@ export const DRAWER_CSS = `
 }
 
 .ve-voice-section-title {
-  color: #fca5a5;
+  color: rgba(241, 245, 249, 0.86);
   font-weight: 600;
   font-size: 10px;
 }
@@ -679,9 +711,9 @@ export const DRAWER_CSS = `
 }
 
 .ve-shortcuts-btn.is-active {
-  background: rgba(56, 189, 248, 0.2);
-  border-color: rgba(56, 189, 248, 0.5);
-  color: #7dd3fc;
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.55);
+  color: #ffffff;
 }
 
 .ve-shortcuts-panel {
@@ -754,10 +786,10 @@ export const DRAWER_CSS = `
 
 @keyframes veHotkeyCapturePulse {
   0%, 100% {
-    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.45);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.85);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85);
   }
 }
 
@@ -789,9 +821,9 @@ export const DRAWER_CSS = `
 }
 
 .ve-hotkey-btn.is-capturing {
-  background: rgba(14, 165, 233, 0.24);
-  border-color: #38bdf8;
-  color: #bae6fd;
+  background: rgba(255, 255, 255, 0.24);
+  border-color: #ffffff;
+  color: #ffffff;
   animation: veHotkeyCapturePulse 1.1s ease-in-out infinite;
 }
 
@@ -824,7 +856,7 @@ export const DRAWER_CSS = `
 
 .ve-decision-name {
   font-size: 12px;
-  color: #4ade80;
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -993,9 +1025,9 @@ export const DRAWER_CSS = `
   letter-spacing: 0.04em;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(6, 95, 70, 0.68);
-  color: #d1fae5;
-  border: 1px solid rgba(52, 211, 153, 0.58);
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.38);
   flex-shrink: 0;
 }
 
@@ -1017,9 +1049,9 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-change-btn {
-  background: rgba(30, 64, 175, 0.62);
-  border: 1px solid rgba(147, 197, 253, 0.55);
-  color: #eff6ff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 11px;
@@ -1029,26 +1061,29 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-change-btn:hover {
-  background: rgba(37, 99, 235, 0.78);
-  border-color: rgba(191, 219, 254, 0.78);
+  background: rgba(255, 255, 255, 0.24);
+  border-color: rgba(255, 255, 255, 0.48);
   color: #ffffff;
 }
 
 .ve-variant-delete-btn {
-  background: rgba(153, 27, 27, 0.62);
-  border: 1px solid rgba(252, 165, 165, 0.55);
-  color: #fef2f2;
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: rgba(248, 250, 252, 0.9);
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: all 0.15s ease;
 }
 
 .ve-variant-delete-btn:hover {
-  background: rgba(185, 28, 28, 0.78);
-  border-color: rgba(254, 202, 202, 0.78);
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
   color: #ffffff;
 }
 
@@ -1105,10 +1140,11 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-option-btn.is-selected {
-  background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.45);
-  color: #ffffff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(226, 232, 240, 0.8) 100%);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  text-shadow: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .ve-variant-footer-row {
@@ -1144,25 +1180,25 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-apply-btn {
-  background: linear-gradient(180deg, rgba(16, 185, 129, 0.56) 0%, rgba(5, 150, 105, 0.76) 100%);
-  border: 1px solid rgba(110, 231, 183, 0.68);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(226, 232, 240, 0.82) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.95);
   border-radius: 6px;
-  color: #ecfdf5;
-  text-shadow: 0 1px 2px rgba(6, 78, 59, 0.55);
+  color: #0f172a;
+  text-shadow: none;
   font-size: 11px;
   font-weight: 600;
   padding: 3px 10px;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   transition: all 0.1s ease;
   flex-shrink: 0;
 }
 
 .ve-variant-apply-btn:hover {
-  background: linear-gradient(180deg, rgba(16, 185, 129, 0.72) 0%, rgba(5, 150, 105, 0.9) 100%);
-  border-color: rgba(167, 243, 208, 0.85);
-  color: #ffffff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.9) 100%);
+  border-color: #ffffff;
+  color: #020617;
 }
 
 .ve-variant-original-badge {

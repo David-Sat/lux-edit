@@ -201,35 +201,19 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 }
 
 .ve-root.ve-glass-liquid .ve-voice-recording-dock {
-  box-shadow:
-    0 8px 28px rgba(245, 158, 11, 0.22),
-    inset 0 1.5px 2px rgba(255, 255, 255, calc(0.65 * var(--ve-lg-spec, 0.78))),
-    0 0 0 1px rgba(245, 158, 11, 0.42);
+  box-shadow: var(--ve-glass-shadow);
 }
 
 .ve-root.ve-glass-liquid .ve-voice-recording-dock > .ve-glass-surface {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(245, 158, 11, 0.16) 0%,
-      rgba(36, 40, 54, calc(0.32 + var(--ve-lg-tint, 0.35) * 0.68)) 100%
-    );
+  background: var(--ve-glass-bg);
 }
 
 .ve-root.ve-glass-liquid .ve-voice-recording-dock.is-ready {
-  box-shadow:
-    0 8px 28px rgba(220, 38, 38, 0.26),
-    inset 0 1.5px 2px rgba(255, 255, 255, calc(0.65 * var(--ve-lg-spec, 0.78))),
-    0 0 0 1px rgba(239, 68, 68, 0.46);
+  box-shadow: var(--ve-glass-shadow);
 }
 
 .ve-root.ve-glass-liquid .ve-voice-recording-dock.is-ready > .ve-glass-surface {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(239, 68, 68, 0.18) 0%,
-      rgba(36, 40, 54, calc(0.32 + var(--ve-lg-tint, 0.35) * 0.68)) 100%
-    );
+  background: var(--ve-glass-bg);
 }
 
 /* Native macOS Control Center Iconography & Pill Legibility */
@@ -270,25 +254,25 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 .ve-root.ve-glass-liquid.ve-glass-obsidian .ve-mode-pill.is-live {
   background: linear-gradient(
     180deg,
-    rgba(52, 211, 153, 0.34) 0%,
-    rgba(16, 185, 129, 0.22) 100%
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.14) 100%
   );
-  border-color: rgba(110, 231, 183, 0.52);
-  color: #ecfdf5;
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #ffffff;
 }
 
 .ve-root.ve-glass-liquid .ve-mode-pill.ve-active {
   background: linear-gradient(
     180deg,
-    rgba(52, 211, 153, 0.36) 0%,
-    rgba(16, 185, 129, 0.2) 100%
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.14) 100%
   );
-  border-color: rgba(110, 231, 183, 0.42);
-  color: #ecfdf5;
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #ffffff;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.45),
-    inset 0 -1px 1px rgba(16, 185, 129, 0.35),
-    0 4px 12px rgba(16, 185, 129, 0.22);
+    inset 0 1px 1px rgba(255, 255, 255, 0.48),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.22);
 }
 
 .ve-root.ve-glass-liquid .ve-dock-item {
@@ -319,7 +303,7 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
   outline: 2px solid #ffffff;
   outline-offset: 2px;
   box-shadow:
-    0 0 0 4px rgba(56, 189, 248, 0.45),
+    0 0 0 4px rgba(255, 255, 255, 0.38),
     0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
@@ -390,29 +374,29 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 .ve-root.ve-glass-liquid .ve-mini-btn.ve-active {
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.28) 0%,
-    rgba(56, 189, 248, 0.22) 100%
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(226, 232, 240, 0.8) 100%
   );
-  border-color: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  text-shadow: none;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.42),
-    inset 0 -1px 1px rgba(56, 189, 248, 0.28),
-    0 3px 10px rgba(0, 0, 0, 0.22);
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    0 4px 12px rgba(0, 0, 0, 0.24);
 }
 
 .ve-root.ve-glass-liquid .ve-variant-option-btn.is-selected {
   background: linear-gradient(
     180deg,
-    rgba(56, 189, 248, 0.46) 0%,
-    rgba(2, 132, 199, 0.68) 100%
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(226, 232, 240, 0.8) 100%
   );
-  border-color: rgba(125, 211, 252, 0.8);
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(7, 24, 48, 0.65);
+  border-color: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  text-shadow: none;
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.52),
-    inset 0 -1px 1px rgba(14, 165, 233, 0.35),
-    0 4px 12px rgba(2, 132, 199, 0.34);
+    inset 0 1px 1px rgba(255, 255, 255, 0.9),
+    0 4px 12px rgba(0, 0, 0, 0.24);
 }
 
 .ve-root.ve-glass-liquid .ve-launcher-btn:hover {
@@ -764,6 +748,7 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 .ve-root.ve-glass-liquid .ve-update-pill,
 .ve-root.ve-glass-liquid .ve-card-save-btn,
 .ve-root.ve-glass-liquid .ve-card-pill-btn,
+.ve-root.ve-glass-liquid .ve-card-icon-btn,
 .ve-root.ve-glass-liquid .ve-composer-snap-btn,
 .ve-root.ve-glass-liquid .ve-pin-tooltip-edit-btn,
 .ve-root.ve-glass-liquid .ve-pin-tooltip-resolve-btn,
@@ -790,6 +775,7 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 .ve-root.ve-glass-liquid .ve-update-pill:active,
 .ve-root.ve-glass-liquid .ve-card-save-btn:active,
 .ve-root.ve-glass-liquid .ve-card-pill-btn:active,
+.ve-root.ve-glass-liquid .ve-card-icon-btn:active,
 .ve-root.ve-glass-liquid .ve-composer-snap-btn:active,
 .ve-root.ve-glass-liquid .ve-pin-tooltip-edit-btn:active,
 .ve-root.ve-glass-liquid .ve-pin-tooltip-resolve-btn:active,
@@ -818,34 +804,36 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 .ve-root.ve-glass-liquid .ve-btn.danger {
   background: linear-gradient(
     180deg,
-    rgba(239, 68, 68, 0.56) 0%,
-    rgba(185, 28, 28, 0.72) 100%
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.12) 100%
   );
-  border-color: rgba(252, 165, 165, 0.55);
+  border-color: rgba(255, 255, 255, 0.36);
+  color: #ffffff;
 }
 
 .ve-root.ve-glass-liquid .ve-btn.danger:hover {
   background: linear-gradient(
     180deg,
-    rgba(239, 68, 68, 0.7) 0%,
-    rgba(185, 28, 28, 0.85) 100%
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.18) 100%
   );
 }
 
 .ve-root.ve-glass-liquid .ve-voice-done-btn {
   background: linear-gradient(
     180deg,
-    rgba(248, 113, 113, 0.56) 0%,
-    rgba(220, 38, 38, 0.72) 100%
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(255, 255, 255, 0.14) 100%
   );
-  border-color: rgba(254, 202, 202, 0.45);
+  border-color: rgba(255, 255, 255, 0.42);
+  color: #ffffff;
 }
 
 .ve-root.ve-glass-liquid .ve-voice-done-btn:hover:not(:disabled) {
   background: linear-gradient(
     180deg,
-    rgba(248, 113, 113, 0.68) 0%,
-    rgba(220, 38, 38, 0.84) 100%
+    rgba(255, 255, 255, 0.36) 0%,
+    rgba(255, 255, 255, 0.2) 100%
   );
 }
 
@@ -872,6 +860,10 @@ export const LIQUID_GLASS_COMPONENTS_CSS = `
 
 .ve-root.ve-glass-liquid .ve-close-btn,
 .ve-root.ve-glass-liquid .ve-shortcuts-btn,
+.ve-root.ve-glass-liquid .ve-card-icon-btn,
+.ve-root.ve-glass-liquid .ve-pin-tooltip-edit-btn,
+.ve-root.ve-glass-liquid .ve-pin-tooltip-resolve-btn,
+.ve-root.ve-glass-liquid .ve-variant-delete-btn,
 .ve-root.ve-glass-liquid .ve-variant-close-btn,
 .ve-root.ve-glass-liquid .ve-voice-cancel-btn,
 .ve-root.ve-glass-liquid .ve-composer-screenshot-detach {
