@@ -28,8 +28,8 @@ export const DEFAULT_LIQUID_GLASS_TUNING: LiquidGlassTuning = {
   thickness: 58,
   refractionStrength: 1.35,
   specularOpacity: 0.78,
-  heroBlurPx: 3.5,
-  panelBlurPx: 10,
+  heroBlurPx: 1.5,
+  panelBlurPx: 5,
   saturatePct: 180,
   rimSaturation: 5.5,
   dispersion: 0.35,
@@ -269,22 +269,11 @@ export function computeSphericalLensProfile(
   return { displacements, maxDisplacement };
 }
 
-function sampleProfile(profile: Float32Array, t: number): number {
+function sampleProfile(profile: Float32Array, t: number, clampEnd = false): number {
   if (t <= 0) return profile[0];
-  if (t >= 1) return 0;
   const maxIdx = profile.length - 1;
+  if (t >= 1) return clampEnd ? profile[maxIdx] : 0;
   const pos = t * maxIdx;
-  const lo = Math.floor(pos);
-  const hi = Math.min(maxIdx, lo + 1);
-  const frac = pos - lo;
-  return profile[lo] * (1 - frac) + profile[hi] * frac;
-}
-
-function sampleLensProfile(profile: Float32Array, r: number): number {
-  if (r <= 0) return profile[0];
-  const maxIdx = profile.length - 1;
-  if (r >= 1) return profile[maxIdx];
-  const pos = r * maxIdx;
   const lo = Math.floor(pos);
   const hi = Math.min(maxIdx, lo + 1);
   const frac = pos - lo;
@@ -338,35 +327,26 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
     const canvasW = Math.max(1, Math.round(width * scaleFactor));
     const canvasH = Math.max(1, Math.round(height * scaleFactor));
 
-    const dispCanvas = document.createElement('canvas');
-    dispCanvas.width = canvasW;
-    dispCanvas.height = canvasH;
-    const dispCtx = dispCanvas.getContext('2d');
+    const createCanvasSlot = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      return { canvas, ctx, image: ctx.createImageData(canvasW, canvasH) };
+    };
 
-    const specCanvas = includeSpecular ? document.createElement('canvas') : null;
-    if (specCanvas) {
-      specCanvas.width = canvasW;
-      specCanvas.height = canvasH;
-    }
-    const specCtx = specCanvas?.getContext('2d') ?? null;
-
-    const causticCanvas = includeCaustic ? document.createElement('canvas') : null;
-    if (causticCanvas) {
-      causticCanvas.width = canvasW;
-      causticCanvas.height = canvasH;
-    }
-    const causticCtx = causticCanvas?.getContext('2d') ?? null;
-
-    if (!dispCtx || (includeSpecular && !specCtx) || (includeCaustic && !causticCtx)) {
+    const dispSlot = createCanvasSlot();
+    if (!dispSlot) return null;
+    const specSlot = includeSpecular ? createCanvasSlot() : null;
+    const causticSlot = includeCaustic ? createCanvasSlot() : null;
+    if ((includeSpecular && !specSlot) || (includeCaustic && !causticSlot)) {
       return null;
     }
 
-    const dispImage = dispCtx.createImageData(canvasW, canvasH);
-    const specImage = specCtx ? specCtx.createImageData(canvasW, canvasH) : null;
-    const causticImage = causticCtx ? causticCtx.createImageData(canvasW, canvasH) : null;
-    const dispData = dispImage.data;
-    const specData = specImage ? specImage.data : null;
-    const causticData = causticImage ? causticImage.data : null;
+    const dispData = dispSlot.image.data;
+    const specData = specSlot?.image.data ?? null;
+    const causticData = causticSlot?.image.data ?? null;
 
     const cx = width / 2;
     const cy = height / 2;
@@ -393,7 +373,7 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
           if (dist > 1e-5) {
             // Clamp r to [0, 1] into corner pixels so <feImage> bilinear sampling never creates a circular border halo.
             const r = Math.min(1, dist / lensRadius);
-            const disp = sampleLensProfile(displacements, r);
+            const disp = sampleProfile(displacements, r, true);
             const dx = -(x / dist) * disp;
             const dy = -(y / dist) * disp;
 
@@ -504,25 +484,19 @@ export function generateLiquidGlassMaps(request: LiquidGlassMapRequest): LiquidG
       }
     }
 
-    dispCtx.putImageData(dispImage, 0, 0);
-    let specularUrl = '';
-    if (specCtx && specImage && specCanvas) {
-      specCtx.putImageData(specImage, 0, 0);
-      specularUrl = specCanvas.toDataURL('image/png');
-    }
-    let causticMaskUrl = '';
-    if (causticCtx && causticImage && causticCanvas) {
-      causticCtx.putImageData(causticImage, 0, 0);
-      causticMaskUrl = causticCanvas.toDataURL('image/png');
-    }
+    const toPngUrl = (slot: NonNullable<ReturnType<typeof createCanvasSlot>> | null) => {
+      if (!slot) return '';
+      slot.ctx.putImageData(slot.image, 0, 0);
+      return slot.canvas.toDataURL('image/png');
+    };
 
     const result: LiquidGlassMapResult = {
       width,
       height,
       radius,
-      displacementUrl: dispCanvas.toDataURL('image/png'),
-      specularUrl,
-      causticMaskUrl,
+      displacementUrl: toPngUrl(dispSlot),
+      specularUrl: toPngUrl(specSlot),
+      causticMaskUrl: toPngUrl(causticSlot),
       maxDisplacement: resolvedMaxDisplacement,
     };
 

@@ -11,7 +11,6 @@ export const DRAWER_CSS = `
   z-index: var(--ve-z-panel);
   display: flex;
   flex-direction: column;
-  animation: veSlideUp 0.16s ease-out;
   transition:
     inset-inline-start 0.28s var(--ve-ease-spring),
     inset-inline-end 0.28s var(--ve-ease-spring),
@@ -68,22 +67,6 @@ export const DRAWER_CSS = `
   gap: 8px;
 }
 
-.ve-status-tag {
-  font-size: 10px;
-  text-transform: uppercase;
-  padding-block: 2px;
-  padding-inline: 6px;
-  border-radius: 4px;
-  font-weight: 700;
-  background: #334155;
-  color: var(--ve-text-muted);
-
-  &.draft { background: #3b82f6; color: #ffffff; }
-  &.submitted { background: #eab308; color: #000000; }
-  &.in_progress { background: #a855f7; color: #ffffff; }
-  &.implemented { background: #22c55e; color: #ffffff; }
-}
-
 .ve-drawer-body {
   padding: 16px;
   overflow-y: auto;
@@ -127,12 +110,6 @@ export const DRAWER_CSS = `
   font-weight: 600;
 }
 
-.ve-prompt-box {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .ve-textarea {
   padding-block: 8px;
   padding-inline: 10px;
@@ -163,8 +140,6 @@ export const DRAWER_CSS = `
   font-weight: 600;
   cursor: pointer;
   transition: all var(--ve-transition-smooth);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 
   &:hover {
     background: rgba(255, 255, 255, 0.16);
@@ -844,7 +819,7 @@ export const DRAWER_CSS = `
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ve-text-secondary, #cbd5e1);
 }
 
 .ve-decision-name {
@@ -913,13 +888,9 @@ export const DRAWER_CSS = `
 .ve-variant-switcher-bar {
   position: fixed;
   pointer-events: auto;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid transparent;
   border-radius: 12px;
   padding: 8px 12px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -946,9 +917,15 @@ export const DRAWER_CSS = `
   display: flex;
   align-items: center;
   gap: 6px;
+  color: rgba(241, 245, 249, 0.78);
   cursor: grab;
   flex: 1;
   min-width: 0;
+  transition: color 0.15s ease;
+}
+
+.ve-variant-drag-handle:hover {
+  color: #ffffff;
 }
 
 .ve-variant-drag-icon {
@@ -958,7 +935,8 @@ export const DRAWER_CSS = `
 .ve-variant-title {
   font-size: 11px;
   font-weight: 600;
-  color: #f1f5f9;
+  color: #f8fafc;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   letter-spacing: 0.01em;
   min-width: 0;
   overflow: hidden;
@@ -976,12 +954,19 @@ export const DRAWER_CSS = `
 .ve-variant-close-btn {
   background: none;
   border: none;
-  color: #64748b;
+  border-radius: 5px;
+  color: rgba(226, 232, 240, 0.85);
   cursor: pointer;
   padding: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.ve-variant-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .ve-variant-decided-row {
@@ -1008,9 +993,9 @@ export const DRAWER_CSS = `
   letter-spacing: 0.04em;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(16, 185, 129, 0.2);
-  color: #6ee7b7;
-  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(6, 95, 70, 0.68);
+  color: #d1fae5;
+  border: 1px solid rgba(52, 211, 153, 0.58);
   flex-shrink: 0;
 }
 
@@ -1018,6 +1003,7 @@ export const DRAWER_CSS = `
   font-size: 12px;
   font-weight: 600;
   color: #f8fafc;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1031,9 +1017,9 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-change-btn {
-  background: rgba(59, 130, 246, 0.2);
-  border: 1px solid rgba(96, 165, 250, 0.4);
-  color: #93c5fd;
+  background: rgba(30, 64, 175, 0.62);
+  border: 1px solid rgba(147, 197, 253, 0.55);
+  color: #eff6ff;
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 11px;
@@ -1042,16 +1028,28 @@ export const DRAWER_CSS = `
   transition: all 0.1s ease;
 }
 
+.ve-variant-change-btn:hover {
+  background: rgba(37, 99, 235, 0.78);
+  border-color: rgba(191, 219, 254, 0.78);
+  color: #ffffff;
+}
+
 .ve-variant-delete-btn {
-  background: rgba(239, 68, 68, 0.18);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  color: #fca5a5;
+  background: rgba(153, 27, 27, 0.62);
+  border: 1px solid rgba(252, 165, 165, 0.55);
+  color: #fef2f2;
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.1s ease;
+}
+
+.ve-variant-delete-btn:hover {
+  background: rgba(185, 28, 28, 0.78);
+  border-color: rgba(254, 202, 202, 0.78);
+  color: #ffffff;
 }
 
 .ve-variant-options-row {
@@ -1067,9 +1065,10 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-option-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
+  background: rgba(12, 18, 32, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #f1f5f9;
+  text-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.45);
   border-radius: 6px;
   padding: 5px 10px;
   font-size: 11px;
@@ -1088,6 +1087,12 @@ export const DRAWER_CSS = `
   text-align: center;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.ve-variant-option-btn:hover:not(.is-selected) {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
 }
 
 .ve-variant-option-label {
@@ -1111,7 +1116,7 @@ export const DRAWER_CSS = `
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
   padding-top: 6px;
   min-height: 26px;
   height: 26px;
@@ -1121,7 +1126,8 @@ export const DRAWER_CSS = `
 
 .ve-variant-rationale {
   font-size: 11px;
-  color: #64748b;
+  color: rgba(241, 245, 249, 0.88);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   font-style: italic;
   flex: 1;
   min-width: 0;
@@ -1131,33 +1137,43 @@ export const DRAWER_CSS = `
 }
 
 .ve-variant-rationale.is-active {
-  color: #cbd5e1;
+  color: #ffffff;
+  font-weight: 500;
   font-style: normal;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .ve-variant-apply-btn {
-  background: rgba(16, 185, 129, 0.22);
-  border: 1px solid rgba(52, 211, 153, 0.45);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.56) 0%, rgba(5, 150, 105, 0.76) 100%);
+  border: 1px solid rgba(110, 231, 183, 0.68);
   border-radius: 6px;
-  color: #6ee7b7;
+  color: #ecfdf5;
+  text-shadow: 0 1px 2px rgba(6, 78, 59, 0.55);
   font-size: 11px;
   font-weight: 600;
   padding: 3px 10px;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.18);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   transition: all 0.1s ease;
   flex-shrink: 0;
 }
 
+.ve-variant-apply-btn:hover {
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.72) 0%, rgba(5, 150, 105, 0.9) 100%);
+  border-color: rgba(167, 243, 208, 0.85);
+  color: #ffffff;
+}
+
 .ve-variant-original-badge {
   font-size: 10px;
-  color: #475569;
+  color: #e2e8f0;
   font-weight: 500;
   padding: 2px 6px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(12, 18, 32, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  text-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.4);
   flex-shrink: 0;
 }
 
@@ -1191,13 +1207,11 @@ export const DRAWER_CSS = `
   position: absolute;
   top: -24px;
   left: 0;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
   white-space: nowrap;
   display: inline-flex;
   align-items: center;

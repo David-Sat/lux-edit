@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { computePosition, flip, shift, offset } from '@floating-ui/dom';
 import { OverlayStateManager } from './state.js';
 import { prefersReducedMotion } from './liquid-glass.js';
+import { GlassChrome } from './liquid-glass-defs.js';
 import { handleRovingArrowKey } from './keyboard-nav.js';
 import { resolveSourceLocation } from '../source-locator/index.js';
 import {
@@ -248,8 +249,7 @@ export function FloatingToolbar() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <span class="ve-glass-surface" aria-hidden="true" />
-      <span class="ve-glass-bevel" aria-hidden="true" />
+      <GlassChrome />
       {/* Toolbar Header */}
       <div class="ve-toolbar-header">
         <div class="ve-toolbar-title-wrap">
@@ -327,6 +327,16 @@ export function FloatingToolbar() {
         id={`ve-tabpanel-${activeTab}`}
         role="tabpanel"
         aria-labelledby={`ve-tab-${activeTab}`}
+        onKeyDown={(e) => {
+          if (e.defaultPrevented) return;
+          const targetEl = e.target as HTMLElement | null;
+          const groupEl = targetEl?.closest?.(
+            '.ve-btn-group, .ve-swatch-row, .ve-action-ribbon'
+          ) as HTMLElement | null;
+          if (groupEl && (e.currentTarget as HTMLElement).contains(groupEl)) {
+            handleControlGroupArrowKey(e, groupEl);
+          }
+        }}
       >
         {activeTab === 'quick' && (
           <div class="ve-toolbar-stack ve-toolbar-stack--lg">
@@ -361,7 +371,6 @@ export function FloatingToolbar() {
                     class="ve-btn-group"
                     role="group"
                     aria-label="Font weight"
-                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                   >
                     {[
                       { val: '400', label: 'Reg' },
@@ -416,7 +425,6 @@ export function FloatingToolbar() {
                     class="ve-btn-group"
                     role="group"
                     aria-label="Border radius shape"
-                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                   >
                     {[
                       { val: '0px', label: 'Square' },
@@ -461,7 +469,6 @@ export function FloatingToolbar() {
                     class="ve-btn-group"
                     role="group"
                     aria-label="Padding presets"
-                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                   >
                     {[
                       { pt: '4px 10px', label: 'Compact' },
@@ -521,7 +528,6 @@ export function FloatingToolbar() {
                     class="ve-btn-group"
                     role="group"
                     aria-label="Image shape"
-                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                   >
                     {[
                       { val: '0px', label: 'Square' },
@@ -551,7 +557,6 @@ export function FloatingToolbar() {
                     class="ve-btn-group"
                     role="group"
                     aria-label="Image fit"
-                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                   >
                     {['cover', 'contain', 'fill'].map((fit) => {
                       const isActive = computed.objectFit === fit;
@@ -582,7 +587,6 @@ export function FloatingToolbar() {
                     class="ve-btn-group"
                     role="group"
                     aria-label="Display mode"
-                    onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                   >
                     {[
                       { d: 'flex', label: 'Flex' },
@@ -613,7 +617,6 @@ export function FloatingToolbar() {
                       class="ve-btn-group"
                       role="group"
                       aria-label="Flex direction"
-                      onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
                     >
                       {['row', 'column'].map((dir) => {
                         const isActive = computed.flexDirection === dir;
@@ -665,7 +668,6 @@ export function FloatingToolbar() {
               class="ve-action-ribbon"
               role="toolbar"
               aria-label="Quick element actions"
-              onKeyDown={(e) => handleControlGroupArrowKey(e, e.currentTarget as HTMLElement)}
             >
               <button
                 type="button"

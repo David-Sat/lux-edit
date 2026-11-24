@@ -13,21 +13,11 @@ export const BASE_CSS = `
   /* Typography & Contrast Colors */
   --ve-text-primary: #f8fafc;
   --ve-text-secondary: #cbd5e1;
-  --ve-text-muted: #94a3b8;
+  --ve-text-muted: #d1d9e6;
 
   /* Card Substrates */
   --ve-card-bg: rgba(255, 255, 255, 0.07);
   --ve-card-border: rgba(255, 255, 255, 0.14);
-
-  /* Apple visionOS Liquid Glass Surface Tokens */
-  --ve-glass-bg: linear-gradient(180deg, rgba(20, 28, 44, 0.58) 0%, rgba(12, 16, 26, 0.66) 100%);
-  --ve-glass-border: rgba(255, 255, 255, 0.18);
-  --ve-glass-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.28),
-    0 12px 36px -4px rgba(0, 0, 0, 0.35),
-    0 24px 56px -8px rgba(0, 0, 0, 0.45);
-  --ve-glass-backdrop: blur(24px) saturate(190%) brightness(105%);
 
   /* Solid Text Substrates (Universal Contrast Backing) */
   --ve-input-bg: rgba(8, 12, 22, 0.92);
@@ -94,11 +84,7 @@ export const BASE_CSS = `
 .ve-comment-popover,
 .ve-toolbar,
 .ve-drawer {
-  background: var(--ve-glass-bg);
-  border: 1px solid var(--ve-glass-border);
-  box-shadow: var(--ve-glass-shadow);
-  backdrop-filter: var(--ve-glass-backdrop);
-  -webkit-backdrop-filter: var(--ve-glass-backdrop);
+  border: 1px solid transparent;
   color: var(--ve-text-primary);
   overflow: hidden;
 }
@@ -179,28 +165,6 @@ export const BASE_CSS = `
 }
 
 /* Animations */
-@keyframes veSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes vePopIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
 @keyframes vePulse {
   0%, 100% {
     transform: scale(1);
@@ -268,9 +232,8 @@ export const BASE_CSS = `
   position: absolute;
   inset-block-start: -26px;
   inset-inline-start: -2px;
-  background: rgba(15, 23, 42, 0.75);
   color: var(--ve-accent-text, #38bdf8);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid transparent;
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 600;
@@ -282,9 +245,6 @@ export const BASE_CSS = `
   display: flex;
   align-items: center;
   gap: 4px;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 
 .ve-badge--inside {
@@ -306,48 +266,20 @@ export const BASE_CSS = `
   inline-size: 52px;
   block-size: 52px;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgba(24, 32, 48, 0.58) 0%, rgba(12, 16, 26, 0.66) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid transparent;
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
   touch-action: none;
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.1),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.35),
-    0 8px 24px -4px rgba(0, 0, 0, 0.35),
-    0 18px 44px -8px rgba(0, 0, 0, 0.45);
-  backdrop-filter: var(--ve-glass-backdrop);
-  -webkit-backdrop-filter: var(--ve-glass-backdrop);
   z-index: var(--ve-z-launcher);
-  transition:
-    inset-inline-start 0.28s var(--ve-ease-spring),
-    inset-inline-end 0.28s var(--ve-ease-spring),
-    inset-block-start 0.28s var(--ve-ease-spring),
-    inset-block-end 0.28s var(--ve-ease-spring),
-    transform 0.22s var(--ve-ease-spring),
-    background 0.22s var(--ve-ease-spring),
-    border-color 0.22s var(--ve-ease-spring),
-    box-shadow 0.22s var(--ve-ease-spring);
   overflow: visible;
 
   & > svg {
     position: relative;
     z-index: 2;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
-  }
-
-  &:hover {
-    transform: scale(1.06);
-    background: linear-gradient(180deg, rgba(32, 42, 64, 0.68) 0%, rgba(16, 22, 36, 0.76) 100%);
-    border-color: rgba(255, 255, 255, 0.28);
-    box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.12),
-      inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.5),
-      0 12px 32px -4px rgba(0, 0, 0, 0.4),
-      0 22px 52px -8px rgba(0, 0, 0, 0.5);
   }
 
   &:active {
@@ -390,13 +322,7 @@ export const BASE_CSS = `
   align-items: center;
   gap: 6px;
   z-index: var(--ve-z-launcher);
-  animation: veSlideUp 0.15s ease-out;
   touch-action: none;
-  transition:
-    inset-inline-start 0.28s var(--ve-ease-spring),
-    inset-inline-end 0.28s var(--ve-ease-spring),
-    inset-block-start 0.28s var(--ve-ease-spring),
-    inset-block-end 0.28s var(--ve-ease-spring);
 }
 
 .ve-dock-drag-handle {
@@ -477,7 +403,6 @@ export const BASE_CSS = `
   z-index: 2;
   background: transparent;
   border: 1px solid transparent;
-  color: rgba(255, 255, 255, 0.7);
   inline-size: 40px;
   block-size: 40px;
   border-radius: 50%;
@@ -486,34 +411,7 @@ export const BASE_CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--ve-transition-smooth);
   flex-shrink: 0;
-
-  &:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.16);
-    border-color: rgba(255, 255, 255, 0.25);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4);
-    transform: scale(1.06);
-  }
-
-  &.ve-active {
-    background: rgba(255, 255, 255, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    color: #ffffff;
-    box-shadow:
-      inset 0 1.5px 2px rgba(255, 255, 255, 0.8),
-      0 4px 16px rgba(0, 0, 0, 0.3),
-      0 0 14px rgba(255, 255, 255, 0.3);
-    transform: scale(1.04);
-  }
-
-  &.ve-dock-send {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.14) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    color: #ffffff;
-    box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, 0.75), 0 4px 16px rgba(0, 0, 0, 0.35);
-  }
 }
 
 .ve-dock-badge {
@@ -627,18 +525,9 @@ export const BASE_CSS = `
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(16px);
   border-radius: 24px;
-  border: 1px solid rgba(245, 158, 11, 0.5);
-  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  border: 1px solid transparent;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  animation: veSlideUp 0.15s ease-out;
-}
-
-.ve-voice-recording-dock.is-ready {
-  border-color: rgba(239, 68, 68, 0.5);
-  box-shadow: 0 8px 32px rgba(220, 38, 38, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .ve-dock-grip-svg {
@@ -711,12 +600,6 @@ export const BASE_CSS = `
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.14);
   color: #cbd5e1;
-}
-
-.ve-mode-pill.ve-active {
-  background: rgba(16, 185, 129, 0.22);
-  border: 1px solid rgba(16, 185, 129, 0.5);
-  color: #34d399;
 }
 
 .ve-mode-live-dot {

@@ -83,6 +83,27 @@ const RESERVED_KEY_TOKENS = new Set([
   'process',
 ]);
 
+const MODIFIER_FLAG_ALIASES: Record<string, keyof Omit<ParsedHotkey, 'key'>> = {
+  ctrl: 'ctrl',
+  control: 'ctrl',
+  alt: 'alt',
+  option: 'alt',
+  opt: 'alt',
+  shift: 'shift',
+  meta: 'meta',
+  cmd: 'meta',
+  command: 'meta',
+  super: 'meta',
+  win: 'meta',
+};
+
+const ARROW_SYMBOLS: Record<string, string> = {
+  arrowup: '↑',
+  arrowdown: '↓',
+  arrowleft: '←',
+  arrowright: '→',
+};
+
 function normalizeSingleKeyToken(rawKey: string): string {
   if (rawKey === ' ') return 'space';
   const trimmed = rawKey.trim().toLowerCase();
@@ -92,17 +113,14 @@ function normalizeSingleKeyToken(rawKey: string): string {
   return trimmed;
 }
 
-/**
- * Splits a hotkey string on '+' while preserving literal '+' key tokens (e.g. "Ctrl++" or "+").
- */
 function tokenizeHotkeyString(raw: string): string[] {
+  if (raw === ' ') return ['space'];
   const trimmed = raw.trim();
   if (!trimmed) return [];
   if (trimmed === '+') return ['plus'];
 
   const tokens: string[] = [];
   let current = '';
-
   for (let i = 0; i < trimmed.length; i += 1) {
     const ch = trimmed[i];
     if (ch === '+') {
@@ -116,12 +134,56 @@ function tokenizeHotkeyString(raw: string): string[] {
       current += ch;
     }
   }
-
   if (current.trim().length > 0) {
     tokens.push(current.trim());
   }
-
   return tokens;
+}
+
+/** Parses a hotkey string into explicit modifier flags and normalized key token. */
+export function parseHotkey(binding: string): ParsedHotkey | null {
+  if (typeof binding !== 'string') return null;
+  const tokens = tokenizeHotkeyString(binding);
+  if (tokens.length === 0) return null;
+
+  const parsed: ParsedHotkey = {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    meta: false,
+    key: '',
+  };
+
+  for (const rawToken of tokens) {
+    const lower = rawToken.trim().toLowerCase();
+    if (!lower) continue;
+    const modFlag = MODIFIER_FLAG_ALIASES[lower];
+    if (modFlag) {
+      parsed[modFlag] = true;
+    } else {
+      parsed.key = normalizeSingleKeyToken(rawToken);
+    }
+  }
+
+  if (!parsed.key || RESERVED_KEY_TOKENS.has(parsed.key)) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function formatParsedHotkeyParts(
+  parsed: ParsedHotkey,
+  ctrlName: string,
+  keyFormatter: (key: string) => string
+): string {
+  const parts: string[] = [];
+  if (parsed.ctrl) parts.push(ctrlName);
+  if (parsed.alt) parts.push(ctrlName === 'ctrl' ? 'alt' : 'Alt');
+  if (parsed.shift) parts.push(ctrlName === 'ctrl' ? 'shift' : 'Shift');
+  if (parsed.meta) parts.push(ctrlName === 'ctrl' ? 'meta' : 'Meta');
+  parts.push(keyFormatter(parsed.key));
+  return parts.join('+');
 }
 
 /**
@@ -129,70 +191,8 @@ function tokenizeHotkeyString(raw: string): string[] {
  * Returns `''` for empty, modifier-only, or reserved navigation keys.
  */
 export function normalizeHotkey(raw: string): string {
-  if (typeof raw !== 'string') return '';
-  if (raw === ' ') return 'space';
-
-  const tokens = tokenizeHotkeyString(raw);
-  if (tokens.length === 0) return '';
-
-  let ctrl = false;
-  let alt = false;
-  let shift = false;
-  let meta = false;
-  let key = '';
-
-  for (const rawToken of tokens) {
-    const lower = rawToken.trim().toLowerCase();
-    if (!lower) continue;
-
-    if (lower === 'ctrl' || lower === 'control') {
-      ctrl = true;
-    } else if (lower === 'alt' || lower === 'option' || lower === 'opt') {
-      alt = true;
-    } else if (lower === 'shift') {
-      shift = true;
-    } else if (lower === 'meta' || lower === 'cmd' || lower === 'command' || lower === 'super' || lower === 'win') {
-      meta = true;
-    } else {
-      key = normalizeSingleKeyToken(rawToken);
-    }
-  }
-
-  if (!key || RESERVED_KEY_TOKENS.has(key)) {
-    return '';
-  }
-
-  const ordered: string[] = [];
-  if (ctrl) ordered.push('ctrl');
-  if (alt) ordered.push('alt');
-  if (shift) ordered.push('shift');
-  if (meta) ordered.push('meta');
-  ordered.push(key);
-  return ordered.join('+');
-}
-
-/** Parses a hotkey string into explicit modifier flags and normalized key token. */
-export function parseHotkey(binding: string): ParsedHotkey | null {
-  const normalized = normalizeHotkey(binding);
-  if (!normalized) return null;
-
-  const parts = normalized.split('+');
-  const key = parts[parts.length - 1];
-  if (!key) return null;
-
-  return {
-    ctrl: parts.includes('ctrl'),
-    alt: parts.includes('alt'),
-    shift: parts.includes('shift'),
-    meta: parts.includes('meta'),
-    key,
-  };
-}
-
-/** Returns true when a hotkey binding includes any modifier key (`ctrl`, `alt`, `shift`, `meta`). */
-export function hasModifierInHotkey(binding: string): boolean {
-  const parsed = parseHotkey(binding);
-  return Boolean(parsed && (parsed.ctrl || parsed.alt || parsed.shift || parsed.meta));
+  const parsed = parseHotkey(raw);
+  return parsed ? formatParsedHotkeyParts(parsed, 'ctrl', (k) => k) : '';
 }
 
 /** Returns true when a hotkey includes a command/chord modifier safe to use while typing in inputs. */
@@ -201,63 +201,28 @@ export function hasCommandModifierInHotkey(binding: string): boolean {
   return Boolean(parsed && (parsed.ctrl || parsed.alt || parsed.meta));
 }
 
-const ARROW_SYMBOLS: Record<string, string> = {
-  arrowup: '↑',
-  arrowdown: '↓',
-  arrowleft: '←',
-  arrowright: '→',
-};
-
 /** Formats a binding for display in tooltips and keycaps (e.g. "alt+shift+e" -> "Alt+Shift+E"). */
 export function formatHotkeyLabel(binding: string): string {
   const parsed = parseHotkey(binding);
   if (!parsed) return 'Off';
-
-  const parts: string[] = [];
-  if (parsed.ctrl) parts.push('Ctrl');
-  if (parsed.alt) parts.push('Alt');
-  if (parsed.shift) parts.push('Shift');
-  if (parsed.meta) parts.push('Meta');
-
-  let keyLabel: string;
-  if (parsed.key === 'space') {
-    keyLabel = 'Space';
-  } else if (parsed.key === 'plus') {
-    keyLabel = '+';
-  } else if (ARROW_SYMBOLS[parsed.key]) {
-    keyLabel = ARROW_SYMBOLS[parsed.key];
-  } else if (parsed.key.length === 1) {
-    keyLabel = parsed.key.toUpperCase();
-  } else {
-    keyLabel = parsed.key.charAt(0).toUpperCase() + parsed.key.slice(1);
-  }
-
-  parts.push(keyLabel);
-  return parts.join('+');
+  return formatParsedHotkeyParts(parsed, 'Ctrl', (key) => {
+    if (key === 'space') return 'Space';
+    if (key === 'plus') return '+';
+    if (ARROW_SYMBOLS[key]) return ARROW_SYMBOLS[key];
+    if (key.length === 1) return key.toUpperCase();
+    return key.charAt(0).toUpperCase() + key.slice(1);
+  });
 }
 
 /** Formats a binding for the WAI-ARIA `aria-keyshortcuts` attribute. */
 export function formatAriaKeyShortcuts(binding: string): string | undefined {
   const parsed = parseHotkey(binding);
   if (!parsed) return undefined;
-
-  const parts: string[] = [];
-  if (parsed.ctrl) parts.push('Control');
-  if (parsed.alt) parts.push('Alt');
-  if (parsed.shift) parts.push('Shift');
-  if (parsed.meta) parts.push('Meta');
-
-  const keyToken =
-    parsed.key === 'space'
-      ? 'Space'
-      : parsed.key === 'plus'
-        ? '+'
-        : parsed.key.length === 1
-          ? parsed.key.toUpperCase()
-          : parsed.key;
-
-  parts.push(keyToken);
-  return parts.join('+');
+  return formatParsedHotkeyParts(parsed, 'Control', (key) => {
+    if (key === 'space') return 'Space';
+    if (key === 'plus') return '+';
+    return key.length === 1 ? key.toUpperCase() : key;
+  });
 }
 
 function resolveKeyboardEventKeyToken(e: KeyboardEvent): string {
@@ -268,21 +233,11 @@ function resolveKeyboardEventKeyToken(e: KeyboardEvent): string {
   // recover the physical Latin letter or digit from `e.code` when present.
   const isNonPrintableOrNonAscii =
     rawKey.length === 1 && (rawKey.charCodeAt(0) < 32 || rawKey.charCodeAt(0) > 126);
-  const isMangledAltOrDead =
-    e.altKey ||
-    rawKey === 'Dead' ||
-    rawKey === 'Unidentified' ||
-    isNonPrintableOrNonAscii;
-
-  if (isMangledAltOrDead) {
+  if (e.altKey || rawKey === 'Dead' || rawKey === 'Unidentified' || isNonPrintableOrNonAscii) {
     const keyMatch = /^Key([A-Z])$/.exec(code);
-    if (keyMatch) {
-      return keyMatch[1].toLowerCase();
-    }
+    if (keyMatch) return keyMatch[1].toLowerCase();
     const digitMatch = /^Digit([0-9])$/.exec(code);
-    if (digitMatch) {
-      return digitMatch[1];
-    }
+    if (digitMatch) return digitMatch[1];
   }
 
   return normalizeSingleKeyToken(rawKey);
@@ -298,14 +253,18 @@ export function eventToHotkeyBinding(e: KeyboardEvent): string | null {
     return null;
   }
 
-  const parts: string[] = [];
-  if (e.ctrlKey) parts.push('ctrl');
-  if (e.altKey) parts.push('alt');
-  if (e.shiftKey) parts.push('shift');
-  if (e.metaKey) parts.push('meta');
-  parts.push(keyToken);
-
-  return normalizeHotkey(parts.join('+')) || null;
+  const normalized = normalizeHotkey(
+    [
+      e.ctrlKey ? 'ctrl' : '',
+      e.altKey ? 'alt' : '',
+      e.shiftKey ? 'shift' : '',
+      e.metaKey ? 'meta' : '',
+      keyToken,
+    ]
+      .filter(Boolean)
+      .join('+')
+  );
+  return normalized || null;
 }
 
 /** Returns true if `e` exactly matches the modifiers and key of `binding`. */
@@ -322,8 +281,7 @@ export function matchesHotkeyEvent(e: KeyboardEvent, binding: string): boolean {
     return false;
   }
 
-  const eventKey = resolveKeyboardEventKeyToken(e);
-  return eventKey === parsed.key;
+  return resolveKeyboardEventKeyToken(e) === parsed.key;
 }
 
 /** Validates and merges a partial hotkey map with `DEFAULT_OVERLAY_HOTKEYS`, preventing duplicate bindings. */

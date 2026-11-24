@@ -1,7 +1,8 @@
 import { h } from 'preact';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
-import { PinAnchorOrigin, getPinAnchorOrigin, locateElementRect } from './pin-position.js';
+import { locateElementRect, useAnchoredOverlaySync } from './pin-position.js';
+import { GlassChrome } from './liquid-glass-defs.js';
 import {
   handleRovingArrowKey,
   isEditableTargetInPath,
@@ -47,12 +48,9 @@ export function computeVariantSwitcherPosition(params: {
 
 export function VariantSwitcher() {
   const state = OverlayStateManager.getInstance();
-  const [tick, setTick] = useState(0);
   const [dragPositions, setDragPositions] = useState<Record<string, { left: number; top: number }>>({});
   const [measuredSizes, setMeasuredSizes] = useState<Record<string, { width: number; height: number }>>({});
   const barRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
   const dragRef = useRef<{
     setId: string;
     startX: number;
@@ -63,35 +61,15 @@ export function VariantSwitcher() {
     barHeight: number;
   } | null>(null);
 
-  useEffect(() => {
-    let rafId = 0;
-    const handleUpdate = () => setTick((t) => t + 1);
-    const scheduleSync = () => {
-      if (typeof window.requestAnimationFrame !== 'function') {
-        handleUpdate();
-        return;
-      }
-      if (rafId !== 0) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = 0;
-        handleUpdate();
-      });
-    };
+  const variantSetsKey = state.variantSets
+    .map((s) => `${s.id}:${s.status}:${s.variants.map((v) => v.name).join('|')}`)
+    .join(';');
 
-    window.addEventListener('scroll', scheduleSync, { passive: true });
-    document.addEventListener('scroll', scheduleSync, { capture: true, passive: true });
-    window.addEventListener('resize', scheduleSync);
-    const unsub = state.subscribe(handleUpdate);
-    return () => {
-      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(rafId);
-      }
-      window.removeEventListener('scroll', scheduleSync);
-      document.removeEventListener('scroll', scheduleSync, { capture: true });
-      window.removeEventListener('resize', scheduleSync);
-      unsub();
-    };
-  }, [state]);
+  const { tick, anchorRef, measureAnchor } = useAnchoredOverlaySync({
+    state,
+    anchorKey: variantSetsKey,
+    syncOnDocumentScroll: true,
+  });
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -175,17 +153,6 @@ export function VariantSwitcher() {
     });
   }, [setsLayoutKey, tick, setsToRender]);
 
-  useLayoutEffect(() => {
-    if (!anchorRef.current) return;
-    const measured = getPinAnchorOrigin(anchorRef.current);
-    if (
-      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
-      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
-    ) {
-      setTick((t) => t + 1);
-    }
-  }, [setsLayoutKey]);
-
   // Keyboard navigation: use Alt + Left/Right arrows or focus switcher to switch options, Enter to Pick & Apply
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -193,7 +160,11 @@ export function VariantSwitcher() {
         return;
       }
       const activeTag = (document.activeElement?.tagName || '').toLowerCase();
-      if (activeTag === 'input' || activeTag === 'textarea' || (document.activeElement as HTMLElement)?.isContentEditable) {
+      if (
+        activeTag === 'input' ||
+        activeTag === 'textarea' ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
         return;
       }
 
@@ -237,8 +208,7 @@ export function VariantSwitcher() {
 
   const vw = window.innerWidth || document.documentElement.clientWidth || 1000;
   const vh = window.innerHeight || document.documentElement.clientHeight || 800;
-  const anchor = getPinAnchorOrigin(anchorRef.current);
-  anchorOriginRef.current = anchor;
+  const anchor = measureAnchor();
 
   return (
     <div class="ve-variant-switcher-layer" ref={anchorRef}>
@@ -330,8 +300,7 @@ export function VariantSwitcher() {
                 top: `${barTop}px`,
               }}
             >
-              <span class="ve-glass-surface" aria-hidden="true" />
-              <span class="ve-glass-bevel" aria-hidden="true" />
+              <GlassChrome />
               {/* Row 1: Header (Title, Drag Grip, Shortcut Hint, Close Button) */}
               <div class="ve-variant-header">
                 <div
@@ -352,7 +321,7 @@ export function VariantSwitcher() {
                   }}
                   title="Drag to reposition variant switcher"
                 >
-                  <svg width="10" height="14" viewBox="0 0 10 14" fill="#64748b" class="ve-variant-drag-icon" aria-hidden="true">
+                  <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" class="ve-variant-drag-icon" aria-hidden="true">
                     <circle cx="3" cy="3" r="1.5" />
                     <circle cx="7" cy="3" r="1.5" />
                     <circle cx="3" cy="7" r="1.5" />

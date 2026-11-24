@@ -1,15 +1,10 @@
 import { h } from 'preact';
-import { useState, useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { isAnnotationOnRoute, observeNextDomCommit } from './route-utils.js';
-import {
-  PinAnchorOrigin,
-  PinRect,
-  getPinAnchorOrigin,
-  isDocumentScrollTarget,
-  locatePinTarget,
-} from './pin-position.js';
+import { PinRect, locatePinTarget, useAnchoredOverlaySync } from './pin-position.js';
 import { usePinPeekDrag } from './pin-drag.js';
+import { GlassChrome } from './liquid-glass-defs.js';
 import { handleRovingArrowKey } from './keyboard-nav.js';
 
 function EditCommentTextarea({
@@ -70,15 +65,19 @@ function EditCommentTextarea({
 
 export function CommentPins() {
   const state = OverlayStateManager.getInstance();
-  const [, setTick] = useState(0);
   const [hoveredPinId, setHoveredPinId] = useState<string | null>(null);
   const [hoveredPinKey, setHoveredPinKey] = useState<string | null>(null);
   const [editingPinId, setEditingPinId] = useState<string | null>(null);
   const [editText, setEditText] = useState<string>('');
 
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
-  const needsDocScrollSyncRef = useRef(false);
+  const currentPath = state.getCurrentPathname();
+  const hasAnnotations = state.annotations.length > 0;
+
+  const { triggerSync, anchorRef, needsDocScrollSyncRef, measureAnchor } = useAnchoredOverlaySync({
+    state,
+    anchorKey: `${hasAnnotations}:${state.annotations.length}:${currentPath}`,
+  });
+
   const pinRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const suppressFocusTooltipRef = useRef<string | null>(null);
 
@@ -93,27 +92,6 @@ export function CommentPins() {
   editingRef.current = { editingPinId, editText };
 
   useEffect(() => {
-    let rafId = 0;
-    const handleUpdate = () => setTick((t) => t + 1);
-    const scheduleSync = () => {
-      if (typeof window.requestAnimationFrame !== 'function') {
-        handleUpdate();
-        return;
-      }
-      if (rafId !== 0) return;
-      rafId = window.requestAnimationFrame(() => {
-        rafId = 0;
-        handleUpdate();
-      });
-    };
-
-    const handleScroll = (e: Event) => {
-      if (isDocumentScrollTarget(e.target) && !needsDocScrollSyncRef.current) {
-        return;
-      }
-      scheduleSync();
-    };
-
     const handleOutsideClick = () => {
       const { editingPinId: currentId, editText: currentText } = editingRef.current;
       if (currentId) {
@@ -134,27 +112,15 @@ export function CommentPins() {
       }
     };
 
-    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
-    window.addEventListener('resize', scheduleSync);
     window.addEventListener('click', handleOutsideClick);
     window.addEventListener('keydown', handleKeyDown);
-    const unsub = state.subscribe(handleUpdate);
-
     return () => {
-      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
-        window.cancelAnimationFrame(rafId);
-      }
-      document.removeEventListener('scroll', handleScroll, { capture: true });
-      window.removeEventListener('resize', scheduleSync);
       window.removeEventListener('click', handleOutsideClick);
       window.removeEventListener('keydown', handleKeyDown);
-      unsub();
     };
   }, [state]);
 
-  const currentPath = state.getCurrentPathname();
   const prevPathRef = useRef(currentPath);
-  const hasAnnotations = state.annotations.length > 0;
 
   useEffect(() => {
     if (prevPathRef.current !== currentPath) {
@@ -165,27 +131,15 @@ export function CommentPins() {
       setEditText('');
     }
     if (!hasAnnotations) return;
-    return observeNextDomCommit(() => setTick((t) => t + 1));
-  }, [currentPath, hasAnnotations]);
-
-  useLayoutEffect(() => {
-    if (!anchorRef.current) return;
-    const measured = getPinAnchorOrigin(anchorRef.current);
-    if (
-      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
-      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
-    ) {
-      setTick((t) => t + 1);
-    }
-  }, [hasAnnotations, state.annotations.length, currentPath]);
+    return observeNextDomCommit(triggerSync);
+  }, [currentPath, hasAnnotations, triggerSync]);
 
   if (state.annotations.length === 0) {
     needsDocScrollSyncRef.current = false;
     return null;
   }
 
-  const anchor = getPinAnchorOrigin(anchorRef.current);
-  anchorOriginRef.current = anchor;
+  const anchor = measureAnchor();
 
   const connectors: Array<{
     id: string;
@@ -581,8 +535,7 @@ export function CommentPins() {
               e.stopPropagation();
             }}
           >
-            <span class="ve-glass-surface" aria-hidden="true" />
-            <span class="ve-glass-bevel" aria-hidden="true" />
+            <GlassChrome />
             <span class="ve-pin-label">{subLabel}</span>
             {isMulti && (
               <span class="ve-pin-link-badge" title={`Linked to ${multiTotal} elements`} aria-hidden="true">
@@ -608,8 +561,7 @@ export function CommentPins() {
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               >
-                <span class="ve-glass-surface" aria-hidden="true" />
-                <span class="ve-glass-bevel" aria-hidden="true" />
+                <GlassChrome />
                 <div class="ve-pin-tooltip-header">
                   <strong class="ve-pin-tooltip-title">
                     {isMulti

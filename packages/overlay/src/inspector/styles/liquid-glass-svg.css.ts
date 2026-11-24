@@ -1,25 +1,18 @@
 export const LIQUID_GLASS_SVG_CSS = `
-/* Tier 1 Chromium Real Optical SVG Refraction on Hero Chrome (Clear Crystal) */
-.ve-root.ve-glass-svg.ve-glass-clear .ve-launcher-btn > .ve-glass-surface {
+/* Tier 1 Chromium Real Optical SVG Refraction on Hero Chrome */
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-launcher-btn > .ve-glass-surface {
   backdrop-filter: url(#lux-glass-launcher);
   -webkit-backdrop-filter: url(#lux-glass-launcher);
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      rgba(255, 255, 255, 0.01) 48%,
-      rgba(255, 255, 255, 0.06) 100%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(54, 62, 76, calc(0.14 + var(--ve-lg-tint, 0.35) * 0.68)) 0%,
-      rgba(38, 45, 58, calc(0.2 + var(--ve-lg-tint, 0.35) * 0.72)) 100%
-    );
 }
 
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-dock-menu > .ve-glass-surface {
+  backdrop-filter: url(#lux-glass-dock);
+  -webkit-backdrop-filter: url(#lux-glass-dock);
+}
+
+/* Clear Crystal */
+.ve-root.ve-glass-svg.ve-glass-clear .ve-launcher-btn > .ve-glass-surface,
 .ve-root.ve-glass-svg.ve-glass-clear .ve-dock-menu > .ve-glass-surface {
-  backdrop-filter: url(#lux-glass-dock);
-  -webkit-backdrop-filter: url(#lux-glass-dock);
   background:
     linear-gradient(
       180deg,
@@ -34,27 +27,9 @@ export const LIQUID_GLASS_SVG_CSS = `
     );
 }
 
-/* Tier 1 Chromium Real Optical SVG Refraction on Hero Chrome (Dark Obsidian) */
-.ve-root.ve-glass-svg.ve-glass-obsidian .ve-launcher-btn > .ve-glass-surface {
-  backdrop-filter: url(#lux-glass-launcher);
-  -webkit-backdrop-filter: url(#lux-glass-launcher);
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.01) 48%,
-      rgba(255, 255, 255, 0.05) 100%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(14, 20, 34, calc(0.16 + var(--ve-lg-tint, 0.56) * 0.76)) 0%,
-      rgba(8, 12, 22, calc(0.24 + var(--ve-lg-tint, 0.56) * 0.8)) 100%
-    );
-}
-
+/* Dark Obsidian */
+.ve-root.ve-glass-svg.ve-glass-obsidian .ve-launcher-btn > .ve-glass-surface,
 .ve-root.ve-glass-svg.ve-glass-obsidian .ve-dock-menu > .ve-glass-surface {
-  backdrop-filter: url(#lux-glass-dock);
-  -webkit-backdrop-filter: url(#lux-glass-dock);
   background:
     linear-gradient(
       180deg,
@@ -69,7 +44,7 @@ export const LIQUID_GLASS_SVG_CSS = `
     );
 }
 
-.ve-root.ve-glass-svg .ve-voice-recording-dock > .ve-glass-surface {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock > .ve-glass-surface {
   background:
     linear-gradient(
       180deg,
@@ -78,7 +53,7 @@ export const LIQUID_GLASS_SVG_CSS = `
     );
 }
 
-.ve-root.ve-glass-svg .ve-voice-recording-dock.is-ready > .ve-glass-surface {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock.is-ready > .ve-glass-surface {
   background:
     linear-gradient(
       180deg,
@@ -128,7 +103,7 @@ export const LIQUID_GLASS_SVG_CSS = `
   transform: scale(0.97);
 }
 
-.ve-root.ve-glass-svg .ve-mode-pill.ve-active {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-mode-pill.ve-active {
   backdrop-filter: url(#lux-glass-pill-active);
   -webkit-backdrop-filter: url(#lux-glass-pill-active);
   background: linear-gradient(
@@ -203,6 +178,38 @@ export const LIQUID_GLASS_SVG_CSS = `
       rgba(44, 52, 66, calc(0.28 + var(--ve-lg-tint, 0.35) * 0.68)) 0%,
       rgba(28, 34, 46, calc(0.36 + var(--ve-lg-tint, 0.35) * 0.72)) 100%
     );
+}
+
+/* Interactive Panel & Control Button Optical SVG Refraction */
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-mini-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-hotkey-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-shortcuts-reset-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-update-pill,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-card-save-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-card-pill-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-composer-snap-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-tooltip-edit-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-tooltip-resolve-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-pin-edit-save-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-option-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-apply-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-change-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-delete-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-done-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-mode-pill:not(.ve-active) {
+  backdrop-filter: url(#lux-glass-btn);
+  -webkit-backdrop-filter: url(#lux-glass-btn);
+}
+
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-close-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-shortcuts-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-variant-close-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-cancel-btn,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-composer-screenshot-detach,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-mini-btn.ve-icon-btn {
+  backdrop-filter: url(#lux-glass-btn-icon);
+  -webkit-backdrop-filter: url(#lux-glass-btn-icon);
 }
 
 @media (prefers-reduced-motion: reduce) {

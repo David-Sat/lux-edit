@@ -2,6 +2,7 @@ import { h, Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from '../inspector/state.js';
 import { formatBatchSummary } from '@visual-edit/core';
+import { GlassChrome } from '../inspector/liquid-glass-defs.js';
 import {
   HOTKEY_ACTION_LIST,
   OverlayHotkeyAction,
@@ -84,8 +85,7 @@ export function EditReviewDrawer() {
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <span class="ve-glass-surface" aria-hidden="true" />
-      <span class="ve-glass-bevel" aria-hidden="true" />
+      <GlassChrome />
       <div class="ve-drawer-header">
         <div class="ve-drawer-title">
           <span>Review Changes</span>

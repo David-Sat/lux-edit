@@ -1,3 +1,5 @@
+import { RefObject } from 'preact';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { SourceLocation } from '@visual-edit/core';
 
 export interface PinAnchorOrigin {
@@ -275,4 +277,99 @@ export function isDocumentScrollTarget(target: EventTarget | null): boolean {
     target === document.documentElement ||
     target === document.body
   );
+}
+
+export interface AnchoredOverlaySyncOptions {
+  state: { subscribe: (listener: () => void) => () => void };
+  anchorKey: string | number | boolean;
+  syncOnDocumentScroll?: boolean;
+}
+
+export interface AnchoredOverlaySyncResult {
+  tick: number;
+  triggerSync: () => void;
+  anchorRef: RefObject<HTMLDivElement>;
+  needsDocScrollSyncRef: { current: boolean };
+  measureAnchor: () => PinAnchorOrigin;
+}
+
+/**
+ * Shared scroll/resize rAF-sync and anchor-origin measurement hook for document-anchored overlay layers.
+ */
+export function useAnchoredOverlaySync({
+  state,
+  anchorKey,
+  syncOnDocumentScroll = false,
+}: AnchoredOverlaySyncOptions): AnchoredOverlaySyncResult {
+  const [tick, setTick] = useState(0);
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const anchorOriginRef = useRef<PinAnchorOrigin>({ left: 0, top: 0 });
+  const needsDocScrollSyncRef = useRef(false);
+  const triggerSync = useCallback(() => setTick((t) => t + 1), []);
+
+  useEffect(() => {
+    let rafId = 0;
+    const scheduleSync = () => {
+      if (typeof window.requestAnimationFrame !== 'function') {
+        triggerSync();
+        return;
+      }
+      if (rafId !== 0) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        triggerSync();
+      });
+    };
+
+    const handleScroll = (e: Event) => {
+      if (!syncOnDocumentScroll && isDocumentScrollTarget(e.target) && !needsDocScrollSyncRef.current) {
+        return;
+      }
+      scheduleSync();
+    };
+
+    if (syncOnDocumentScroll) {
+      window.addEventListener('scroll', scheduleSync, { passive: true });
+    }
+    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    window.addEventListener('resize', scheduleSync);
+    const unsub = state.subscribe(triggerSync);
+
+    return () => {
+      if (rafId !== 0 && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (syncOnDocumentScroll) {
+        window.removeEventListener('scroll', scheduleSync);
+      }
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', scheduleSync);
+      unsub();
+    };
+  }, [state, syncOnDocumentScroll, triggerSync]);
+
+  useLayoutEffect(() => {
+    if (!anchorRef.current) return;
+    const measured = getPinAnchorOrigin(anchorRef.current);
+    if (
+      Math.abs(measured.left - anchorOriginRef.current.left) > 0.5 ||
+      Math.abs(measured.top - anchorOriginRef.current.top) > 0.5
+    ) {
+      triggerSync();
+    }
+  }, [anchorKey, triggerSync]);
+
+  const measureAnchor = (): PinAnchorOrigin => {
+    const anchor = getPinAnchorOrigin(anchorRef.current);
+    anchorOriginRef.current = anchor;
+    return anchor;
+  };
+
+  return {
+    tick,
+    triggerSync,
+    anchorRef,
+    needsDocScrollSyncRef,
+    measureAnchor,
+  };
 }
