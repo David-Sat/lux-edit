@@ -1,11 +1,11 @@
 export const LIQUID_GLASS_SVG_CSS = `
 /* Tier 1 Chromium Real Optical SVG Refraction on Hero Chrome */
-.ve-root.ve-glass-svg .ve-launcher-btn > .ve-glass-surface {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-launcher-btn > .ve-glass-surface {
   backdrop-filter: url(#lux-glass-launcher);
   -webkit-backdrop-filter: url(#lux-glass-launcher);
 }
 
-.ve-root.ve-glass-svg .ve-dock-menu > .ve-glass-surface {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-dock-menu > .ve-glass-surface {
   backdrop-filter: url(#lux-glass-dock);
   -webkit-backdrop-filter: url(#lux-glass-dock);
 }
@@ -44,7 +44,7 @@ export const LIQUID_GLASS_SVG_CSS = `
     );
 }
 
-.ve-root.ve-glass-svg .ve-voice-recording-dock > .ve-glass-surface {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock > .ve-glass-surface {
   background:
     linear-gradient(
       180deg,
@@ -53,7 +53,7 @@ export const LIQUID_GLASS_SVG_CSS = `
     );
 }
 
-.ve-root.ve-glass-svg .ve-voice-recording-dock.is-ready > .ve-glass-surface {
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-voice-recording-dock.is-ready > .ve-glass-surface {
   background:
     linear-gradient(
       180deg,

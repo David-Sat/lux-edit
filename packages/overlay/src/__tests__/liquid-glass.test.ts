@@ -17,6 +17,9 @@ import {
 import { LiquidGlassDefs } from '../inspector/liquid-glass-defs.js';
 import { OverlayRoot } from '../overlay-root.js';
 import { OverlayStateManager } from '../inspector/state.js';
+import { LIQUID_GLASS_BASE_CSS } from '../inspector/styles/liquid-glass-base.css.js';
+import { LIQUID_GLASS_COMPONENTS_CSS } from '../inspector/styles/liquid-glass-components.css.js';
+import { LIQUID_GLASS_SVG_CSS } from '../inspector/styles/liquid-glass-svg.css.js';
 import { LIQUID_GLASS_CSS } from '../inspector/styles/liquid-glass.css.js';
 
 describe('liquid-glass refraction math & filter config', () => {
@@ -582,6 +585,72 @@ describe('liquid-glass performance optimizations', () => {
       }
       OverlayStateManager.resetInstance();
       OverlayStateManager.setWorkbenchMode(false);
+    }
+  });
+
+  it('SVG optical backdrop-filter rules are at least as specific as earlier fallback blur rules for every surface', () => {
+    interface BackdropRule {
+      selector: string;
+      specificity: number;
+      backdropFilter: string;
+    }
+
+    const extractBackdropRules = (css: string): BackdropRule[] => {
+      const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+      const result: BackdropRule[] = [];
+      for (const match of stripped.matchAll(/([^{}\n;][^{};]*?)\{([^{}]*backdrop-filter\s*:[^}]*)\}/g)) {
+        const rawSelectors = match[1].trim();
+        if (rawSelectors.startsWith('@')) continue;
+        const propMatch = match[2].match(/backdrop-filter:\s*([^;]+)/);
+        if (!propMatch) continue;
+        const backdropFilter = propMatch[1].trim().replace(/\s+/g, ' ');
+        for (const s of rawSelectors.split(',')) {
+          const selector = s.trim().replace(/\s+/g, ' ');
+          const clean = selector.replace(/:not\([^)]*\)/g, '');
+          const specificity = (clean.match(/(\.[a-zA-Z0-9_-]+|\[[^\]]+\]|:[a-zA-Z-]+)/g) || []).length;
+          result.push({ selector, specificity, backdropFilter });
+        }
+      }
+      return result;
+    };
+
+    const earlierRules = [
+      ...extractBackdropRules(LIQUID_GLASS_BASE_CSS),
+      ...extractBackdropRules(LIQUID_GLASS_COMPONENTS_CSS),
+    ];
+    const svgRules = extractBackdropRules(LIQUID_GLASS_SVG_CSS);
+
+    const targets: Array<{ suffix: string; filterId: string }> = [
+      { suffix: '.ve-launcher-btn > .ve-glass-surface', filterId: 'lux-glass-launcher' },
+      { suffix: '.ve-dock-menu > .ve-glass-surface', filterId: 'lux-glass-dock' },
+      { suffix: '.ve-pin > .ve-glass-surface', filterId: 'lux-glass-pin' },
+      { suffix: '.ve-voice-pin > .ve-glass-surface', filterId: 'lux-glass-voice-pin' },
+      { suffix: '.ve-drawer > .ve-glass-surface', filterId: 'lux-glass-drawer' },
+      { suffix: '.ve-toolbar > .ve-glass-surface', filterId: 'lux-glass-toolbar' },
+      { suffix: '.ve-comment-popover > .ve-glass-surface', filterId: 'lux-glass-composer' },
+      { suffix: '.ve-variant-switcher-bar > .ve-glass-surface', filterId: 'lux-glass-switcher' },
+      { suffix: '.ve-pin-tooltip > .ve-glass-surface', filterId: 'lux-glass-tooltip' },
+      { suffix: '.ve-voice-pin-tooltip > .ve-glass-surface', filterId: 'lux-glass-tooltip' },
+      { suffix: '.ve-dock-focus-pill', filterId: 'lux-glass-focus' },
+      { suffix: '.ve-dock-item.ve-active', filterId: 'lux-glass-bubble' },
+      { suffix: '.ve-mode-pill.ve-active', filterId: 'lux-glass-pill-active' },
+      { suffix: '.ve-tab-indicator', filterId: 'lux-glass-tab-pill' },
+    ];
+
+    for (const { suffix, filterId } of targets) {
+      const matchingSvg = svgRules.filter(
+        (r) => r.selector.endsWith(suffix) && r.backdropFilter.includes(`url(#${filterId})`)
+      );
+      expect(matchingSvg.length, `expected SVG backdrop-filter rule for ${suffix}`).toBeGreaterThan(0);
+
+      const minSvgSpec = Math.min(...matchingSvg.map((r) => r.specificity));
+      const matchingEarlier = earlierRules.filter((r) => r.selector.endsWith(suffix));
+      const maxEarlierSpec = matchingEarlier.reduce((acc, r) => Math.max(acc, r.specificity), 0);
+
+      expect(
+        minSvgSpec,
+        `${suffix} SVG rule specificity (${minSvgSpec}) must be >= fallback blur specificity (${maxEarlierSpec})`
+      ).toBeGreaterThanOrEqual(maxEarlierSpec);
     }
   });
 });
