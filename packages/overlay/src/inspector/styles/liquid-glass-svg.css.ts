@@ -142,7 +142,8 @@ export const LIQUID_GLASS_SVG_CSS = `
 }
 
 .ve-root.ve-glass-svg.ve-glass-refract-panels .ve-pin-tooltip > .ve-glass-surface,
-.ve-root.ve-glass-svg.ve-glass-refract-panels .ve-voice-pin-tooltip > .ve-glass-surface {
+.ve-root.ve-glass-svg.ve-glass-refract-panels .ve-voice-pin-tooltip > .ve-glass-surface,
+.ve-root.ve-glass-svg.ve-glass-refract-panels .ve-update-popover > .ve-glass-surface {
   backdrop-filter: url(#lux-glass-tooltip);
   -webkit-backdrop-filter: url(#lux-glass-tooltip);
 }
@@ -152,7 +153,8 @@ export const LIQUID_GLASS_SVG_CSS = `
 .ve-root.ve-glass-svg.ve-glass-refract-panels.ve-glass-clear .ve-comment-popover > .ve-glass-surface,
 .ve-root.ve-glass-svg.ve-glass-refract-panels.ve-glass-clear .ve-variant-switcher-bar > .ve-glass-surface,
 .ve-root.ve-glass-svg.ve-glass-refract-panels.ve-glass-clear .ve-pin-tooltip > .ve-glass-surface,
-.ve-root.ve-glass-svg.ve-glass-refract-panels.ve-glass-clear .ve-voice-pin-tooltip > .ve-glass-surface {
+.ve-root.ve-glass-svg.ve-glass-refract-panels.ve-glass-clear .ve-voice-pin-tooltip > .ve-glass-surface,
+.ve-root.ve-glass-svg.ve-glass-refract-panels.ve-glass-clear .ve-update-popover > .ve-glass-surface {
   background:
     linear-gradient(
       180deg,
@@ -173,6 +175,7 @@ export const LIQUID_GLASS_SVG_CSS = `
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-hotkey-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-shortcuts-reset-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-update-pill,
+.ve-root.ve-glass-liquid.ve-glass-svg .ve-update-copy-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-card-save-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-card-pill-btn,
 .ve-root.ve-glass-liquid.ve-glass-svg .ve-composer-snap-btn,
@@ -216,6 +219,7 @@ export const LIQUID_GLASS_SVG_CSS = `
   .ve-root.ve-glass-liquid .ve-voice-pin.ve-snapping,
   .ve-root.ve-glass-liquid .ve-pin-tooltip,
   .ve-root.ve-glass-liquid .ve-voice-pin-tooltip,
+  .ve-root.ve-glass-liquid .ve-update-popover,
   .ve-root.ve-glass-liquid .ve-dock-item,
   .ve-root.ve-glass-liquid .ve-dock-item.ve-active,
   .ve-root.ve-glass-liquid .ve-dock-focus-pill,

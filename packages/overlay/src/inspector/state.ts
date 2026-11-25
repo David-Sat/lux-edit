@@ -39,6 +39,7 @@ import {
   consumeVerificationTargets,
   loadPersistedState,
   persistVerificationTargets,
+  saveDismissedUpdateVersion,
   saveDockPosition,
   saveHotkeys,
   savePersistedDraft,
@@ -137,6 +138,7 @@ export class OverlayStateManager {
     latestVersion: string;
     changelogUrl: string;
   } | null = null;
+  public dismissedUpdateVersion: string | null = null;
 
   private domMutations = new DomMutationManager();
   private variantManager: VariantManager;
@@ -499,6 +501,24 @@ export class OverlayStateManager {
     }
   }
 
+  public isUpdateNoticeVisible(): boolean {
+    return Boolean(
+      this.updateInfo?.updateAvailable &&
+        this.updateInfo.latestVersion &&
+        this.dismissedUpdateVersion !== this.updateInfo.latestVersion
+    );
+  }
+
+  public dismissUpdateNotice(): void {
+    const latest = this.updateInfo?.latestVersion;
+    if (!latest) return;
+    this.dismissedUpdateVersion = latest;
+    if (!OverlayStateManager.workbenchMode) {
+      saveDismissedUpdateVersion(latest);
+    }
+    this.notify();
+  }
+
   private loadFromStorage(): void {
     const loaded = loadPersistedState();
     if (loaded.reviewMode) this.reviewMode = loaded.reviewMode;
@@ -512,6 +532,7 @@ export class OverlayStateManager {
     if (loaded.dockPosition) this.dockPosition = loaded.dockPosition;
     if (loaded.commentDraftText !== undefined) this.commentDraftText = loaded.commentDraftText;
     if (loaded.hotkeys) this.hotkeys = loaded.hotkeys;
+    if (loaded.dismissedUpdateVersion) this.dismissedUpdateVersion = loaded.dismissedUpdateVersion;
   }
 
   private saveToStorage(): void {
@@ -607,6 +628,7 @@ export class OverlayStateManager {
     this.activeVoicePins = [];
     this.agentReplies = [];
     this.updateInfo = null;
+    this.dismissedUpdateVersion = null;
     this.isStoppingVoice = false;
     this.currentPathname = getRouteFromLocation();
 

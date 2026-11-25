@@ -20,6 +20,7 @@ export interface ActiveGlassSurfaces {
   toolbar: boolean;
   composer: boolean;
   switcher: boolean;
+  updateNotice?: boolean;
 }
 
 const SURFACE_KEYS = [
@@ -31,6 +32,7 @@ const SURFACE_KEYS = [
   'toolbar',
   'composer',
   'switcher',
+  'updateNotice',
 ] as const;
 
 const DEFAULT_ACTIVE_SURFACES: ActiveGlassSurfaces = {
@@ -42,6 +44,7 @@ const DEFAULT_ACTIVE_SURFACES: ActiveGlassSurfaces = {
   toolbar: false,
   composer: false,
   switcher: false,
+  updateNotice: false,
 };
 
 /**
@@ -92,7 +95,11 @@ const OBSERVED_SURFACE_SPECS: Array<{
   { key: 'toolbar', selector: '.ve-toolbar', requiresPanelRefract: true },
   { key: 'composer', selector: '.ve-comment-popover', requiresPanelRefract: true },
   { key: 'switcher', selector: '.ve-variant-switcher-bar', requiresPanelRefract: true },
-  { key: 'tooltip', selector: '.ve-pin-tooltip, .ve-voice-pin-tooltip', requiresPanelRefract: true },
+  {
+    key: 'tooltip',
+    selector: '.ve-pin-tooltip, .ve-voice-pin-tooltip, .ve-update-popover',
+    requiresPanelRefract: true,
+  },
 ];
 
 const DOCK_BOOST_DURATION_MS = 220;
@@ -123,7 +130,8 @@ function hasButtonSurfaces(ctx: FilterBuildContext): boolean {
     ctx.isSurfaceActive('switcher', 2) ||
     ctx.isSurfaceActive('pins', 2) ||
     ctx.isSurfaceActive('voicePins', 2) ||
-    ctx.isSurfaceActive('dock', 2)
+    ctx.isSurfaceActive('dock', 2) ||
+    ctx.isSurfaceActive('updateNotice', 2)
   );
 }
 
@@ -354,7 +362,9 @@ const GLASS_FILTER_SPECS: GlassFilterSpec[] = [
     id: 'lux-glass-tooltip',
     isNeeded: (ctx) =>
       ctx.tuning.refractPanels &&
-      (ctx.isSurfaceActive('pins', 2) || ctx.isSurfaceActive('voicePins', 2)),
+      (ctx.isSurfaceActive('pins', 2) ||
+        ctx.isSurfaceActive('voicePins', 2) ||
+        ctx.isSurfaceActive('updateNotice', 2)),
     buildRequest: (ctx) => ({
       width: ctx.sizes.tooltip.width,
       height: ctx.sizes.tooltip.height,
@@ -666,11 +676,11 @@ export function LiquidGlassDefs({
   useEffect(() => {
     if (!enabled) return;
     setSeenSurfaces((prev) => {
-      const hasNew = SURFACE_KEYS.some((key) => !prev[key] && activeSurfaces[key]);
+      const hasNew = SURFACE_KEYS.some((key) => !prev[key] && Boolean(activeSurfaces[key]));
       if (!hasNew) return prev;
-      const next = { ...prev };
+      const next: ActiveGlassSurfaces = { ...prev };
       for (const key of SURFACE_KEYS) {
-        next[key] = prev[key] || activeSurfaces[key];
+        next[key] = Boolean(prev[key] || activeSurfaces[key]);
       }
       return next;
     });
@@ -685,6 +695,7 @@ export function LiquidGlassDefs({
     activeSurfaces.toolbar,
     activeSurfaces.composer,
     activeSurfaces.switcher,
+    activeSurfaces.updateNotice,
   ]);
 
   // Progressive idle pre-warming across 4 stages so initial mount only generates visible maps
@@ -837,7 +848,7 @@ export function LiquidGlassDefs({
       initialBoostScale,
       panelFilterOptions,
       isSurfaceActive: (key, minWarmStage) =>
-        activeSurfaces[key] || seenSurfaces[key] || warmStage >= minWarmStage,
+        Boolean(activeSurfaces[key] || seenSurfaces[key]) || warmStage >= minWarmStage,
     };
 
     for (const spec of GLASS_FILTER_SPECS) {
@@ -917,7 +928,7 @@ export function LiquidGlassDefs({
       initialBoostScale,
       panelFilterOptions,
       isSurfaceActive: (key, minWarmStage) =>
-        activeSurfaces[key] || seenSurfaces[key] || warmStage >= minWarmStage,
+        Boolean(activeSurfaces[key] || seenSurfaces[key]) || warmStage >= minWarmStage,
     };
 
     const filters = [];

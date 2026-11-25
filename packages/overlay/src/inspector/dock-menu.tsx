@@ -1,4 +1,4 @@
-import { h } from 'preact';
+import { Fragment, h } from 'preact';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'preact/hooks';
 import { OverlayStateManager } from './state.js';
 import { VoiceRecorder } from './voice-recorder.js';
@@ -6,6 +6,7 @@ import { createLiquidDragDeformer, prefersReducedMotion } from './liquid-glass.j
 import { GlassChrome } from './liquid-glass-defs.js';
 import { formatAriaKeyShortcuts, formatHotkeyLabel } from './hotkeys.js';
 import { handleRovingArrowKey } from './keyboard-nav.js';
+import { UpdateBadgeIcon, UpdateNoticePopover, useUpdateNoticePopover } from './update-notice.js';
 
 type DockSurfaceAnim = 'idle' | 'morph' | 'settle';
 type OrbSurfaceAnim = 'idle' | 'morph' | 'settle';
@@ -240,6 +241,25 @@ export function DockMenu() {
     onDropSettle: handleDropSettle,
   });
 
+  const hasUpdateNotice = state.isUpdateNoticeVisible();
+  const updateInfo = state.updateInfo;
+  const popoverPlacement = state.dockPosition.verticalAnchor === 'top' ? 'below' : 'above';
+  const popoverAlign = state.dockPosition.side === 'left' ? 'start' : 'end';
+  const {
+    showPopover: showUpdatePopover,
+    copied: updateCopied,
+    openPopover: openUpdatePopover,
+    scheduleClosePopover: scheduleCloseUpdatePopover,
+    closePopoverImmediately: closeUpdatePopover,
+    handleCopy: handleCopyUpdatePrompt,
+  } = useUpdateNoticePopover(updateInfo?.latestVersion);
+
+  useEffect(() => {
+    if (isDragging || !hasUpdateNotice || (!isLauncherView && state.isDrawerOpen)) {
+      closeUpdatePopover();
+    }
+  }, [isDragging, hasUpdateNotice, isLauncherView, state.isDrawerOpen, closeUpdatePopover]);
+
   const hasActiveOption =
     state.activeTool !== 'none' || state.isDrawerOpen || state.reviewMode === 'live';
 
@@ -465,37 +485,77 @@ export function DockMenu() {
   }
 
   if (isLauncherView) {
+    const launcherAriaLabel = [
+      totalCount > 0 ? `Open LUX Tools (${totalCount} pending items)` : 'Open LUX Tools',
+      hasUpdateNotice && updateInfo ? `Update v${updateInfo.latestVersion} available` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+
     return (
-      <button
-        ref={launcherRef}
-        type="button"
-        class={`ve-launcher-btn ${isDragging ? 've-dragging' : ''}`}
-        data-ve-anim={orbAnim}
-        onAnimationEnd={handleOrbAnimationEnd}
-        style={dragStyle}
-        aria-label={totalCount > 0 ? `Open LUX Tools (${totalCount} pending items)` : 'Open LUX Tools'}
-        aria-expanded={false}
-        title="Open LUX Tools (drag to reposition)"
-        onPointerDown={(e) => startDrag(e, e.currentTarget as HTMLElement)}
-        onClick={(e) => {
-          if (wasDraggingRef.current) {
-            wasDraggingRef.current = false;
-            return;
-          }
-          if (e.detail === 0) {
-            focusIntentRef.current = 'dock';
-          }
-          state.setDockMenuOpen(true);
-        }}
-      >
-        <GlassChrome />
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polygon points="12 2 2 7 12 12 22 7 12 2" />
-          <polyline points="2 17 12 22 22 17" />
-          <polyline points="2 12 12 17 22 12" />
-        </svg>
-        {totalCount > 0 && <span class="ve-launcher-badge" aria-hidden="true">{totalCount}</span>}
-      </button>
+      <Fragment>
+        <button
+          ref={launcherRef}
+          type="button"
+          class={`ve-launcher-btn ${isDragging ? 've-dragging' : ''}`}
+          data-ve-anim={orbAnim}
+          onAnimationEnd={handleOrbAnimationEnd}
+          style={dragStyle}
+          aria-label={launcherAriaLabel}
+          aria-expanded={false}
+          title={hasUpdateNotice && updateInfo ? `LUX v${updateInfo.latestVersion} update available` : 'Open LUX Tools (drag to reposition)'}
+          onPointerDown={(e) => startDrag(e, e.currentTarget as HTMLElement)}
+          onMouseEnter={hasUpdateNotice && !isDragging ? openUpdatePopover : undefined}
+          onMouseLeave={hasUpdateNotice ? scheduleCloseUpdatePopover : undefined}
+          onFocus={hasUpdateNotice && !isDragging ? openUpdatePopover : undefined}
+          onBlur={hasUpdateNotice ? scheduleCloseUpdatePopover : undefined}
+          onClick={(e) => {
+            if (wasDraggingRef.current) {
+              wasDraggingRef.current = false;
+              return;
+            }
+            closeUpdatePopover();
+            if (e.detail === 0) {
+              focusIntentRef.current = 'dock';
+            }
+            state.setDockMenuOpen(true);
+          }}
+        >
+          <GlassChrome />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+          </svg>
+          {totalCount > 0 && <span class="ve-launcher-badge" aria-hidden="true">{totalCount}</span>}
+          {hasUpdateNotice && (
+            <span class={`ve-update-badge ${totalCount > 0 ? 've-update-badge--offset' : ''}`} aria-hidden="true">
+              <UpdateBadgeIcon />
+            </span>
+          )}
+        </button>
+        {hasUpdateNotice && showUpdatePopover && !isDragging && updateInfo && (
+          <div class="ve-launcher-update-anchor">
+            <UpdateNoticePopover
+              currentVersion={updateInfo.currentVersion || state.version}
+              latestVersion={updateInfo.latestVersion}
+              changelogUrl={updateInfo.changelogUrl}
+              placement={popoverPlacement}
+              align={popoverAlign}
+              copied={updateCopied}
+              onCopy={handleCopyUpdatePrompt}
+              onDismiss={() => {
+                closeUpdatePopover();
+                state.dismissUpdateNotice();
+              }}
+              onMouseEnter={openUpdatePopover}
+              onMouseLeave={scheduleCloseUpdatePopover}
+              onChildFocus={openUpdatePopover}
+              onChildBlur={scheduleCloseUpdatePopover}
+            />
+          </div>
+        )}
+      </Fragment>
     );
   }
 
@@ -617,8 +677,15 @@ export function DockMenu() {
         }}
         type="button"
         class={`ve-dock-item ve-dock-item--relative ${state.isDrawerOpen ? 've-active' : ''} ${focusKey === 'drawer' ? 've-focus-target' : ''}`}
-        onClick={() => state.setDrawerOpen(!state.isDrawerOpen)}
-        aria-label={`Review Changes (${totalCount})${formatSuffix(state.hotkeys.drawer)}`}
+        onClick={() => {
+          closeUpdatePopover();
+          state.setDrawerOpen(!state.isDrawerOpen);
+        }}
+        onMouseEnter={hasUpdateNotice && !state.isDrawerOpen && !isDragging ? openUpdatePopover : undefined}
+        onMouseLeave={hasUpdateNotice ? scheduleCloseUpdatePopover : undefined}
+        onFocus={hasUpdateNotice && !state.isDrawerOpen && !isDragging ? openUpdatePopover : undefined}
+        onBlur={hasUpdateNotice ? scheduleCloseUpdatePopover : undefined}
+        aria-label={`Review Changes (${totalCount})${formatSuffix(state.hotkeys.drawer)}${hasUpdateNotice && updateInfo ? `, Update v${updateInfo.latestVersion} available` : ''}`}
         aria-pressed={state.isDrawerOpen}
         aria-keyshortcuts={formatAriaKeyShortcuts(state.hotkeys.drawer)}
         title={`Review Changes (${totalCount})${formatSuffix(state.hotkeys.drawer)}`}
@@ -632,7 +699,34 @@ export function DockMenu() {
           <line x1="3" y1="18" x2="3.01" y2="18" />
         </svg>
         {totalCount > 0 && <span class="ve-dock-badge" aria-hidden="true">{totalCount}</span>}
+        {hasUpdateNotice && (
+          <span
+            class={`ve-update-badge ve-update-badge--dock ${totalCount > 0 ? 've-update-badge--offset' : ''}`}
+            aria-hidden="true"
+          >
+            <UpdateBadgeIcon />
+          </span>
+        )}
       </button>
+      {hasUpdateNotice && showUpdatePopover && !state.isDrawerOpen && !isDragging && updateInfo && (
+        <UpdateNoticePopover
+          currentVersion={updateInfo.currentVersion || state.version}
+          latestVersion={updateInfo.latestVersion}
+          changelogUrl={updateInfo.changelogUrl}
+          placement={popoverPlacement}
+          align={popoverAlign}
+          copied={updateCopied}
+          onCopy={handleCopyUpdatePrompt}
+          onDismiss={() => {
+            closeUpdatePopover();
+            state.dismissUpdateNotice();
+          }}
+          onMouseEnter={openUpdatePopover}
+          onMouseLeave={scheduleCloseUpdatePopover}
+          onChildFocus={openUpdatePopover}
+          onChildBlur={scheduleCloseUpdatePopover}
+        />
+      )}
       <button
         type="button"
         class="ve-dock-item ve-dock-close"

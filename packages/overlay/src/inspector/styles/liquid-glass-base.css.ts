@@ -206,7 +206,8 @@ export const LIQUID_GLASS_BASE_CSS = `
 .ve-root.ve-glass-liquid .ve-comment-popover,
 .ve-root.ve-glass-liquid .ve-variant-switcher-bar,
 .ve-root.ve-glass-liquid .ve-pin-tooltip,
-.ve-root.ve-glass-liquid .ve-voice-pin-tooltip {
+.ve-root.ve-glass-liquid .ve-voice-pin-tooltip,
+.ve-root.ve-glass-liquid .ve-update-popover {
   background: transparent;
   border-color: transparent;
   box-shadow: var(--ve-glass-shadow);
@@ -281,7 +282,8 @@ export const LIQUID_GLASS_BASE_CSS = `
 }
 
 .ve-root.ve-glass-liquid .ve-pin-tooltip,
-.ve-root.ve-glass-liquid .ve-voice-pin-tooltip {
+.ve-root.ve-glass-liquid .ve-voice-pin-tooltip,
+.ve-root.ve-glass-liquid .ve-update-popover {
   animation: veLiquidTooltipBloom 0.18s var(--ve-ease-liquid);
 }
 
@@ -325,14 +327,19 @@ export const LIQUID_GLASS_BASE_CSS = `
 .ve-root.ve-glass-liquid .ve-drawer > .ve-glass-surface,
 .ve-root.ve-glass-liquid .ve-comment-popover > .ve-glass-surface,
 .ve-root.ve-glass-liquid .ve-variant-switcher-bar > .ve-glass-surface,
-.ve-root.ve-glass-liquid .ve-pin-tooltip > .ve-glass-surface {
+.ve-root.ve-glass-liquid .ve-pin-tooltip > .ve-glass-surface,
+.ve-root.ve-glass-liquid .ve-update-popover > .ve-glass-surface {
   background: var(--ve-glass-bg);
   backdrop-filter: var(--ve-glass-backdrop);
   -webkit-backdrop-filter: var(--ve-glass-backdrop);
 }
 
 /* Keep all direct panel/pin content children stacked cleanly above .ve-glass-surface (z=0) and .ve-glass-bevel (z=1) */
-.ve-root.ve-glass-liquid .ve-drawer-autosave-bar,
+.ve-root.ve-glass-liquid .ve-drawer-autosave-bar {
+  position: relative;
+  z-index: 4;
+}
+
 .ve-root.ve-glass-liquid .ve-comment-targets-list,
 .ve-root.ve-glass-liquid .ve-composer-screenshot-box,
 .ve-root.ve-glass-liquid .ve-comment-footer,
@@ -345,6 +352,9 @@ export const LIQUID_GLASS_BASE_CSS = `
 .ve-root.ve-glass-liquid .ve-pin-tooltip-quote,
 .ve-root.ve-glass-liquid .ve-pin-tooltip-body,
 .ve-root.ve-glass-liquid .ve-pin-edit-stack,
+.ve-root.ve-glass-liquid .ve-update-popover-header,
+.ve-root.ve-glass-liquid .ve-update-popover-body,
+.ve-root.ve-glass-liquid .ve-update-popover-actions,
 .ve-root.ve-glass-liquid .ve-voice-pin > svg,
 .ve-root.ve-glass-liquid .ve-voice-pin > span:not(.ve-glass-surface):not(.ve-glass-bevel),
 .ve-root.ve-glass-liquid .ve-voice-pin-tooltip > span:not(.ve-glass-surface):not(.ve-glass-bevel) {
@@ -422,6 +432,7 @@ export const LIQUID_GLASS_BASE_CSS = `
 .ve-root.ve-glass-liquid .ve-pin-tooltip::before,
 .ve-root.ve-glass-liquid .ve-voice-pin::before,
 .ve-root.ve-glass-liquid .ve-voice-pin-tooltip::before,
+.ve-root.ve-glass-liquid .ve-update-popover::before,
 .ve-root.ve-glass-liquid .ve-badge::before {
   content: '';
   position: absolute;

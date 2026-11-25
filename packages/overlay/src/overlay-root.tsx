@@ -447,6 +447,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
   const hasVariantSwitcher = state.variantSets.some(
     (s) => s.status === 'pending' || s.status === 'decided'
   );
+  const hasUpdateNotice = Boolean(state.updateInfo?.updateAvailable);
 
   const activeSurfaces = useMemo(
     () => ({
@@ -458,6 +459,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       toolbar: isToolbarVisible,
       composer: isComposerVisible,
       switcher: hasVariantSwitcher,
+      updateNotice: hasUpdateNotice,
     }),
     [
       isLauncherVisible,
@@ -468,6 +470,7 @@ export function OverlayRoot({ shadowRoot }: { shadowRoot: ShadowRoot }) {
       isToolbarVisible,
       isComposerVisible,
       hasVariantSwitcher,
+      hasUpdateNotice,
     ]
   );
 

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { OverlayStateManager } from '../inspector/state.js';
 import { formatBatchSummary } from '@visual-edit/core';
 import { GlassChrome } from '../inspector/liquid-glass-defs.js';
+import { UpdateNoticePopover, useUpdateNoticePopover } from '../inspector/update-notice.js';
 import {
   HOTKEY_ACTION_LIST,
   OverlayHotkeyAction,
@@ -21,10 +22,16 @@ export function EditReviewDrawer() {
   const state = OverlayStateManager.getInstance();
   const [, setTick] = useState(0);
   const [copiedToast, setCopiedToast] = useState(false);
-  const [updateCopiedToast, setUpdateCopiedToast] = useState(false);
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
   const [editingAnnotationText, setEditingAnnotationText] = useState<string>('');
   const [capturingAction, setCapturingAction] = useState<OverlayHotkeyAction | null>(null);
+  const {
+    showPopover: showUpdatePopover,
+    copied: updateCopiedToast,
+    openPopover: openUpdatePopover,
+    scheduleClosePopover: scheduleCloseUpdatePopover,
+    handleCopy: handleCopyUpdatePrompt,
+  } = useUpdateNoticePopover(state.updateInfo?.latestVersion);
 
   useEffect(() => {
     return state.subscribe(() => setTick((t) => t + 1));
@@ -337,24 +344,39 @@ export function EditReviewDrawer() {
         </div>
 
         {state.updateInfo?.updateAvailable ? (
-          <button
-            type="button"
-            class="ve-update-pill"
-            aria-label={`Copy update command for version ${state.updateInfo.latestVersion}`}
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText('lux update');
-                setUpdateCopiedToast(true);
-                setTimeout(() => setUpdateCopiedToast(false), 2500);
-              } catch (err) {
-                console.debug('[lux] Clipboard copy failed:', err);
-              }
-            }}
-            title={`v${state.updateInfo.latestVersion} available! Click to copy "lux update"`}
+          <div
+            class="ve-update-pill-wrap"
+            onMouseEnter={openUpdatePopover}
+            onMouseLeave={scheduleCloseUpdatePopover}
           >
-            <span class="ve-status-dot ve-status-dot--accent" aria-hidden="true" />
-            <span>{updateCopiedToast ? 'Copied "lux update"!' : `Update v${state.updateInfo.latestVersion}`}</span>
-          </button>
+            <button
+              type="button"
+              class="ve-update-pill"
+              aria-label={`Copy agent prompt to update LUX to v${state.updateInfo.latestVersion}`}
+              aria-expanded={showUpdatePopover}
+              onClick={handleCopyUpdatePrompt}
+              onFocus={openUpdatePopover}
+              onBlur={scheduleCloseUpdatePopover}
+            >
+              <span class="ve-status-dot ve-status-dot--accent" aria-hidden="true" />
+              <span>{updateCopiedToast ? 'Copied!' : `Update v${state.updateInfo.latestVersion}`}</span>
+            </button>
+            {showUpdatePopover && (
+              <UpdateNoticePopover
+                currentVersion={state.updateInfo.currentVersion || state.version}
+                latestVersion={state.updateInfo.latestVersion}
+                changelogUrl={state.updateInfo.changelogUrl}
+                placement="above"
+                align="end"
+                copied={updateCopiedToast}
+                onCopy={handleCopyUpdatePrompt}
+                onMouseEnter={openUpdatePopover}
+                onMouseLeave={scheduleCloseUpdatePopover}
+                onChildFocus={openUpdatePopover}
+                onChildBlur={scheduleCloseUpdatePopover}
+              />
+            )}
+          </div>
         ) : (
           <span class="ve-drawer-version" title="lux is up to date">
             v{state.version}

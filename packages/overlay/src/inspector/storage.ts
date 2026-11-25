@@ -24,6 +24,7 @@ export interface LoadedPersistedState {
   dockPosition?: DockPosition;
   commentDraftText?: string;
   hotkeys?: OverlayHotkeys;
+  dismissedUpdateVersion?: string;
 }
 
 interface LuxAppWindow extends Window {
@@ -163,6 +164,11 @@ export function loadPersistedState(): LoadedPersistedState {
     console.debug('[lux] Failed to parse persisted hotkeys:', err);
   }
 
+  const dismissedUpdate = safeGetStorage('local', STORAGE_KEYS.DISMISSED_UPDATE_VERSION);
+  if (dismissedUpdate) {
+    result.dismissedUpdateVersion = dismissedUpdate;
+  }
+
   return result;
 }
 
@@ -198,6 +204,10 @@ export function saveHotkeys(hotkeys: OverlayHotkeys): void {
 
 export function clearHotkeys(): void {
   safeRemoveStorage('local', STORAGE_KEYS.HOTKEYS);
+}
+
+export function saveDismissedUpdateVersion(version: string): void {
+  safeSetStorage('local', STORAGE_KEYS.DISMISSED_UPDATE_VERSION, version);
 }
 
 export function saveComposerDraft(text: string): void {
