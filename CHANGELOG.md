@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.19.1...lux-edit-v0.20.0) (2026-11-25)
+
+
+### Features
+
+* **overlay:** add subtle update notice badge and hover popover ([#88](https://github.com/David-Sat/lux-edit/issues/88)) ([0d74800](https://github.com/David-Sat/lux-edit/commit/0d748006e691b78d4b2e97580d8afc36c94067bb))
+
 ## [0.19.1](https://github.com/David-Sat/lux-edit/compare/lux-edit-v0.19.0...lux-edit-v0.19.1) (2026-11-24)
 
 
