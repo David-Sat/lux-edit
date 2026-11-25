@@ -299,6 +299,22 @@ export const WORKBENCH_PRESETS: WorkbenchPreset[] = [
     },
   },
   {
+    id: 'dock-launcher-update',
+    group: 'Dock & Voice',
+    title: 'Launcher (Update Available Notice)',
+    description: 'Minimized launcher with a subtle update badge and hover info card to prompt your agent.',
+    apply: (state) => {
+      state.resetForWorkbench();
+      state.updateInfo = {
+        currentVersion: '0.19.1',
+        latestVersion: '0.20.0',
+        updateAvailable: true,
+        changelogUrl: 'https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v0.20.0',
+      };
+      state.notify();
+    },
+  },
+  {
     id: 'dock-expanded-batch',
     group: 'Dock & Voice',
     title: 'Dock Expanded (Batch Mode)',
@@ -308,6 +324,25 @@ export const WORKBENCH_PRESETS: WorkbenchPreset[] = [
       state.isDockMenuOpen = true;
       state.reviewMode = 'batch';
       state.mutations = makeSampleMutations(doc).slice(0, 2);
+      state.notify();
+    },
+  },
+  {
+    id: 'dock-expanded-update',
+    group: 'Dock & Voice',
+    title: 'Dock Expanded (Update Notice)',
+    description: 'Expanded tool dock showing pending count beside the subtle update badge on the drawer icon.',
+    apply: (state, doc) => {
+      state.resetForWorkbench();
+      state.isDockMenuOpen = true;
+      state.reviewMode = 'batch';
+      state.mutations = makeSampleMutations(doc).slice(0, 1);
+      state.updateInfo = {
+        currentVersion: '0.19.1',
+        latestVersion: '0.20.0',
+        updateAvailable: true,
+        changelogUrl: 'https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v0.20.0',
+      };
       state.notify();
     },
   },
@@ -775,10 +810,10 @@ export const WORKBENCH_PRESETS: WorkbenchPreset[] = [
       state.isDrawerOpen = true;
       state.sessionStatus = 'submitted';
       state.updateInfo = {
-        currentVersion: '0.15.1',
-        latestVersion: '0.16.0',
+        currentVersion: '0.19.1',
+        latestVersion: '0.20.0',
         updateAvailable: true,
-        changelogUrl: 'https://github.com/daveluk/lux-edit/releases',
+        changelogUrl: 'https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v0.20.0',
       };
       const anns = makeSampleAnnotations(doc);
       anns[1] = {

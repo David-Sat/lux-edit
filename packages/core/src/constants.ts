@@ -25,6 +25,7 @@ export const STORAGE_KEYS = {
   REVIEW_MODE: 'lux_review_mode',
   HOTKEYS: 'lux_hotkeys',
   VERIFY_TARGETS: 'lux_verify_targets',
+  DISMISSED_UPDATE_VERSION: 'lux_dismissed_update_version',
   LEGACY_ACTIVE_DRAFT: 'visual_edit_active_draft',
   LEGACY_APP_DRAFT_PREFIX: 'visual_edit_draft_',
 } as const;

@@ -341,6 +341,8 @@ export const DRAWER_CSS = `
 }
 
 .ve-drawer-autosave-bar {
+  position: relative;
+  z-index: 4;
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.25);
   border-top: 1px solid rgba(255, 255, 255, 0.08);

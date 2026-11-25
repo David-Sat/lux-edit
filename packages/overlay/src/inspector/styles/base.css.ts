@@ -615,4 +615,234 @@ export const BASE_CSS = `
 .ve-dock-item--relative {
   position: relative;
 }
+
+/* Subtle Monochrome Update Notification Badge & Hover Popover */
+.ve-update-badge {
+  position: absolute;
+  inset-block-start: -3px;
+  inset-inline-end: -3px;
+  inline-size: 16px;
+  block-size: 16px;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 1.5px rgba(15, 23, 42, 0.55);
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1;
+}
+
+.ve-update-badge--dock {
+  inline-size: 14px;
+  block-size: 14px;
+}
+
+.ve-update-badge--offset {
+  inset-inline-end: auto;
+  inset-inline-start: -3px;
+}
+
+.ve-launcher-update-anchor {
+  position: fixed;
+  z-index: var(--ve-z-tooltip);
+  pointer-events: none;
+}
+
+.ve-dock-right .ve-launcher-update-anchor {
+  inset-inline-end: 20px;
+  inset-inline-start: auto;
+}
+
+.ve-dock-left .ve-launcher-update-anchor {
+  inset-inline-start: 20px;
+  inset-inline-end: auto;
+}
+
+.ve-dock-bottom .ve-launcher-update-anchor {
+  inset-block-end: calc(var(--ve-dock-offset-y, 24px) + 60px);
+  inset-block-start: auto;
+}
+
+.ve-dock-top .ve-launcher-update-anchor {
+  inset-block-start: calc(var(--ve-dock-offset-y, 24px) + 60px);
+  inset-block-end: auto;
+}
+
+.ve-update-pill-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ve-update-popover {
+  position: absolute;
+  inline-size: 276px;
+  max-inline-size: calc(100vw - 32px);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: #ffffff;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+  cursor: default;
+  z-index: var(--ve-z-tooltip);
+  text-align: left;
+  white-space: normal;
+}
+
+.ve-launcher-update-anchor > .ve-update-popover {
+  position: relative;
+  inset: auto;
+}
+
+.ve-update-popover--above {
+  inset-block-end: calc(100% + 10px);
+  inset-block-start: auto;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset-block-end: -12px;
+    inset-inline: 0;
+    block-size: 12px;
+    background: transparent;
+    pointer-events: auto;
+  }
+}
+
+.ve-update-popover--below {
+  inset-block-start: calc(100% + 10px);
+  inset-block-end: auto;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset-block-start: -12px;
+    inset-inline: 0;
+    block-size: 12px;
+    background: transparent;
+    pointer-events: auto;
+  }
+}
+
+.ve-update-popover--align-end {
+  inset-inline-end: 0;
+  inset-inline-start: auto;
+}
+
+.ve-update-popover--align-start {
+  inset-inline-start: 0;
+  inset-inline-end: auto;
+}
+
+.ve-launcher-update-anchor > .ve-update-popover--above,
+.ve-launcher-update-anchor > .ve-update-popover--below,
+.ve-launcher-update-anchor > .ve-update-popover--align-end,
+.ve-launcher-update-anchor > .ve-update-popover--align-start {
+  inset: auto;
+}
+
+.ve-update-popover-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ve-update-popover-title-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+.ve-update-popover-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.ve-update-version-chip {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #f8fafc;
+}
+
+.ve-update-popover-body {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #f1f5f9;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+
+  & code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(12, 18, 32, 0.58);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+  }
+}
+
+.ve-update-popover-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ve-update-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(226, 232, 240, 0.82) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.9) 100%);
+    border-color: #ffffff;
+    color: #020617;
+  }
+}
+
+.ve-update-changelog-link {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  text-decoration: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
 `;

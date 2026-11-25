@@ -14,7 +14,9 @@ import {
   generateLiquidGlassMaps,
   useLiquidGlassMotion,
 } from '../inspector/liquid-glass.js';
+import { STORAGE_KEYS } from '@visual-edit/core';
 import { LiquidGlassDefs } from '../inspector/liquid-glass-defs.js';
+import { DockMenu } from '../inspector/dock-menu.js';
 import { EditReviewDrawer } from '../drawer/edit-review-drawer.js';
 import { OverlayRoot } from '../overlay-root.js';
 import { OverlayStateManager } from '../inspector/state.js';
@@ -648,6 +650,7 @@ describe('liquid-glass performance optimizations', () => {
       { suffix: '.ve-variant-switcher-bar > .ve-glass-surface', filterId: 'lux-glass-switcher' },
       { suffix: '.ve-pin-tooltip > .ve-glass-surface', filterId: 'lux-glass-tooltip' },
       { suffix: '.ve-voice-pin-tooltip > .ve-glass-surface', filterId: 'lux-glass-tooltip' },
+      { suffix: '.ve-update-popover > .ve-glass-surface', filterId: 'lux-glass-tooltip' },
       { suffix: '.ve-dock-focus-pill', filterId: 'lux-glass-focus' },
       { suffix: '.ve-dock-item.ve-active', filterId: 'lux-glass-bubble' },
       { suffix: '.ve-mode-pill.ve-active', filterId: 'lux-glass-pill-active' },
@@ -658,6 +661,7 @@ describe('liquid-glass performance optimizations', () => {
         '.ve-hotkey-btn',
         '.ve-shortcuts-reset-btn',
         '.ve-update-pill',
+        '.ve-update-copy-btn',
         '.ve-card-save-btn',
         '.ve-card-pill-btn',
         '.ve-composer-snap-btn',
@@ -775,6 +779,136 @@ describe('liquid-glass performance optimizations', () => {
         'Delete variant selection for #glass-card-decided',
       ]);
     } finally {
+      OverlayStateManager.resetInstance();
+    }
+  });
+
+  it('renders subtle update badge + hover popover on launcher and keeps drawer update pill active after dismissal', async () => {
+    const storageMap = new Map<string, string>();
+    const mockStorage = {
+      getItem: (key: string) => storageMap.get(key) ?? null,
+      setItem: (key: string, val: string) => {
+        storageMap.set(key, String(val));
+      },
+      removeItem: (key: string) => storageMap.delete(key),
+      clear: () => storageMap.clear(),
+      get length() {
+        return storageMap.size;
+      },
+      key: (i: number) => Array.from(storageMap.keys())[i] ?? null,
+    };
+    const origLocalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', { value: mockStorage, configurable: true });
+    Object.defineProperty(window, 'localStorage', { value: mockStorage, configurable: true });
+    OverlayStateManager.resetInstance();
+    OverlayStateManager.setWorkbenchMode(false);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const origClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    hostEl = document.createElement('div');
+    shadowRoot = hostEl.attachShadow({ mode: 'open' });
+    document.body.appendChild(hostEl);
+
+    try {
+      const state = OverlayStateManager.getInstance();
+      state.updateInfo = {
+        currentVersion: '0.19.1',
+        latestVersion: '0.20.0',
+        updateAvailable: true,
+        changelogUrl: 'https://github.com/David-Sat/lux-edit/releases/tag/lux-edit-v0.20.0',
+      };
+
+      await act(() => {
+        render(h(DockMenu, {}), shadowRoot!);
+      });
+
+      const launcher = shadowRoot!.querySelector('.ve-launcher-btn') as HTMLButtonElement | null;
+      expect(launcher).not.toBeNull();
+      expect(launcher!.querySelector('.ve-update-badge')).not.toBeNull();
+      expect(shadowRoot!.querySelector('.ve-update-popover')).toBeNull();
+
+      await act(() => {
+        launcher!.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      });
+
+      const popover = shadowRoot!.querySelector('.ve-update-popover') as HTMLElement | null;
+      expect(popover).not.toBeNull();
+      expect(popover!.textContent).toContain('LUX v0.20.0 available');
+      expect(popover!.textContent).toContain('v0.19.1 → v0.20.0');
+      expect(popover!.textContent).toContain('Tell your coding agent to update LUX');
+
+      const copyBtn = shadowRoot!.querySelector('.ve-update-copy-btn') as HTMLButtonElement | null;
+      expect(copyBtn).not.toBeNull();
+      await act(async () => {
+        copyBtn!.click();
+        await Promise.resolve();
+      });
+      expect(writeText).toHaveBeenCalledWith(
+        'Please update lux-edit to v0.20.0 (run "lux update").'
+      );
+
+      const dismissBtn = shadowRoot!.querySelector(
+        '.ve-update-dismiss-btn'
+      ) as HTMLButtonElement | null;
+      expect(dismissBtn).not.toBeNull();
+      await act(() => {
+        dismissBtn!.click();
+      });
+
+      await act(() => {
+        render(h(DockMenu, {}), shadowRoot!);
+      });
+
+      expect(storageMap.get(STORAGE_KEYS.DISMISSED_UPDATE_VERSION)).toBe('0.20.0');
+      expect(shadowRoot!.querySelector('.ve-update-badge')).toBeNull();
+      expect(shadowRoot!.querySelector('.ve-update-popover')).toBeNull();
+      expect(state.isUpdateNoticeVisible()).toBe(false);
+
+      // Drawer update pill stays visible even after overlay badge is dismissed
+      state.setDrawerOpen(true);
+      await act(() => {
+        render(h(EditReviewDrawer, {}), shadowRoot!);
+      });
+
+      const drawerPill = shadowRoot!.querySelector('.ve-update-pill') as HTMLButtonElement | null;
+      expect(drawerPill).not.toBeNull();
+      await act(() => {
+        drawerPill!.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      });
+
+      const drawerPopover = shadowRoot!.querySelector('.ve-update-popover') as HTMLElement | null;
+      expect(drawerPopover).not.toBeNull();
+      expect(drawerPopover!.textContent).toContain('LUX v0.20.0 available');
+
+      writeText.mockClear();
+      await act(async () => {
+        drawerPill!.click();
+        await Promise.resolve();
+      });
+      expect(writeText).toHaveBeenCalledWith(
+        'Please update lux-edit to v0.20.0 (run "lux update").'
+      );
+
+      // A newer version re-enables the overlay badge notice
+      state.updateInfo = {
+        ...state.updateInfo,
+        latestVersion: '0.21.0',
+      };
+      expect(state.isUpdateNoticeVisible()).toBe(true);
+    } finally {
+      if (origClipboard) {
+        Object.defineProperty(navigator, 'clipboard', origClipboard);
+      } else {
+        delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+      }
+      if (origLocalStorage) {
+        Object.defineProperty(globalThis, 'localStorage', origLocalStorage);
+        Object.defineProperty(window, 'localStorage', origLocalStorage);
+      }
       OverlayStateManager.resetInstance();
     }
   });
